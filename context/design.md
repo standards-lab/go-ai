@@ -1,8 +1,10 @@
 # design
 
 go-ai's design, reviewed from spike-ai-pipeline-client v0.4.0: what the spike is measured against,
-what go-ai keeps, changes, and drops from it, and the surface the library and infer tasks of
-v1.ai.client build to. It is provisional until the library task builds it.
+what go-ai keeps, changes, and drops from it, the surface the library and infer tasks of
+v1.ai.client build to, the alternatives the review rules out, and the change list each task works
+from. The judgement calls it settles are go-ai's `STANDARDS.md`. It is provisional until the
+library task builds it.
 
 ## Evaluation
 
@@ -264,8 +266,9 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
     standard, and its API by example, and names no caller.
 49. **The spike's three client rules** (`STANDARDS.md`, "The client"): no timeout, retry, or limit
     unless the caller sets one; a format chosen by typed constructor; a native parameter through the
-    raw-JSON field. Against findings 9, 3, and 25. **kept**, all three. Their wording in go-ai's
-    `STANDARDS.md` is written with the other judgement calls (planned).
+    raw-JSON field. Against findings 9, 3, and 25. **kept**, all three, as lines of go-ai's
+    `STANDARDS.md` beside its other judgement calls; the first names `Options` where the spike's
+    names `Config`, and adds that every option's zero value sets none.
 
 ## Surface
 
@@ -912,3 +915,181 @@ infer task's.
 | --- | --- |
 | library | the base module; `"."` in `GO_MODULES`; the base depguard rule and the check's no-`require` assertion; the tagged lint and `mise run integration`; the release workflow over both tag namespaces; `CHANGELOG.md`; the tag `v0.1.0` |
 | infer | `tools/infer`, requiring go-ai `v0.1.0`; `"tools/infer"` in `GO_MODULES`; `go.work`; the infer depguard rule; `tools/infer/CHANGELOG.md`; the tag `tools/infer/v0.1.0` |
+
+## Rejected alternatives
+
+What the review rules out, one line each with its reason, cited as the sections above cite theirs;
+"decision" alone is the surface section's, and "modules" the modules section's.
+
+- **A vendor SDK, openai-go or anthropic-sdk-go, as the client.** None covers all three wire
+  formats; openai-go failed minimal-footprint (spike-harness-driver's `findings.md`); and a vendor
+  SDK enters a base module only through a sub-module (`dependencies.md`, "No provider in a base").
+- **A provider sub-module per format.** A format pins no vendor library, so each is a package of
+  the base module, split by growth (finding 1; modules, decision 1).
+- **`infer` in the base module.** Its requirements would enter the library's module (modules,
+  decision 1).
+- **A format registry, or a format chosen by name.** A provider is selected by construction, and a
+  new format is one import at the caller's composition root (finding 3).
+- **`client` as the root package's name.** Under go-ai's path every importer would alias it; `ai`
+  reads with the repository (finding 2; decision 1).
+- **The spike's slug on the wire.** Open Responses prefixes an extension with its implementor's
+  slug, which is go-ai's, and neither caller holds a spike envelope (finding 4).
+- **`New(cfg Config)`, one struct of required and optional inputs.** The required inputs are
+  positional, then an options struct whose zero value is the default (finding 6; decision 2).
+- **The struct-with-a-method form of construction.** A client is a value the caller keeps, not a
+  configured thing run once (decision 2).
+- **`Config` as the options struct's name.** In Go Elemental a `Config` is a go-core configuration
+  block, which go-ai takes none of (decision 2; finding 10).
+- **A pointer retry policy, with a set policy of zero attempts refused.** The options' zero value
+  selects every default, so the zero policy retries nothing (finding 7).
+- **An error for a nil HTTP client or format.** A wiring defect panics with the fix named
+  (finding 8).
+- **A default HTTP client, timeout, retry, size limit, or concurrency bound.** A library ships no
+  policy the application must own (finding 9).
+- **A go-core configuration block or lifecycle part.** A client holds no resource to start, stop,
+  or report ready, and the base module stays on the standard library (finding 10).
+- **A logger, meter, or tracer in the client.** Instrumentation is a `RoundTripper` on the
+  caller's `*http.Client` (finding 11).
+- **A caller's `RoundTripper` as the only way to send `x-api-key` or a consumer-key header.**
+  `Options.Header` serves both without one (finding 12; decision 3).
+- **Retrying a header timeout or net/http's idle-connection error.** The endpoint may still be
+  running the request, and the error can be matched only by its text (finding 15).
+- **An idempotency key on a retried POST.** It would be one endpoint's native header, not the
+  standard's; a caller who sets a policy accepts a run twice (finding 16).
+- **Retry proven by unit tests alone.** Cerebro asks for proof against the live gateway, which the
+  acceptance task adds (finding 17).
+- **An Open Responses SSE encoder of the stream events.** Cerebro relays its own event shapes, and
+  an encoder would be a type before its need (finding 21; decision 4).
+- **No idle bound, or one left to the caller's own timer.** A caller's timer sees only events, so
+  it can't tell a stalled endpoint from one still pinging (finding 22; decision 7).
+- **An idle bound on by default, as go-storage's `ReadIdleTimeout` is.** go-ai sets no policy, so
+  the zero `StreamIdleTimeout` sets none (decision 7; finding 9).
+- **`sse.Decoder.Retry`.** The client never reconnects, so nothing reads it (finding 24).
+- **A typed field for a native engine parameter.** The standard tier is the external standard and
+  no wider; a native parameter stays raw JSON in `Native` (finding 25).
+- **A protocol trimmed to what docinfer and Cerebro use.** The client's scope is chat with tools
+  and reasoning, each proven against set A (finding 26).
+- **A `MaxOutputTokens` minimum per format.** The same request must be valid in every format, so
+  the spec's 16 holds for all (finding 27).
+- **A router build's account in a format's package comment.** The package comment describes the
+  API; the account moves to the testdata READMEs (finding 31).
+- **One set of usage names across embeddings, transcription, and generation.** Each usage type
+  carries its endpoint's names, and docinfer maps them in one place (finding 33).
+- **A one-shot transcription clip, never retried.** The clip reopens per attempt, so `Transcribe`
+  joins the one retry loop (finding 34).
+- **`RetryAfter` as a time of day.** A wait from the reply's arrival needs no clock or zone, and is
+  what a redelivery's delay takes (decision 5).
+- **Refusing `Embed`, `Transcribe`, and `Models` on a format without the OpenAI-compatible
+  routes.** The router serves all three beside `/messages`, and an endpoint without the route
+  answers with an `*APIError` (decision 9).
+- **`internal/clienttest` exported for callers' tests.** docinfer drives the client against its
+  own `internal/endpointtest` (finding 38).
+- **A default router address for the integration tier, or a CI job that runs it.** The tier skips
+  unless a caller names an endpoint, and the models are on the organization's own machines
+  (finding 39).
+- **An integration check that logs the outcome and passes either way.** A test proves a behavior
+  only if it can fail (finding 40).
+- **shellcheck in the check.** go-ai's check omits it, and no page asks for it (finding 43).
+- **A README that names the repositories built on go-ai.** A repository never names its
+  dependents (finding 48).
+- **A `go` directive naming a patch release.** The directive names the current minor, and
+  `mise.toml` pins the toolchain's patch (modules, decision 2).
+- **depguard alone as the base module's guard, or the line as a judgement call.** An edit to the
+  allow list widens depguard quietly; the no-`require` assertion states the line, and a mechanical
+  line is the check's (modules, decision 3).
+- **A committed `replace` of the root in `tools/infer`.** `infer` requires a released go-ai; a
+  `replace` is a transient bridge, removed once the root is tagged (modules, decision 5).
+- **Continuing the spike's tag line, or carrying its changelog entries.** The spike's tags name
+  another module path, so go-ai's start at `v0.1.0` (finding 46; modules, decision 6).
+- **A first release at 1.0.** The surface is provisional until docinfer and Cerebro build on it and
+  the acceptance task proves it (modules, decision 6).
+- **One changelog and a `v*` trigger alone.** go-ai has two artifacts, each with its own changelog
+  and tag namespace (finding 45; modules, decision 8).
+
+## Change list
+
+What each package of the spike at v0.4.0 becomes in go-ai, and what the evaluation and the surface
+change on the way, each item with its owning task and the findings or decisions behind it. The
+tasks make the changes (planned). Every package moves from
+`github.com/JaimeStill/spike-ai-pipeline-client` to `github.com/standards-lab/go-ai`, and every
+comment, error, and test that names the spike takes go-ai's names; the items don't repeat that. A
+package's other declarations port as the spike has them.
+
+### Packages
+
+**`client`, the root, becomes `ai`** (library):
+
+- The package is `ai`, and its errors are prefixed `ai: ` in place of `client: ` (finding 2;
+  decision 1).
+- `New(cfg Config)` becomes `New(baseURL, httpClient, wireFormat, opts Options)`, and `Config`
+  becomes `Options`, without `BaseURL`, `HTTP`, and `Format` (finding 6; decision 2).
+- A nil HTTP client or format panics by name, in place of `New`'s error (finding 8).
+- `Options.Retry` is a `RetryPolicy` value; `RetryPolicy.check` no longer refuses zero attempts,
+  and a `MaxAttempts` of 0 sends one (finding 7).
+- `Options.Header` is added, and `New` refuses one naming `Content-Type`, `Accept`, or
+  `Authorization` (finding 12; decision 3).
+- `Options.StreamIdleTimeout` is added, bounding each read of a started stream in `stream.go`
+  (finding 22; decision 7).
+- `retry.go`'s set adds 502 and 504 (finding 13; decision 8).
+- `APIError.RetryAfter` is added, holding the Retry-After that `send` discards (finding 14;
+  decision 5).
+- `TranscriptionRequest.File` becomes `Open`, called once per attempt, and `Transcribe` joins the
+  retry loop (finding 34).
+- `Model` and `Client.Models` are added, with a GET beside the POSTs `request` builds (finding 36;
+  decision 6).
+- `doc.go` points to go-ai's README, names no caller, and documents `Embed`, `Transcribe`, and
+  `Models` on a client of any format (findings 47 and 48; decision 9).
+
+**`protocol`** (library): `InputAudio`'s wire type becomes `go-ai:input_audio` (finding 4).
+
+**`format`** (library): ported as the spike has it (finding 28).
+
+**`format/completions`, `format/messages`, and `format/responses`** (library):
+
+- Each reasoning envelope's prefix becomes `go-ai:<format>/v1:`, and an envelope under the spike's
+  prefix is dropped on encode (finding 4).
+- `messages`' and `responses`' `doc.go` state what the format sends, refuses, drops, and
+  normalizes, and the account of router build b11669 moves to their testdata READMEs (finding 31).
+- Each format's testdata is ported with its recordings (finding 41).
+
+**`internal/sse`** (library): `Decoder.Retry` is dropped (finding 24).
+
+**`internal/native`** (library): ported as the spike has it.
+
+**`internal/clienttest` becomes `internal/aitest`** (library), renamed with the root package
+(finding 38).
+
+**`integration`** (library):
+
+- `SPIKE_ROUTER_URL` is renamed for go-ai and loses its default, so the tier skips unless a caller
+  names an endpoint (finding 39).
+- `router_test.go`'s `hinted` and `record` give way to assertions of what the format sent or what
+  the endpoint does with it, and a check that can't fail is deleted (finding 40).
+
+**`tools/infer`, new** (infer): the nested module, laid out from go-cli-sdk-template, with its four
+subcommands over the base module's surface (modules, "infer's module").
+
+### The repository
+
+- **`go.mod`** (library): `go 1.27` and no `require` (modules, decisions 2 and 3).
+- **`.golangci.yml`** (library): the spike's, its allow list on go-ai's module path and its base
+  rule excluding `tools/infer` (finding 42; modules, decisions 3 and 4). The infer task adds the
+  rule over `tools/infer`.
+- **`mise.toml`** (library): `"."` in `GO_MODULES`, the no-`require` assertion, the lint under the
+  integration tag, `mise run integration`, and `mise run upgrade`, without shellcheck (findings 39,
+  42 to 44; modules, decision 3). The infer task adds `"tools/infer"` to `GO_MODULES`.
+- **`.github/workflows/release.yml`** (library): go-storage's, over both tag namespaces (finding
+  45; modules, decision 8). go-ai's check-only `ci.yml` stands as it is.
+- **`CHANGELOG.md`** (library): Keep-a-Changelog, with none of the spike's entries, its first
+  release `v0.1.0` (finding 46; modules, decision 6). The infer task adds
+  `tools/infer/CHANGELOG.md` and the tag `tools/infer/v0.1.0`.
+- **`go.work`** (infer): `.` and `./tools/infer` (modules, decision 5).
+- **`README.md`** (library): go-ai's tier, its dependency line beside its link to the standard,
+  and its API by example, naming no caller (finding 48). The infer task adds `infer`'s usage.
+- **The spike's `STANDARDS.md`, `CLAUDE.md`, `context/`, and `scripts/currency.sh`** are not
+  ported: go-ai has its own, and its `STANDARDS.md` carries the spike's three client rules
+  (finding 49).
+- **The retry proof against the live gateway's 429, 503, and Retry-After** (acceptance), once
+  spike-model-gateway runs (finding 17).
+- **The infer rerun against set A**, through the formats docinfer's endpoints use, and the fixes
+  it finds (acceptance; the requests section).
