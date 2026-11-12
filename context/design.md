@@ -235,7 +235,7 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
 42. **A strict depguard rule holds every Go file, tests included, to the standard library and the
     module itself** (`.golangci.yml`). Against `dependencies.md` (two repositories enforce the line
     with depguard) and `principles/minimal-footprint.md`. **kept**, with the allow list on go-ai's
-    module path. The layout section states the rule for each module (planned).
+    module path. The modules section states the rule for each module (decisions 3 and 4).
 43. **The check adds a lint under the integration tag and shellcheck over the scripts**
     (`mise.toml`). Against `release-and-ci.md`, "One check per repository". **kept**: the tagged
     lint, so the tier always compiles. **dropped**: shellcheck, which go-ai's check already omits
@@ -247,7 +247,7 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
     (`.github/workflows/release.yml`). Against `release-and-ci.md`, "Releases", and
     `principles/independent-releases.md`. **changed**: go-ai has two artifacts, the root module and
     `tools/infer`, each with its own changelog and tag namespace, and the workflow derives both from
-    the tag. The layout section states the tags (planned).
+    the tag. The modules section states the tags (decisions 6 to 8).
 46. **The changelog is in Keep-a-Changelog form, with link references** (`CHANGELOG.md`). Against
     `release-and-ci.md`, "Releases". **kept** as a form. The spike's entries are not carried:
     go-ai's tags start fresh under its own module path.
@@ -744,7 +744,7 @@ its type here.
 | `InputAudio` | `protocol.InputAudio` | wire type `go-ai:input_audio` (finding 4) |
 | `Native` (the tiers) | `Native` | each request's native-tier field (note below) |
 | `/models` | `ai.Client.Models` | finding 36; decision 6 |
-| `tools/infer` | `tools/infer` | the nested module; the layout section states it (planned) |
+| `tools/infer` | `tools/infer` | the nested module (the modules section) |
 
 The section's prose also names kinds rather than identifiers, each one of the protocol's: function
 tools are `protocol.FunctionTool`, tool choice `protocol.ToolChoice`, verbosity
@@ -779,3 +779,136 @@ the caller's throughout.
 | A `/models` listing | ai-strategy, "Repositories and placement" | `Client.Models`, a GET through the same token and retry path (finding 36; decision 6) | library |
 | infer's `models` subcommand | ai-strategy, "Repositories and placement" | a listing over `Client.Models`; its flags and output are infer's | infer |
 | infer rerun against set A | data-intelligence, "Gates" | run through the formats docinfer's endpoints use | acceptance |
+
+## Modules
+
+go-ai's module layout, its dependency line and how the check holds it, `infer`'s nested module,
+and the tags each module is released under. The library and infer tasks build it (planned).
+
+### What this section settles
+
+1. **Two modules: the base module at the root and `tools/infer` nested under it.** go-ai is an
+   infrastructure library with no provider (finding 1), so it has no provider sub-modules; the one
+   nested module is the tool, as go-web-service's `tools/slab` is (`topology-and-naming.md`,
+   "Module layout per tier"), so the tool's requirements never enter the library's module. A
+   nested module's directory is outside its parent's module zip, so a caller that imports go-ai
+   never fetches what `infer` requires.
+2. **Each `go.mod` says `go 1.27`**, the current minor, as go-core's, go-cli-sdk's, and
+   go-storage's do; `mise.toml` pins the toolchain, Go 1.27.4, which CI and a developer's machine
+   both read. The spike's directive named a patch release, 1.27.3; `mise run upgrade` moves the
+   minor (finding 44).
+3. **The base module requires nothing, and the check holds it there in two steps.** A strict
+   depguard rule allows the standard library and the module's own packages in every Go file
+   outside `tools/infer`, tests and the integration tier included (finding 42), so an import
+   outside the line fails at the line that makes it; `go mod tidy -diff` then holds `go.mod` to
+   what the files import. Beside them, the check asserts that the base `go.mod` has no `require`,
+   reading it through `go mod edit -json` and jq, which `mise.toml` already pins. depguard alone
+   can be widened by an edit to its allow list; the assertion states the line itself, so moving it
+   means changing the check, in a diff a reviewer reads as a change of line. The library task adds
+   the rule and the assertion. The line is mechanical, so it is the check's, not a judgement call
+   in `STANDARDS.md`.
+4. **One `.golangci.yml` at the root serves both modules, with a depguard rule per module.**
+   golangci-lint reads the nearest configuration above the directory it runs in, so `infer`'s run
+   reads the root's. The base rule's files exclude `tools/infer`; the infer task adds a second
+   rule over `tools/infer`'s files that allows the standard library, go-ai, go-cli-sdk, and
+   go-core, as go-cli-sdk's rule holds it to the standard library and go-core (`dependencies.md`).
+   Both rules sit in one file, so the line of each module is read in one place.
+5. **`go.work` is committed, from the infer task on, and `infer` requires a released go-ai.** A
+   workspace of one module resolves nothing, so the infer task adds `go.work`, using `.` and
+   `./tools/infer`, and keeps its use-list the same as `GO_MODULES`, as go-storage does. The
+   workspace builds a change spanning both modules together before anything is tagged; the check
+   sets `GOWORK=off`, so the gate is the committed pins. `tools/infer`'s `go.mod` requires the
+   root at a released tag, the library task's `v0.1.0` at first, never by a committed `replace`.
+   Where `infer` needs base changes not yet released, a `replace` of the root is a transient
+   bridge, removed once the root is tagged (`release-and-ci.md`, "Coordinating a change across
+   modules").
+6. **The tags are `v<semver>` for the root and `tools/infer/v<semver>` for `infer`, and each
+   module's first tag is `v0.1.0`.** The prefix is the nested module's path, which the module
+   proxy resolves (`topology-and-naming.md`, "Release tags"). go-ai starts fresh: the spike's
+   `v0.1.0` to `v0.4.0` name `github.com/JaimeStill/spike-ai-pipeline-client`, another module
+   path, so no version of go-ai's own precedes them, and its changelog carries none of the spike's
+   entries (finding 46). Both modules stay below 1.0: the surface is provisional until docinfer
+   and Cerebro build on it and the acceptance task proves it against set A and the live gateway,
+   and every library of the standard beneath it, go-core included, is still at v0.
+7. **The library task releases the root; the infer task releases `tools/infer`.** The release
+   ripples bottom-up: `infer` pins the root release it was validated against, so the root is
+   tagged first, and a later change spanning both releases the same way. `infer`'s versions move
+   on their own; its `v0.1.0` says nothing of the root's version.
+8. **The release workflow arrives with the library task and takes both tag namespaces from its
+   first version.** It is go-storage's: the trigger takes `v*` and `**/v*`, and the job derives
+   the path prefix and the changelog, `CHANGELOG.md` or `tools/infer/CHANGELOG.md`, from the tag
+   (finding 45). The infer task's first tag then needs no change to the workflow, only its
+   changelog.
+
+### The module tree
+
+The base module, `github.com/standards-lab/go-ai`, holds the packages of the surface section,
+their testdata, and the integration tier. `internal/aitest` is the spike's `internal/clienttest`,
+renamed with the root package (finding 38); `internal/sse` and `internal/native` are the spike's.
+
+```text
+go-ai/                        module github.com/standards-lab/go-ai
+├── go.mod                    no require
+├── go.work                   use . and ./tools/infer, from the infer task
+├── CHANGELOG.md              the root's
+├── *.go                      package ai
+├── protocol/
+├── format/
+│   ├── completions/testdata/
+│   ├── messages/testdata/
+│   └── responses/testdata/
+├── integration/              the integration tier, behind the integration build tag
+├── internal/
+│   ├── aitest/
+│   ├── native/
+│   └── sse/
+└── tools/infer/              module github.com/standards-lab/go-ai/tools/infer
+    ├── go.mod
+    ├── CHANGELOG.md          infer's
+    ├── cmd/infer/
+    └── internal/
+        ├── app/
+        └── apptest/
+```
+
+Each format's testdata is recorded from the router, with a README that says how and records what
+the router's build drops (findings 31 and 41). The integration tier is a root-level package of
+the base module, as the spike's is: the check builds and lints it under its build tag (finding
+43), and `mise run integration`, which the library task adds, runs it against the endpoint its
+variable names (finding 39). No CI job runs it.
+
+### infer's module
+
+`infer` is the convenience CLI over the base module's surface, a Go Elemental CLI laid out from
+go-cli-sdk-template (`cli-applications.md`): `cmd/infer` derives go-core's signal context and
+calls the composition root, and `internal/app` holds `app.go`, `infrastructure.go`, `domain.go`,
+and `version.go`, with its fixtures in `internal/apptest`. The client is a node of
+`infrastructure.go`, built from configuration under the tool's environment prefix only when a
+command declares it; that file is the only one in the composition root that names a format, as it
+is the only one that names a provider.
+
+Its module requires go-ai, go-cli-sdk, and go-core, each at a pinned release, and nothing else:
+go-ai at the root's first release, `v0.1.0`; go-cli-sdk and go-core at their latest releases when
+the infer task builds, which at this review are go-cli-sdk `v0.4.0` and go-core `v0.12.0`, the
+pair go-cli-sdk-template pins. A further requirement enters only under `dependencies.md`,
+"Sourcing", and the infer task's brief states it.
+
+Its four subcommands, bare words at the root, each go through the base module's surface alone:
+
+- **`chat`** sends a prompt as a `protocol.Request` through `Client.GenerateStream`, writing each
+  `OutputTextDelta` as it arrives, or through `Client.Generate`, writing the response's output.
+- **`embed`** sends its inputs as one `EmbeddingRequest` batch through `Client.Embed` and writes
+  the vectors and usage.
+- **`transcribe`** sends an audio file through `Client.Transcribe`, its `Open` opening the file
+  again for each attempt, and writes the text.
+- **`models`** lists the endpoint's models through `Client.Models`.
+
+The template's version command stands beside them. Each subcommand's flags and output are the
+infer task's.
+
+### What each task adds
+
+| task | adds |
+| --- | --- |
+| library | the base module; `"."` in `GO_MODULES`; the base depguard rule and the check's no-`require` assertion; the tagged lint and `mise run integration`; the release workflow over both tag namespaces; `CHANGELOG.md`; the tag `v0.1.0` |
+| infer | `tools/infer`, requiring go-ai `v0.1.0`; `"tools/infer"` in `GO_MODULES`; `go.work`; the infer depguard rule; `tools/infer/CHANGELOG.md`; the tag `tools/infer/v0.1.0` |
