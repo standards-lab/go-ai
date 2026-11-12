@@ -19,9 +19,6 @@ review, `context/design.md`.
 - `architecture/standards/go-elemental/principles/baseline-standards.md`: the library sets no
   timeout, retry, size limit, or concurrency bound unless the caller does; retry is opt-in, a
   policy the caller sets in `Options`, and every option's zero value sets none.
-- `architecture/standards/go-elemental/principles/baseline-standards.md`, "A type is introduced
-  only when it is needed": the stream events stay Go values with no wire form, and an encoder or
-  other type waits for a caller that needs it.
 - `architecture/principles/service-tiers.md`, "Providers are adapters behind one interface": each
   format is an adapter beneath `format.Format`, which knows `protocol` and never the client.
 - `architecture/standards/go-elemental/principles/baseline-standards.md`: `protocol` is Open
@@ -31,13 +28,12 @@ review, `context/design.md`.
   request's raw-JSON `Native` field, documented as native tier, never as a typed field.
 - `architecture/standards/go-elemental/principles/construction-and-execution.md`: `ai.New`'s
   required inputs are positional and its optional ones `Options`, as `responses.New`'s are; every
-  new constructor does the same, and an options struct is `Options`, never `Config`.
+  new constructor does the same.
 - `architecture/standards/go-elemental/principles/lifecycle-and-context.md`: a nil HTTP client or
   format panics by name, and a base URL, retry policy, or header that can't be used is an error
   ("The wiring rule"); a call takes the caller's plain context, which ends it and closes its stream.
-- `architecture/standards/go-elemental/principles/timeouts.md`: the retry set is 408, 429, 502,
-  503, 504, and a connection failure before any reply, never a started stream, a header timeout,
-  or net/http's idle-connection error; `Options.StreamIdleTimeout` bounds each read.
+- `architecture/standards/go-elemental/principles/timeouts.md`: a started stream is bounded by
+  `Options.StreamIdleTimeout`, which bounds each read and is off at its zero value.
 - `architecture/standards/go-elemental/principles/baseline-standards.md`: a retried POST may run
   twice on the endpoint, `RetryPolicy`'s documentation says so, and no idempotency key is sent.
 - `architecture/principles/validation-first.md`: a request the protocol or its format can't
