@@ -184,91 +184,124 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
     Against `tests-and-docs.md`, "doc.go and godoc": the package comment describes the package's
     API. **changed**: a package comment states what its format sends, refuses, drops, and
     normalizes. The account of router build b11669 moves to the testdata READMEs that record it.
+32. **Structured output is the spec's text parameter: `TextParam` holds a format from a closed set,
+    `PlainTextFormat` or `JSONSchemaFormat`, and a verbosity, and the package decodes no output**
+    (`protocol/text.go`). Against layers, "Generation: vision and extraction" (extraction's schema,
+    and the client adds no decoding), `principles/service-tiers.md`, "Standard", and
+    `baseline-standards.md`, "A type is introduced only when it is needed". **kept**: the two
+    formats are the spec's for a request, json_object being a response's alone, and a decoder
+    would only wrap the caller's `json.Unmarshal`.
+33. **`internal/native` holds the native tier's one check, member lookup, and encoding, which
+    `protocol`, the formats, and `Embed` share** (`internal/native/native.go`: `Valid`, `Has`,
+    `Marshal`). Against `principles/service-tiers.md`, "Native", and
+    `principles/validation-first.md`. **kept**: `Validate` and `Embed` refuse a `Native` that isn't
+    a JSON object with unique members before anything is sent, and a member that clashes with one
+    the request sets is refused by name rather than overriding it silently. The package is
+    internal because none of the three layers may import another, and the tier stays off go-ai's
+    surface.
 
 ### Embeddings, transcription, and models
 
-32. **`Embed` sends every input in one request and places each vector by its index, as base64 of
+34. **`Embed` sends every input in one request and places each vector by its index, as base64 of
     float32** (`embed.go`). Against Cerebro (Embed batching; concurrency bounds stay the caller's)
     and `baseline-standards.md`. **kept**: `Input` is the batch, and how large a batch is, and how
     many run at once, are the caller's.
-33. **`EmbeddingUsage` counts `PromptTokens` where `protocol.Usage` and `TranscriptionUsage` count
+35. **`EmbeddingUsage` counts `PromptTokens` where `protocol.Usage` and `TranscriptionUsage` count
     `InputTokens`** (`embed.go`). Against layers, "docinfer's go-ai use", whose table maps both.
     **kept**: each usage type carries its endpoint's names, and docinfer maps them in one place.
-34. **`Transcribe` reads a one-shot `File` and is never retried** (`transcribe.go`). Against layers,
+36. **`Transcribe` reads a one-shot `File` and is never retried** (`transcribe.go`). Against layers,
     "Requests to go-ai", and Cerebro. **changed**: the request can reopen its clip, so `Transcribe`
     joins the one retry loop and honors Retry-After. Each attempt still streams the clip through a
     pipe and never holds it whole.
-35. **`Transcribe` always asks for `response_format` json, and leaves the endpoint's other fields to
+37. **`Transcribe` always asks for `response_format` json, and leaves the endpoint's other fields to
     `Native`** (`transcribe.go`). Against `principles/resolution.md`. **kept**: json is the one
     format llama.cpp answers, and the reply the client decodes has one shape.
-36. **The client has no `/models` listing, and builds only POSTs** (`client.go`, `request`). Against
+38. **The client has no `/models` listing, and builds only POSTs** (`client.go`, `request`). Against
     ai-strategy, "Repositories and placement" (the client gains a `/models` listing). **changed**:
     the listing is added, as a GET through the same token and retry path.
 
 ### Tests
 
-37. **The unit tier is black-box and hermetic** (every `_test.go`; `.golangci.yml`, `testpackage`;
+39. **The unit tier is black-box and hermetic** (every `_test.go`; `.golangci.yml`, `testpackage`;
     `export_test.go`, whose one hook replaces the backoff's jitter). Against `tests-and-docs.md`,
     "The unit tier: black-box and hermetic". **kept**: the hook is a probe the API can't reach
     deterministically, which the page allows.
-38. **`internal/clienttest` is the loopback server the module's test packages share**
+40. **`internal/clienttest` is the loopback server the module's test packages share**
     (`internal/clienttest`). Against `tests-and-docs.md`, "The unit tier: black-box and hermetic": a
     shared helper is a `<pkg>test` package under `internal/`. **kept**, renamed with the root
     package. It stays internal: docinfer drives the client against its own `internal/endpointtest`
     (layers, "docinfer's API").
-39. **The integration tier is a root-level `integration` package behind the build tag, run against a
+41. **The integration tier is a root-level `integration` package behind the build tag, run against a
     live router, and the check lints it without running it** (`integration`; `mise.toml`,
     `SPIKE_ROUTER_URL`, which defaults to one machine's name). Against `tests-and-docs.md`,
     "Integration and acceptance suites, and where each runs", and `release-and-ci.md`, "One check
     per repository". **kept**, with the variable renamed and its default removed, so the tier skips
     unless a caller names an endpoint. No CI job runs it, since the models are on the organization's
     own machines.
-40. **Where the router drops a hint, the integration tier logs the outcome and passes either way**
+42. **Where the router drops a hint, the integration tier logs the outcome and passes either way**
     (`integration/router_test.go`, `hinted` and `record`). Against `tests-and-docs.md`: a test
     proves a behavior only if it can fail. **changed**: a scenario asserts what the format sent, or
     what the endpoint does with it, and a check that can't fail is deleted.
-41. **Each format's testdata is recorded from the router, streamed and unstreamed for the same
+43. **Each format's testdata is recorded from the router, streamed and unstreamed for the same
     request, with a README that says how** (`format/*/testdata`). Against `tests-and-docs.md`, "The
     unit tier: black-box and hermetic". **kept**: the stream tests prove a folded stream equals the
     unstreamed reply against real replies.
 
 ### Check, CI, and release
 
-42. **A strict depguard rule holds every Go file, tests included, to the standard library and the
+44. **A strict depguard rule holds every Go file, tests included, to the standard library and the
     module itself** (`.golangci.yml`). Against `dependencies.md` (two repositories enforce the line
     with depguard) and `principles/minimal-footprint.md`. **kept**, with the allow list on go-ai's
     module path. The modules section states the rule for each module (decisions 3 and 4).
-43. **The check adds a lint under the integration tag and shellcheck over the scripts**
+45. **The check adds a lint under the integration tag and shellcheck over the scripts**
     (`mise.toml`). Against `release-and-ci.md`, "One check per repository". **kept**: the tagged
     lint, so the tier always compiles. **dropped**: shellcheck, which go-ai's check already omits
     and no page asks for.
-44. **There is no `upgrade` task** (`mise.toml`). Against `release-and-ci.md`, "Currency and
+46. **There is no `upgrade` task** (`mise.toml`). Against `release-and-ci.md`, "Currency and
     upgrade" and "Tasks". **changed**: go-ai gains `mise run upgrade`, beside the `check` and
     `currency` its `mise.toml` has.
-45. **The release workflow names one changelog and takes `v*` tags**
+47. **The release workflow names one changelog and takes `v*` tags**
     (`.github/workflows/release.yml`). Against `release-and-ci.md`, "Releases", and
     `principles/independent-releases.md`. **changed**: go-ai has two artifacts, the root module and
     `tools/infer`, each with its own changelog and tag namespace, and the workflow derives both from
     the tag. The modules section states the tags (decisions 6 to 8).
-46. **The changelog is in Keep-a-Changelog form, with link references** (`CHANGELOG.md`). Against
+48. **The changelog is in Keep-a-Changelog form, with link references** (`CHANGELOG.md`). Against
     `release-and-ci.md`, "Releases". **kept** as a form. The spike's entries are not carried:
     go-ai's tags start fresh under its own module path.
+49. **`scripts/currency.sh` reports each requirement, `go` directive, mise tool, and action pin
+    that trails its latest, reading the workflows of the project root alone**
+    (`scripts/currency.sh`). Against `release-and-ci.md`, "Currency and upgrade". **dropped**:
+    go-ai's own `scripts/currency.sh` reports the same pins and also reads the workflows of the git
+    top-level, so the spike's older copy is not ported.
+50. **CI is one `check` job that runs `mise run check` on every pull request into `main` and every
+    push to it, with no integration job** (`.github/workflows/ci.yml`). Against `release-and-ci.md`,
+    "One check per repository". **dropped**: the shape is the page's, and go-ai's own check-only
+    `ci.yml` already has it, with a newer `mise-action` pin. The integration tier gets no job, since
+    the models are on the organization's own machines (finding 41).
 
 ### README and documentation
 
-47. **Each package has a `doc.go` that inventories its exported identifiers** (every package's
+51. **Each package has a `doc.go` that inventories its exported identifiers** (every package's
     `doc.go`). Against `tests-and-docs.md`, "doc.go and godoc". **kept**.
-48. **The README states the spike's role and names the repositories that build on it, and `doc.go`
+52. **The README states the spike's role and names the repositories that build on it, and `doc.go`
     points to it** (`README.md`, `doc.go`). Against `principles/downward-dependencies.md` (a
     repository never names its dependents) and the Go Elemental README, "Member repositories" (a
     README states the repository's place in the standard and the principles it enhances).
     **changed**: go-ai's README states its tier, its dependency line beside its link to the
     standard, and its API by example, and names no caller.
-49. **The spike's three client rules** (`STANDARDS.md`, "The client"): no timeout, retry, or limit
+53. **The spike's three client rules** (`STANDARDS.md`, "The client"): no timeout, retry, or limit
     unless the caller sets one; a format chosen by typed constructor; a native parameter through the
-    raw-JSON field. Against findings 9, 3, and 25. **kept**, all three, as lines of go-ai's
-    `STANDARDS.md` beside its other judgement calls; the first names `Options` where the spike's
-    names `Config`, and adds that every option's zero value sets none.
+    raw-JSON field. Against findings 9, 3, and 25. Each becomes a line of go-ai's `STANDARDS.md`
+    beside its other judgement calls, and none is carried over unchanged:
+    - The first is **changed**: "limit" becomes "size limit, or concurrency bound", the policy the
+      caller sets is in `Options` where the spike's is in `Config`, and the rule adds that every
+      option's zero value sets none (findings 6, 7, and 9).
+    - The second is **changed**: the format is chosen by its package's typed constructor at the
+      caller's composition root, and the rule adds "or by name" to the registry it forbids
+      (finding 3).
+    - The third is **kept** in meaning and reworded: it names the field `Native` where the spike's
+      says the raw-JSON extension field, and "never as a typed field" drops "of the standard
+      model", which the field's tier already implies (finding 25).
 
 ## Surface
 
@@ -305,7 +338,7 @@ The nine items the evaluation left open, each decided with its reason:
 5. **`APIError.RetryAfter` is a `time.Duration`** (finding 14): the wait the reply's Retry-After
    asked for, measured from the reply's arrival, zero for none. A duration needs no clock and no
    zone, so `utc-times.md` has nothing to hold it to, and it is what a redelivery's delay takes.
-6. **`Client.Models` lists the endpoint's models** (finding 36): a GET of the OpenAI-compatible
+6. **`Client.Models` lists the endpoint's models** (finding 38): a GET of the OpenAI-compatible
    `models` route whatever the Format, as `Embed` is, through the same token, header, query, and
    retry path. A GET is safe to repeat, so its retry runs nothing twice.
 7. **`Options.StreamIdleTimeout` is an idle bound the caller sets; zero sets none** (finding 22).
@@ -688,6 +721,7 @@ its type here.
 | `Response` | `protocol.Response` | |
 | `Response.Output` | `protocol.Response.Output` | |
 | `Response.Status` | `protocol.Response.Status` | |
+| `Status` | `protocol.Status` | |
 | `StatusIncomplete` | `protocol.StatusIncomplete` | |
 | `Response.IncompleteDetails` | `protocol.Response.IncompleteDetails` | |
 | `IncompleteDetails` (the type) | `protocol.IncompleteDetails` | |
@@ -717,12 +751,12 @@ its type here.
 | `Embeddings.Vectors` | `ai.Embeddings.Vectors` | |
 | `Embeddings.Usage` | `ai.Embeddings.Usage` | |
 | `EmbeddingUsage` | `ai.EmbeddingUsage` | |
-| `EmbeddingUsage.PromptTokens` | `ai.EmbeddingUsage.PromptTokens` | finding 33 |
+| `EmbeddingUsage.PromptTokens` | `ai.EmbeddingUsage.PromptTokens` | finding 35 |
 | `EmbeddingUsage.TotalTokens` | `ai.EmbeddingUsage.TotalTokens` | |
 | `Embed` | `ai.Client.Embed` | |
 | `TranscriptionRequest` | `ai.TranscriptionRequest` | |
 | `TranscriptionRequest.Model` | `ai.TranscriptionRequest.Model` | |
-| `TranscriptionRequest.File` | `ai.TranscriptionRequest.Open` | reopened per attempt (finding 34) |
+| `TranscriptionRequest.File` | `ai.TranscriptionRequest.Open` | reopened per attempt (finding 36) |
 | `TranscriptionRequest.FileName` | `ai.TranscriptionRequest.FileName` | |
 | `TranscriptionRequest.Language` | `ai.TranscriptionRequest.Language` | |
 | `TranscriptionRequest.Prompt` | `ai.TranscriptionRequest.Prompt` | |
@@ -733,7 +767,7 @@ its type here.
 | `TranscriptionUsage.InputTokens` | `ai.TranscriptionUsage.InputTokens` | |
 | `TranscriptionUsage.OutputTokens` | `ai.TranscriptionUsage.OutputTokens` | |
 | `TranscriptionUsage.TotalTokens` | `ai.TranscriptionUsage.TotalTokens` | |
-| `Transcribe` | `ai.Client.Transcribe` | in the one retry loop, honoring Retry-After (finding 34) |
+| `Transcribe` | `ai.Client.Transcribe` | in the one retry loop, honoring Retry-After (finding 36) |
 | `format.Format` | `format.Format` | |
 | `format/completions` | package `completions` | |
 | `completions.New` | `completions.New` | |
@@ -746,7 +780,7 @@ its type here.
 | `ReasoningParam.Summary` | `protocol.ReasoningParam.Summary` | |
 | `InputAudio` | `protocol.InputAudio` | wire type `go-ai:input_audio` (finding 4) |
 | `Native` (the tiers) | `Native` | each request's native-tier field (note below) |
-| `/models` | `ai.Client.Models` | finding 36; decision 6 |
+| `/models` | `ai.Client.Models` | finding 38; decision 6 |
 | `tools/infer` | `tools/infer` | the nested module (the modules section) |
 
 The section's prose also names kinds rather than identifiers, each one of the protocol's: function
@@ -770,16 +804,16 @@ the caller's throughout.
 
 | request | who asks | decision | owner |
 | --- | --- | --- | --- |
-| A transcription clip the retry loop can reopen | docinfer (layers, "Requests to go-ai"); Cerebro | `TranscriptionRequest.Open`, once per attempt; `Transcribe` joins the retry loop (finding 34) | library |
+| A transcription clip the retry loop can reopen | docinfer (layers, "Requests to go-ai"); Cerebro | `TranscriptionRequest.Open`, once per attempt; `Transcribe` joins the retry loop (finding 36) | library |
 | Retry-After on the API error | docinfer (layers, "Embeddings and transcription") | `APIError.RetryAfter`, a duration, beside the reopenable clip (finding 14; decision 5) | library |
 | Per-call timeouts and cancellation by context | Cerebro; layers, "The client" | the caller's context ends a call or closes its stream; no library timeout; an idle bound when set (findings 9, 20; decision 7) | library |
 | The consumer key, in a header of its own if the gateway asks | Cerebro; layers, "Requests to go-ai" | the bearer token from `Options.Token`; `Options.Header` should the gateway ask (finding 12; decision 3) | library |
-| Embed batching | Cerebro | `EmbeddingRequest.Input` is the batch, one request; its size and fan-out are the caller's (finding 32) | library |
+| Embed batching | Cerebro | `EmbeddingRequest.Input` is the batch, one request; its size and fan-out are the caller's (finding 34) | library |
 | Stream events Cerebro can relay | Cerebro | the typed event set with sequence numbers, mapped by Cerebro; no SSE encoder (finding 21; decision 4) | library |
 | Retry proven against the live gateway's 429, 503, and Retry-After | Cerebro; layers, "Requests to go-ai" | proven against the live gateway once spike-model-gateway runs; the release doesn't wait (finding 17) | acceptance |
 | The surface docinfer calls kept | docinfer (layers, "Requests to go-ai"); data-intelligence, "The layers" | kept, under the name map | library |
 | The gateway's capacity replies retried as go-ai expects | data-intelligence, "What it asks of the goals beneath it" (v1.ai.hosting) | 408, 429, 502, 503, 504, and a connection failure before any reply (decision 8) | library |
-| A `/models` listing | ai-strategy, "Repositories and placement" | `Client.Models`, a GET through the same token and retry path (finding 36; decision 6) | library |
+| A `/models` listing | ai-strategy, "Repositories and placement" | `Client.Models`, a GET through the same token and retry path (finding 38; decision 6) | library |
 | infer's `models` subcommand | ai-strategy, "Repositories and placement" | a listing over `Client.Models`; its flags and output are infer's | infer |
 | infer rerun against set A | data-intelligence, "Gates" | run through the formats docinfer's endpoints use | acceptance |
 
@@ -799,10 +833,10 @@ and the tags each module is released under. The library and infer tasks build it
 2. **Each `go.mod` says `go 1.27`**, the current minor, as go-core's, go-cli-sdk's, and
    go-storage's do; `mise.toml` pins the toolchain, Go 1.27.4, which CI and a developer's machine
    both read. The spike's directive named a patch release, 1.27.3; `mise run upgrade` moves the
-   minor (finding 44).
+   minor (finding 46).
 3. **The base module requires nothing, and the check holds it there in two steps.** A strict
    depguard rule allows the standard library and the module's own packages in every Go file
-   outside `tools/infer`, tests and the integration tier included (finding 42), so an import
+   outside `tools/infer`, tests and the integration tier included (finding 44), so an import
    outside the line fails at the line that makes it; `go mod tidy -diff` then holds `go.mod` to
    what the files import. Beside them, the check asserts that the base `go.mod` has no `require`,
    reading it through `go mod edit -json` and jq, which `mise.toml` already pins. depguard alone
@@ -830,7 +864,7 @@ and the tags each module is released under. The library and infer tasks build it
    proxy resolves (`topology-and-naming.md`, "Release tags"). go-ai starts fresh: the spike's
    `v0.1.0` to `v0.4.0` name `github.com/JaimeStill/spike-ai-pipeline-client`, another module
    path, so no version of go-ai's own precedes them, and its changelog carries none of the spike's
-   entries (finding 46). Both modules stay below 1.0: the surface is provisional until docinfer
+   entries (finding 48). Both modules stay below 1.0: the surface is provisional until docinfer
    and Cerebro build on it and the acceptance task proves it against set A and the live gateway,
    and every library of the standard beneath it, go-core included, is still at v0.
 7. **The library task releases the root; the infer task releases `tools/infer`.** The release
@@ -840,14 +874,14 @@ and the tags each module is released under. The library and infer tasks build it
 8. **The release workflow arrives with the library task and takes both tag namespaces from its
    first version.** It is go-storage's: the trigger takes `v*` and `**/v*`, and the job derives
    the path prefix and the changelog, `CHANGELOG.md` or `tools/infer/CHANGELOG.md`, from the tag
-   (finding 45). The infer task's first tag then needs no change to the workflow, only its
+   (finding 47). The infer task's first tag then needs no change to the workflow, only its
    changelog.
 
 ### The module tree
 
 The base module, `github.com/standards-lab/go-ai`, holds the packages of the surface section,
 their testdata, and the integration tier. `internal/aitest` is the spike's `internal/clienttest`,
-renamed with the root package (finding 38); `internal/sse` and `internal/native` are the spike's.
+renamed with the root package (finding 40); `internal/sse` and `internal/native` are the spike's.
 
 ```text
 go-ai/                        module github.com/standards-lab/go-ai
@@ -875,10 +909,10 @@ go-ai/                        module github.com/standards-lab/go-ai
 ```
 
 Each format's testdata is recorded from the router, with a README that says how and records what
-the router's build drops (findings 31 and 41). The integration tier is a root-level package of
+the router's build drops (findings 31 and 43). The integration tier is a root-level package of
 the base module, as the spike's is: the check builds and lints it under its build tag (finding
-43), and `mise run integration`, which the library task adds, runs it against the endpoint its
-variable names (finding 39). No CI job runs it.
+45), and `mise run integration`, which the library task adds, runs it against the endpoint its
+variable names (finding 41). No CI job runs it.
 
 ### infer's module
 
@@ -922,7 +956,8 @@ What the review rules out, one line each with its reason, cited as the sections 
 
 - **A vendor SDK, openai-go or anthropic-sdk-go, as the client.** None covers all three wire
   formats; openai-go failed minimal-footprint (spike-harness-driver's `findings.md`); and a vendor
-  SDK enters a base module only through a sub-module (`dependencies.md`, "No provider in a base").
+  SDK enters a base module only through a sub-module (`dependencies.md`, the "No provider in a
+  base" item of its opening list, and "The line per tier").
 - **A provider sub-module per format.** A format pins no vendor library, so each is a package of
   the base module, split by growth (finding 1; modules, decision 1).
 - **`infer` in the base module.** Its requirements would enter the library's module (modules,
@@ -973,24 +1008,24 @@ What the review rules out, one line each with its reason, cited as the sections 
 - **A router build's account in a format's package comment.** The package comment describes the
   API; the account moves to the testdata READMEs (finding 31).
 - **One set of usage names across embeddings, transcription, and generation.** Each usage type
-  carries its endpoint's names, and docinfer maps them in one place (finding 33).
+  carries its endpoint's names, and docinfer maps them in one place (finding 35).
 - **A one-shot transcription clip, never retried.** The clip reopens per attempt, so `Transcribe`
-  joins the one retry loop (finding 34).
+  joins the one retry loop (finding 36).
 - **`RetryAfter` as a time of day.** A wait from the reply's arrival needs no clock or zone, and is
   what a redelivery's delay takes (decision 5).
 - **Refusing `Embed`, `Transcribe`, and `Models` on a format without the OpenAI-compatible
   routes.** The router serves all three beside `/messages`, and an endpoint without the route
   answers with an `*APIError` (decision 9).
 - **`internal/clienttest` exported for callers' tests.** docinfer drives the client against its
-  own `internal/endpointtest` (finding 38).
+  own `internal/endpointtest` (finding 40).
 - **A default router address for the integration tier, or a CI job that runs it.** The tier skips
   unless a caller names an endpoint, and the models are on the organization's own machines
-  (finding 39).
+  (finding 41).
 - **An integration check that logs the outcome and passes either way.** A test proves a behavior
-  only if it can fail (finding 40).
-- **shellcheck in the check.** go-ai's check omits it, and no page asks for it (finding 43).
+  only if it can fail (finding 42).
+- **shellcheck in the check.** go-ai's check omits it, and no page asks for it (finding 45).
 - **A README that names the repositories built on go-ai.** A repository never names its
-  dependents (finding 48).
+  dependents (finding 52).
 - **A `go` directive naming a patch release.** The directive names the current minor, and
   `mise.toml` pins the toolchain's patch (modules, decision 2).
 - **depguard alone as the base module's guard, or the line as a judgement call.** An edit to the
@@ -999,11 +1034,11 @@ What the review rules out, one line each with its reason, cited as the sections 
 - **A committed `replace` of the root in `tools/infer`.** `infer` requires a released go-ai; a
   `replace` is a transient bridge, removed once the root is tagged (modules, decision 5).
 - **Continuing the spike's tag line, or carrying its changelog entries.** The spike's tags name
-  another module path, so go-ai's start at `v0.1.0` (finding 46; modules, decision 6).
+  another module path, so go-ai's start at `v0.1.0` (finding 48; modules, decision 6).
 - **A first release at 1.0.** The surface is provisional until docinfer and Cerebro build on it and
   the acceptance task proves it (modules, decision 6).
 - **One changelog and a `v*` trigger alone.** go-ai has two artifacts, each with its own changelog
-  and tag namespace (finding 45; modules, decision 8).
+  and tag namespace (finding 47; modules, decision 8).
 
 ## Change list
 
@@ -1033,13 +1068,14 @@ package's other declarations port as the spike has them.
 - `APIError.RetryAfter` is added, holding the Retry-After that `send` discards (finding 14;
   decision 5).
 - `TranscriptionRequest.File` becomes `Open`, called once per attempt, and `Transcribe` joins the
-  retry loop (finding 34).
-- `Model` and `Client.Models` are added, with a GET beside the POSTs `request` builds (finding 36;
+  retry loop (finding 36).
+- `Model` and `Client.Models` are added, with a GET beside the POSTs `request` builds (finding 38;
   decision 6).
 - `doc.go` points to go-ai's README, names no caller, and documents `Embed`, `Transcribe`, and
-  `Models` on a client of any format (findings 47 and 48; decision 9).
+  `Models` on a client of any format (findings 51 and 52; decision 9).
 
-**`protocol`** (library): `InputAudio`'s wire type becomes `go-ai:input_audio` (finding 4).
+**`protocol`** (library): `InputAudio`'s wire type becomes `go-ai:input_audio` (finding 4), and
+`text.go` ports as the spike has it (finding 32).
 
 **`format`** (library): ported as the spike has it (finding 28).
 
@@ -1049,21 +1085,21 @@ package's other declarations port as the spike has them.
   prefix is dropped on encode (finding 4).
 - `messages`' and `responses`' `doc.go` state what the format sends, refuses, drops, and
   normalizes, and the account of router build b11669 moves to their testdata READMEs (finding 31).
-- Each format's testdata is ported with its recordings (finding 41).
+- Each format's testdata is ported with its recordings (finding 43).
 
 **`internal/sse`** (library): `Decoder.Retry` is dropped (finding 24).
 
-**`internal/native`** (library): ported as the spike has it.
+**`internal/native`** (library): ported as the spike has it (finding 33).
 
 **`internal/clienttest` becomes `internal/aitest`** (library), renamed with the root package
-(finding 38).
+(finding 40).
 
 **`integration`** (library):
 
 - `SPIKE_ROUTER_URL` is renamed for go-ai and loses its default, so the tier skips unless a caller
-  names an endpoint (finding 39).
+  names an endpoint (finding 41).
 - `router_test.go`'s `hinted` and `record` give way to assertions of what the format sent or what
-  the endpoint does with it, and a check that can't fail is deleted (finding 40).
+  the endpoint does with it, and a check that can't fail is deleted (finding 42).
 
 **`tools/infer`, new** (infer): the nested module, laid out from go-cli-sdk-template, with its four
 subcommands over the base module's surface (modules, "infer's module").
@@ -1072,22 +1108,23 @@ subcommands over the base module's surface (modules, "infer's module").
 
 - **`go.mod`** (library): `go 1.27` and no `require` (modules, decisions 2 and 3).
 - **`.golangci.yml`** (library): the spike's, its allow list on go-ai's module path and its base
-  rule excluding `tools/infer` (finding 42; modules, decisions 3 and 4). The infer task adds the
+  rule excluding `tools/infer` (finding 44; modules, decisions 3 and 4). The infer task adds the
   rule over `tools/infer`.
 - **`mise.toml`** (library): `"."` in `GO_MODULES`, the no-`require` assertion, the lint under the
-  integration tag, `mise run integration`, and `mise run upgrade`, without shellcheck (findings 39,
-  42 to 44; modules, decision 3). The infer task adds `"tools/infer"` to `GO_MODULES`.
+  integration tag, `mise run integration`, and `mise run upgrade`, without shellcheck (findings 41,
+  44 to 46; modules, decision 3). The infer task adds `"tools/infer"` to `GO_MODULES`.
 - **`.github/workflows/release.yml`** (library): go-storage's, over both tag namespaces (finding
-  45; modules, decision 8). go-ai's check-only `ci.yml` stands as it is.
+  47; modules, decision 8). go-ai's check-only `ci.yml` stands as it is, and the spike's is not
+  ported (finding 50).
 - **`CHANGELOG.md`** (library): Keep-a-Changelog, with none of the spike's entries, its first
-  release `v0.1.0` (finding 46; modules, decision 6). The infer task adds
+  release `v0.1.0` (finding 48; modules, decision 6). The infer task adds
   `tools/infer/CHANGELOG.md` and the tag `tools/infer/v0.1.0`.
 - **`go.work`** (infer): `.` and `./tools/infer` (modules, decision 5).
 - **`README.md`** (library): go-ai's tier, its dependency line beside its link to the standard,
-  and its API by example, naming no caller (finding 48). The infer task adds `infer`'s usage.
+  and its API by example, naming no caller (finding 52). The infer task adds `infer`'s usage.
 - **The spike's `STANDARDS.md`, `CLAUDE.md`, `context/`, and `scripts/currency.sh`** are not
-  ported: go-ai has its own, and its `STANDARDS.md` carries the spike's three client rules
-  (finding 49).
+  ported: go-ai has its own (finding 49 for `scripts/currency.sh`), and its `STANDARDS.md` carries
+  the spike's three client rules, two of them changed (finding 53).
 - **The retry proof against the live gateway's 429, 503, and Retry-After** (acceptance), once
   spike-model-gateway runs (finding 17).
 - **The infer rerun against set A**, through the formats docinfer's endpoints use, and the fixes
