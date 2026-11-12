@@ -1,0 +1,32 @@
+[tools]
+go = "1.27.4"
+golangci-lint = "2.15.0"
+jq = "1.8.2"
+
+# Space-separated list of module directories. "." is the base module and
+# tools/infer the CLI's; each is added as the library and infer tasks build it.
+[env]
+GO_MODULES = ""
+
+[tasks.check]
+description = "Build, vet, format, fix, tidy, test, and lint every module; writes nothing"
+run = '''
+set -eu
+export GOWORK=off
+for mod in $GO_MODULES; do
+  echo "check: $mod"
+  cd "$MISE_PROJECT_ROOT/$mod"
+  go build ./...
+  go vet ./...
+  unformatted=$(gofmt -l .)
+  if [ -n "$unformatted" ]; then echo "gofmt: unformatted files:"; echo "$unformatted"; exit 1; fi
+  go fix -diff ./...
+  go mod tidy -diff
+  go test -race ./...
+  golangci-lint run ./...
+done
+'''
+
+[tasks.currency]
+description = "Report every requirement, Go version, tool, and action pin behind its latest; writes nothing"
+run = "scripts/currency.sh"
