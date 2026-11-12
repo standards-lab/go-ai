@@ -115,7 +115,7 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
     `context/README.md`). Against Cerebro (retry proven against the live gateway) and
     `tests-and-docs.md`, "Integration and acceptance suites, and where each runs". **changed**: the
     unit tests stay, and a proof against the live gateway's 429, 503, and Retry-After is added, in
-    the acceptance task.
+    the acceptance task, failing unless the gateway gave each reply and the client retried it.
 18. **In-band stream failures are events, and errors are for a stream that breaks or never begins**
     (`stream.go`; `format.StreamDecoder`). Against layers, "Generation: vision and extraction": any
     status but completed and incomplete is an error to docinfer. **kept**: the stream ends as the
@@ -243,8 +243,8 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
     lint, so the tier always compiles. **dropped**: shellcheck, which go-ai's check already omits
     and no page asks for.
 44. **There is no `upgrade` task** (`mise.toml`). Against `release-and-ci.md`, "Currency and
-    upgrade" and "Tasks". **changed**: go-ai gains `mise run upgrade`; its `mise.toml` has `check`
-    and `currency` alone.
+    upgrade" and "Tasks". **changed**: go-ai gains `mise run upgrade`, beside the `check` and
+    `currency` its `mise.toml` has.
 45. **The release workflow names one changelog and takes `v*` tags**
     (`.github/workflows/release.yml`). Against `release-and-ci.md`, "Releases", and
     `principles/independent-releases.md`. **changed**: go-ai has two artifacts, the root module and
@@ -361,7 +361,7 @@ type Client struct{ /* unexported */ }
 
 // New returns a Client and makes no request. A nil httpClient or wireFormat panics by name.
 // A baseURL that isn't an absolute http or https URL without query or fragment, a negative
-// attempt count or delay, a base delay above the most, or a Header naming Content-Type, Accept,
+// attempt count or delay, a BaseDelay above MaxDelay, or a Header naming Content-Type, Accept,
 // or Authorization is an error.
 func New(baseURL string, httpClient *http.Client, wireFormat format.Format,
     opts Options) (*Client, error)
@@ -793,9 +793,9 @@ and the tags each module is released under. The library and infer tasks build it
 1. **Two modules: the base module at the root and `tools/infer` nested under it.** go-ai is an
    infrastructure library with no provider (finding 1), so it has no provider sub-modules; the one
    nested module is the tool, as go-web-service's `tools/slab` is (`topology-and-naming.md`,
-   "Module layout per tier"), so the tool's requirements never enter the library's module. A
-   nested module's directory is outside its parent's module zip, so a caller that imports go-ai
-   never fetches what `infer` requires.
+   "Module layout per tier"; `principles/tool-beside-library.md`), so the tool's requirements
+   never enter the library's module. A nested module's directory is outside its parent's module
+   zip, so a caller that imports go-ai never fetches what `infer` requires.
 2. **Each `go.mod` says `go 1.27`**, the current minor, as go-core's, go-cli-sdk's, and
    go-storage's do; `mise.toml` pins the toolchain, Go 1.27.4, which CI and a developer's machine
    both read. The spike's directive named a patch release, 1.27.3; `mise run upgrade` moves the
@@ -892,8 +892,7 @@ is the only one that names a provider.
 
 Its module requires go-ai, go-cli-sdk, and go-core, each at a pinned release, and nothing else:
 go-ai at the root's first release, `v0.1.0`; go-cli-sdk and go-core at their latest releases when
-the infer task builds, which at this review are go-cli-sdk `v0.4.0` and go-core `v0.12.0`, the
-pair go-cli-sdk-template pins. A further requirement enters only under `dependencies.md`,
+the infer task builds. A further requirement enters only under `dependencies.md`,
 "Sourcing", and the infer task's brief states it.
 
 Its four subcommands, bare words at the root, each go through the base module's surface alone:
