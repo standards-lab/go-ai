@@ -84,8 +84,8 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
     library.
 12. **`TokenSource` is the only credential, sent as a bearer token and called once per attempt**
     (`client.go`). Against Cerebro and layers, "The client": the consumer key is the bearer token,
-    and a header of its own only if the gateway asks for one. **kept**. One gap stood beside it:
-    Anthropic's API takes its key in `x-api-key`, so `format/messages` reached that API only through
+    and a header of its own only if the gateway asks for one. **kept**. One gap remains beside it:
+    Anthropic's API takes its key in `x-api-key`, so `format/messages` reaches that API only through
     a `RoundTripper` of the caller's. The options gain fixed request headers, `Options.Header`,
     which serve both (the surface section, decision 3).
 
@@ -832,7 +832,7 @@ and the tags each module is released under. The library and infer tasks build it
    zip, so a caller that imports go-ai never fetches what `infer` requires.
 2. **Each `go.mod` says `go 1.27`**, the current minor, as go-core's, go-cli-sdk's, and
    go-storage's do; `mise.toml` pins the toolchain, Go 1.27.4, which CI and a developer's machine
-   both read. The spike's directive named a patch release, 1.27.3; `mise run upgrade` moves the
+   both read. The spike's directive names a patch release, 1.27.3; `mise run upgrade` moves the
    minor (finding 46).
 3. **The base module requires nothing, and the check holds it there in two steps.** A strict
    depguard rule allows the standard library and the module's own packages in every Go file

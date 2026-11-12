@@ -4,8 +4,8 @@ The judgement calls the standards-reviewer applies to go-ai, beyond what `mise r
 enforces: each one line, with the architecture page that applies. They come from go-ai's design
 review, `context/design.md`.
 
-- `architecture/principles/context-architecture.md`: the README and each `doc.go` are the homes; a
-  change that alters documented behavior updates the README and the affected `doc.go` with it.
+- `architecture/principles/context-architecture.md`: the README and each package's `doc.go` hold
+  go-ai's documentation; a change that alters documented behavior updates them with it.
 - `architecture/principles/downward-dependencies.md`: no README, `doc.go`, comment, or test names a
   caller of go-ai; the README names what go-ai depends on.
 - `architecture/standards/go-elemental/README.md`, "Member repositories": the README states go-ai's
@@ -39,21 +39,21 @@ review, `context/design.md`.
 - `architecture/principles/validation-first.md`: a request the protocol or its format can't
   express fails before the token source is called or anything is sent; a hint a format has no
   form for is dropped, and its package comment says so.
-- `architecture/standards/go-elemental/principles/topology-and-naming.md`: the root package `ai`,
-  its errors prefixed `ai: `; the base module with no provider sub-module; the tags `v<semver>` for
-  the root and `tools/infer/v<semver>` for `infer`.
-- `architecture/standards/go-elemental/principles/tests-and-docs.md`, "doc.go and godoc": the
-  doc.go inventory of every package, and a format's package comment states what it sends,
-  refuses, drops, and normalizes, naming no router build.
-- `architecture/standards/go-elemental/principles/tests-and-docs.md`: `internal/aitest` as the
-  helper the test packages share; testdata recorded from an endpoint with a README saying how;
+- `architecture/standards/go-elemental/principles/topology-and-naming.md`: the root package is
+  `ai` and its errors are prefixed `ai: `; the base module has no provider sub-module; the root is
+  tagged `v<semver>` and `infer` `tools/infer/v<semver>`.
+- `architecture/standards/go-elemental/principles/tests-and-docs.md`, "doc.go and godoc": every
+  package's `doc.go` inventories its exported identifiers, and a format's package comment states
+  what it sends, refuses, drops, and normalizes, naming no router build.
+- `architecture/standards/go-elemental/principles/tests-and-docs.md`: the test packages share
+  `internal/aitest` as their helper; testdata recorded from an endpoint has a README saying how;
   an integration check that can't fail is deleted.
 - `architecture/standards/go-elemental/principles/release-and-ci.md`: the check, currency,
-  upgrade, and integration tasks over `GO_MODULES`; a changelog per module; `go.work`'s use-list
-  the same as `GO_MODULES`; no CI job runs the integration tier.
+  upgrade, and integration tasks run over `GO_MODULES`; each module has its own changelog;
+  `go.work`'s use-list matches `GO_MODULES`; no CI job runs the integration tier.
 - `architecture/principles/tool-beside-library.md`: `infer` is a thin consumer of the base module's
   surface and never the home of logic an integrator calls, in a module of its own, `tools/infer`,
   so its requirements never enter the library's.
-- `architecture/standards/go-elemental/principles/cli-applications.md`: `infer` laid out from
-  go-cli-sdk-template, and `infrastructure.go` the only file of its composition root that names a
-  format.
+- `architecture/standards/go-elemental/principles/cli-applications.md`: `infer` is laid out from
+  go-cli-sdk-template, and `infrastructure.go` is the only file of its composition root that names
+  a format.
