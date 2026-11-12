@@ -9,7 +9,7 @@ v1.ai.client build to. It is provisional until the library task builds it.
 Fable 5.2's evaluation of the spike at tag v0.4.0, one finding per issue or simplification. Each
 names the spike's package or file, what it is measured against, and a verdict with its reason:
 **kept** as the spike has it, **changed** in go-ai, or **dropped**. Where a finding changes a
-signature, the surface section states the signature (planned).
+signature, the surface section states the signature.
 
 The measures are cited in short. A bare page name, such as `dependencies.md`, is a Go Elemental
 principle under the architecture repository's `standards/go-elemental/principles/`;
@@ -28,8 +28,8 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
 2. **The root package is `client`** (`doc.go`). Against `topology-and-naming.md`, "Module layout per
    tier": the import path names the repository and the identifier stays the package's, as
    `database.New` does. Under go-ai's path every importer would alias the package, as the spike's
-   own tests do. **changed**: the root package takes a name that reads with the repository's, and
-   its error prefix follows; the surface section names it (planned).
+   own tests do. **changed**: the root package is `ai`, which reads with the repository's name, and
+   its error prefix follows (the surface section, decision 1).
 3. **A format is chosen by typed constructor, with no registry** (`Config.Format`;
    `completions.New`, `messages.New`, `responses.New`). Against `dependencies.md`, "A provider is
    selected by construction". **kept**: it is the rule as written, and adding a format is one import
@@ -67,8 +67,9 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
    size limit** (`client.go`, `Config.HTTP`; `stream.go`; `internal/sse`, whose lines have no length
    limit; the spike's first client rule in `STANDARDS.md`). Against `baseline-standards.md` (a
    library ships no policy the application must own) and Cerebro (per-call timeouts and cancellation
-   by context; concurrency bounds stay the caller's). **kept**: every bound is the context's or the
-   caller's transport's, and a `Client` stays safe for concurrent use with no limit of its own.
+   by context; concurrency bounds stay the caller's). **kept**: every bound is the context's, the
+   caller's transport's, or an option the caller sets, whose zero value sets none, and a `Client`
+   stays safe for concurrent use with no limit of its own.
 10. **The base module takes nothing from go-core**: no configuration block, no lifecycle part
     (`go.mod`). Against `dependencies.md`, "The line per tier" and "Integration is structural where
     it can be", and `lifecycle-and-context.md` (leaf components take a plain `context.Context`).
@@ -81,18 +82,20 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
     library.
 12. **`TokenSource` is the only credential, sent as a bearer token and called once per attempt**
     (`client.go`). Against Cerebro and layers, "The client": the consumer key is the bearer token,
-    and a header of its own only if the gateway asks for one. **kept**. One gap stands beside it:
-    Anthropic's API takes its key in `x-api-key`, so `format/messages` reaches that API only through
-    a `RoundTripper` of the caller's. Whether the options gain fixed request headers, which would
-    serve both, is the surface section's decision (planned).
+    and a header of its own only if the gateway asks for one. **kept**. One gap stood beside it:
+    Anthropic's API takes its key in `x-api-key`, so `format/messages` reached that API only through
+    a `RoundTripper` of the caller's. The options gain fixed request headers, `Options.Header`,
+    which serve both (the surface section, decision 3).
 
 ### Retry and errors
 
 13. **Retry is opt-in, on a 408, 429, or 503 reply or a connection failure before any reply, with
     full-jitter backoff; a Retry-After replaces the backoff, and a wait past `MaxDelay` or the
     context's deadline returns the last error at once** (`retry.go`). Against Cerebro (the gateway's
-    429, 503, and Retry-After) and layers, "The client". **kept**: it is the behavior both callers
-    are written to, and one loop serves every operation whose body can be sent again.
+    429, 503, and Retry-After) and layers, "The client". **changed**: the set adds 502 and 504,
+    which a gateway answers for an upstream that failed or stalled (the surface section, decision
+    8). The rest is the behavior both callers are written to, and one loop serves every operation
+    whose body can be sent again.
 14. **`APIError` drops the reply's Retry-After** (`error.go`; `client.go`, `do`, returns the header
     beside the error and `send` discards it). Against layers, "Requests to go-ai". **changed**: the
     error carries it. `send` returns at once when the wait is past `MaxDelay` or the deadline, and
@@ -130,13 +133,14 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
     gives them no wire form** (`protocol/event.go`). Against Cerebro (streaming Generate whose
     events Cerebro can relay) and `baseline-standards.md`, "A type is introduced only when it is
     needed". **kept**: a caller relays by mapping the typed events to its own, as docinfer yields
-    `OutputTextDelta` as progress. Whether go-ai also encodes them as Open Responses' server-sent
-    events is the surface section's decision (planned).
+    `OutputTextDelta` as progress. go-ai ships no encoder of them as Open Responses' server-sent
+    events (the surface section, decision 4).
 22. **A stream has no idle bound** (`stream.go`): after the reply's header a stalled body waits for
     the context, and the decoder reads past llama.cpp's pings. Against `timeouts.md`, "A store's
-    per-try deadline bounds one operation", where go-storage bounds each read of a body. **kept**:
-    an idle bound is policy, and a caller sets one in its own loop with a timer that cancels the
-    context and resets on each event.
+    per-try deadline bounds one operation", where go-storage bounds each read of a body.
+    **changed**: the options gain `StreamIdleTimeout`, zero by default, which bounds each read of a
+    started stream and resets on any bytes, a ping included. A caller's timer sees only events, so
+    it can't tell a stalled endpoint from one still pinging (the surface section, decision 7).
 23. **`protocol.Accumulator` folds the events in the caller's loop and holds the partial output
     after a break** (`protocol/accumulator.go`). Against layers, "Generation: vision and
     extraction". **kept**: extraction streams through it.
@@ -262,3 +266,516 @@ docproc's `context/layers.md`, whose "go-ai's surface" lists what docinfer and C
     unless the caller sets one; a format chosen by typed constructor; a native parameter through the
     raw-JSON field. Against findings 9, 3, and 25. **kept**, all three. Their wording in go-ai's
     `STANDARDS.md` is written with the other judgement calls (planned).
+
+## Surface
+
+go-ai's base module as signatures, from the spike at v0.4.0 with the evaluation's changes
+applied. The library task builds it (planned). The module path is `github.com/standards-lab/go-ai`;
+its packages are the root, `protocol`, `format`, and the three formats below `format`. Each block
+lists declarations only; an unexported field or helper the spike has stays as it is unless a
+finding changes it.
+
+### What this section settles
+
+The nine items the evaluation left open, each decided with its reason:
+
+1. **The root package is `ai`** (finding 2). It reads with the repository, as `storage` and
+   `database` do, so `ai.New`, `ai.Client`, and `ai.APIError` need no alias, and the error prefix
+   is `ai: `.
+2. **`New` takes its three required inputs positionally, then one `Options` struct**
+   (findings 6 to 8). Three is under `construction-and-execution.md`'s four, and a client is a
+   value the caller keeps, not a configured thing run once, so the struct-with-a-method form
+   doesn't apply. The struct is `Options`, not `Config`: in Go Elemental a `Config` is a go-core
+   configuration block, as go-storage's and go-database's are, which go-ai takes none of
+   (finding 10), and `responses.Options` already names the format's. A nil HTTP client or format
+   panics by name (`lifecycle-and-context.md`, "The wiring rule"); a base URL, policy, or header
+   that can't be used is an error.
+3. **`Options.Header` carries fixed request headers.** It serves Anthropic's `x-api-key` and a
+   gateway's consumer-key header, should the gateway ask for one, without a `RoundTripper` of the
+   caller's. `Token` stays the bearer token, called once per attempt. A header the format sets,
+   such as `anthropic-version`, replaces one of the same name; one naming `Content-Type`,
+   `Accept`, or `Authorization`, which the client sets, is refused by `New`.
+4. **go-ai ships no Open Responses SSE encoder; Cerebro maps the events itself** (finding 21).
+   Cerebro relays progress as its own event shapes, not as Open Responses' wire, and Athena's chat
+   stream takes go-web-sdk's SSE helper. The events are a closed set of Go values, each with its
+   sequence number, so a relay is one type switch; an encoder would be a type before its need.
+5. **`APIError.RetryAfter` is a `time.Duration`** (finding 14): the wait the reply's Retry-After
+   asked for, measured from the reply's arrival, zero for none. A duration needs no clock and no
+   zone, so `utc-times.md` has nothing to hold it to, and it is what a redelivery's delay takes.
+6. **`Client.Models` lists the endpoint's models** (finding 36): a GET of the OpenAI-compatible
+   `models` route whatever the Format, as `Embed` is, through the same token, header, query, and
+   retry path. A GET is safe to repeat, so its retry runs nothing twice.
+7. **`Options.StreamIdleTimeout` is an idle bound the caller sets; zero sets none** (finding 22).
+   It bounds each read of a started stream's body, the clock running only while a read waits,
+   and any bytes reset it, llama.cpp's ping included. A caller's own timer sees only events, so it
+   can't tell an endpoint that stalls from one still pinging, and Cerebro is long-running; this is
+   go-storage's `ReadIdleTimeout` (`timeouts.md`), without its default, since go-ai sets no policy
+   (finding 9). An idle stream ends with an error matching `io.ErrUnexpectedEOF` and
+   `os.ErrDeadlineExceeded`.
+8. **The retry set is 408, 429, 502, 503, and 504, and a connection failure before any reply**
+   (findings 13 and 15). A gateway answers 502 and 504 for an upstream that failed or stalled,
+   which a later attempt can mend, and docinfer's mapping already treats both as transient
+   (layers, "docinfer's go-ai use"). A run twice on the endpoint is finding 16's, which the caller
+   accepts. A header timeout and net/http's idle-connection error stay unretried, as finding 15
+   has it.
+9. **`Embed`, `Transcribe`, and `Models` on a client of any format are documented, not refused**
+   (finding 5). Each goes to the base URL's OpenAI-compatible route whatever the Format; llama.cpp's
+   router serves all three beside `/messages`, which `cmd/docinfer`'s endpoints rely on, and an
+   endpoint without the route, such as Anthropic's API for embeddings, answers with an `*APIError`.
+
+### The root package
+
+```go
+// Package ai is go-ai's model client: one transport over the protocol, in the wire format its
+// constructor is given, with embeddings, transcription, and the model listing beside it.
+package ai // import "github.com/standards-lab/go-ai"
+
+// TokenSource returns the bearer token for one attempt. An empty token sends none.
+type TokenSource func(ctx context.Context) (string, error)
+
+// Options are New's optional inputs. The zero value selects every default: no query, no token,
+// no header, no retry, and no idle bound. New copies Query, Header, and Retry.
+type Options struct {
+    Query             url.Values    // added to every request's URL
+    Token             TokenSource   // nil sends no Authorization header
+    Header            http.Header   // fixed headers on every request, such as x-api-key
+    Retry             RetryPolicy   // the zero value retries nothing
+    StreamIdleTimeout time.Duration // bounds each read of a started stream; 0 sets none
+}
+
+// RetryPolicy resends a request on a 408, 429, 502, 503, or 504 reply, or a connection failure
+// before any reply, never a started stream. It waits a full-jitter exponential backoff, which a
+// Retry-After replaces; a wait past MaxDelay or ctx's deadline returns the last error at once.
+type RetryPolicy struct {
+    MaxAttempts int           // the most requests for a call, the first included; 0 sends one
+    BaseDelay   time.Duration // the cap on the first wait, doubled for each after it
+    MaxDelay    time.Duration // the cap on any wait, and the longest Retry-After honored
+}
+
+// Client makes requests of one endpoint in one wire format. It is safe for concurrent use when
+// its TokenSource and format are, and sets no limit of its own.
+type Client struct{ /* unexported */ }
+
+// New returns a Client and makes no request. A nil httpClient or wireFormat panics by name.
+// A baseURL that isn't an absolute http or https URL without query or fragment, a negative
+// attempt count or delay, a base delay above the most, or a Header naming Content-Type, Accept,
+// or Authorization is an error.
+func New(baseURL string, httpClient *http.Client, wireFormat format.Format,
+    opts Options) (*Client, error)
+
+// APIError is a non-2xx reply, returned wrapped and reached with errors.As.
+type APIError struct {
+    Status     int           // the HTTP status code
+    Message    string        // the endpoint's error message, when the body gave one
+    Type       string        // the endpoint's error type, such as "invalid_request_error"
+    Code       string        // the endpoint's error code; a numeric one as its decimal text
+    Body       []byte        // the reply's body
+    RetryAfter time.Duration // the reply's Retry-After, as a wait from its arrival; 0 for none
+}
+func (e *APIError) Error() string
+
+// Generate validates and encodes req, then sends it through the retry loop.
+func (c *Client) Generate(ctx context.Context, req *protocol.Request) (*protocol.Response, error)
+
+// GenerateStream is lazy: each range sends the request. Each pair is an event or an error; the
+// events run from ResponseCreated to one terminal event (completed, incomplete, failed).
+func (c *Client) GenerateStream(ctx context.Context,
+    req *protocol.Request) iter.Seq2[protocol.Event, error]
+
+// EmbeddingRequest goes to the OpenAI-compatible embeddings route whatever the format.
+type EmbeddingRequest struct {
+    Model  string
+    Input  []string       // the batch, sent as one request; its size is the caller's
+    Native jsontext.Value // members merged into the body's top level
+}
+type Embeddings struct {
+    Vectors [][]float32 // Vectors[i] is Input[i]'s
+    Usage   EmbeddingUsage
+}
+type EmbeddingUsage struct{ PromptTokens, TotalTokens int }
+func (c *Client) Embed(ctx context.Context, req *EmbeddingRequest) (*Embeddings, error)
+
+// TranscriptionRequest goes to the OpenAI-compatible transcription route whatever the format.
+type TranscriptionRequest struct {
+    Model string
+    // Open opens the clip once per attempt; the attempt streams it as it uploads, then closes it.
+    Open     func(ctx context.Context) (io.ReadCloser, error)
+    FileName string     // names the clip in the upload, such as "clip.wav"
+    Language string     // empty sends none
+    Prompt   string     // empty sends none
+    Native   url.Values // form fields beside the typed ones
+}
+type Transcription struct {
+    Text  string
+    Usage TranscriptionUsage
+}
+type TranscriptionUsage struct{ InputTokens, OutputTokens, TotalTokens int }
+// Transcribe sends through the retry loop, opening the clip again for each attempt.
+func (c *Client) Transcribe(ctx context.Context, req *TranscriptionRequest) (*Transcription, error)
+
+// Model is one entry of the endpoint's model list.
+type Model struct{ ID string }
+// Models GETs the OpenAI-compatible models route whatever the format, through the retry loop.
+func (c *Client) Models(ctx context.Context) ([]Model, error)
+```
+
+### protocol
+
+Open Responses, spec 2026-04-24, in its stateless subset, under the spec's names (finding 25). A
+client extension's wire type carries go-ai's slug, `go-ai` (finding 4).
+
+```go
+package protocol // import "github.com/standards-lab/go-ai/protocol"
+
+type Request struct {
+    Model           string
+    Instructions    string
+    Input           []Item
+    Tools           []FunctionTool
+    ToolChoice      ToolChoice     // ToolChoiceMode, FunctionToolChoice, or AllowedToolChoice
+    Reasoning       ReasoningParam
+    Text            TextParam
+    MaxOutputTokens int            // 0, or at least MinMaxOutputTokens
+    Native          jsontext.Value // the native tier, merged into the body's top level
+}
+const MinMaxOutputTokens = 16
+func (r *Request) Validate() error
+
+type ReasoningParam struct {
+    Effort  ReasoningEffort
+    Summary ReasoningSummary
+}
+type ReasoningEffort string  // ReasoningEffortNone, Low, Medium, High, XHigh
+type ReasoningSummary string // ReasoningSummaryAuto, Concise, Detailed
+type TextParam struct {
+    Format    TextFormat // PlainTextFormat or JSONSchemaFormat
+    Verbosity Verbosity
+}
+type TextFormat interface{ textFormat() }
+type PlainTextFormat struct{}
+type JSONSchemaFormat struct {
+    Name, Description string
+    Schema            jsontext.Value
+    Strict            bool
+}
+type Verbosity string // VerbosityLow, Medium, High
+
+type Item interface{ item() } // Message, FunctionCall, FunctionCallOutput, Reasoning
+type Message struct {
+    ID      string
+    Status  Status
+    Role    Role
+    Content []ContentPart
+}
+type Role string // RoleUser, RoleSystem, RoleDeveloper, RoleAssistant
+type ContentPart interface{ contentPart() } // the parts below
+type InputText struct{ Text string }
+type InputImage struct {
+    ImageURL string // an http(s) URL, or DataURL's
+    Detail   ImageDetail
+}
+type ImageDetail string // ImageDetailAuto, Low, High
+func DataURL(mediaType string, data []byte) string
+type InputAudio struct { // the go-ai:input_audio extension
+    Data   []byte
+    Format AudioFormat
+}
+type AudioFormat string // AudioFormatWAV, AudioFormatMP3
+type OutputText struct{ Text string }
+type Refusal struct{ Refusal string }
+type ReasoningText struct{ Text string }
+type SummaryText struct{ Text string }
+type FunctionCall struct {
+    ID                     string
+    Status                 Status
+    CallID, Name, Arguments string
+}
+type FunctionCallOutput struct {
+    ID             string
+    Status         Status
+    CallID, Output string
+    OutputParts    []ContentPart
+}
+type Reasoning struct {
+    ID               string
+    Status           Status
+    Content          []ReasoningText
+    Summary          []SummaryText
+    EncryptedContent string // the endpoint's, or a format's go-ai:<format>/v1: envelope
+}
+type Status string // StatusInProgress, StatusCompleted, StatusIncomplete, StatusFailed
+
+type FunctionTool struct {
+    Name, Description string
+    Parameters        jsontext.Value
+    Strict            bool
+}
+type ToolChoice interface{ toolChoice() }
+type ToolChoiceMode string // ToolChoiceAuto, ToolChoiceNone, ToolChoiceRequired
+type FunctionToolChoice struct{ Name string }
+type AllowedToolChoice struct {
+    Tools []FunctionToolChoice
+    Mode  ToolChoiceMode
+}
+
+type Response struct {
+    Output            []Item
+    Status            Status
+    IncompleteDetails *IncompleteDetails
+    Error             *ResponseError
+    Usage             Usage
+}
+type IncompleteDetails struct{ Reason IncompleteReason }
+type IncompleteReason string // ReasonMaxOutputTokens, ReasonContentFilter
+type ResponseError struct{ Code, Message string }
+type Usage struct {
+    InputTokens, OutputTokens, TotalTokens int
+    OutputTokensDetails                    OutputTokensDetails
+}
+type OutputTokensDetails struct{ ReasoningTokens int }
+
+// Event is the closed set of streaming events, each carrying its SequenceNumber.
+type Event interface{ event() }
+type ResponseCreated struct {
+    SequenceNumber int
+    Response       *Response
+}
+// ResponseCompleted, ResponseIncomplete, and ResponseFailed, the terminal events, are shaped as
+// ResponseCreated.
+type ErrorEvent struct {
+    SequenceNumber int
+    Error          ErrorPayload
+}
+type ErrorPayload struct{ Type, Code, Message, Param string }
+type OutputItemAdded struct {
+    SequenceNumber, OutputIndex int
+    Item                        Item
+}
+// OutputItemDone is shaped as OutputItemAdded.
+type ContentPartAdded struct {
+    SequenceNumber            int
+    ItemID                    string
+    OutputIndex, ContentIndex int
+    Part                      ContentPart
+}
+// ContentPartDone is shaped as ContentPartAdded.
+type OutputTextDelta struct {
+    SequenceNumber            int
+    ItemID                    string
+    OutputIndex, ContentIndex int
+    Delta                     string
+}
+// OutputTextDone (Text), RefusalDelta (Delta), RefusalDone (Refusal), ReasoningDelta (Delta),
+// and ReasoningDone (Text) are shaped as OutputTextDelta, with the field named.
+type FunctionCallArgumentsDelta struct {
+    SequenceNumber int
+    ItemID         string
+    OutputIndex    int
+    Delta          string
+}
+// FunctionCallArgumentsDone is shaped as FunctionCallArgumentsDelta, with Arguments for Delta.
+
+// Accumulator folds a stream's events, in the caller's loop, into the Response Generate returns.
+type Accumulator struct{ /* unexported */ }
+func (a *Accumulator) Add(e Event) error
+// Response is the folded Response: after a break, the partial one, in StatusInProgress.
+func (a *Accumulator) Response() *Response
+```
+
+### format and the three formats
+
+```go
+package format // import "github.com/standards-lab/go-ai/format"
+
+// Format is a wire format, chosen by its package's constructor at the composition root.
+type Format interface {
+    Route() string
+    EncodeRequest(req *protocol.Request, header http.Header) ([]byte, error)
+    DecodeResponse(body []byte) (*protocol.Response, error)
+    EncodeStreamRequest(req *protocol.Request, header http.Header) ([]byte, error)
+    NewStreamDecoder() StreamDecoder
+    DecodeError(body []byte) (message, typ, code string)
+}
+// StreamDecoder turns one stream's event data into protocol events; it serves one stream.
+type StreamDecoder interface {
+    Decode(data []byte) ([]protocol.Event, error)
+    End() ([]protocol.Event, error)
+}
+// DecodeOpenAIError decodes {"error": {"message", "type", "code"}}, for the OpenAI routes.
+func DecodeOpenAIError(body []byte) (message, typ, code string)
+
+package completions // import "github.com/standards-lab/go-ai/format/completions"
+type Format struct{}
+func New() *Format // Chat Completions, on "chat/completions"
+
+package messages // import "github.com/standards-lab/go-ai/format/messages"
+type Format struct{}
+// New is Anthropic Messages, on "messages", sending its anthropic-version header. It refuses a
+// request with no MaxOutputTokens or with audio input, and drops the hints it has no form for.
+func New() *Format
+
+package responses // import "github.com/standards-lab/go-ai/format/responses"
+// Options adjusts the format to an endpoint that departs from the spec; the zero value is the
+// spec's form.
+type Options struct {
+    ResendReasoningText bool // send a reasoning item's text back, for llama.cpp's router
+}
+type Format struct{ /* unexported */ }
+func New(opts Options) *Format // Open Responses, on "responses"
+```
+
+### The name map
+
+Every name layers' "go-ai's surface" writes as code maps to exactly one go-ai name. The section's
+names are the spike's; a note gives the reason where the go-ai name differs, or where its type or
+behavior changes under the same name. A field written bare in a layers code block is qualified by
+its type here.
+
+| layers | go-ai | note |
+| --- | --- | --- |
+| `client` (the package) | `ai` | decision 1; finding 2 |
+| `TokenSource` | `ai.TokenSource` | |
+| `Config` | `ai.Options` | decision 2: optional inputs only; findings 6 and 10 |
+| `Config.BaseURL` | `ai.New`'s `baseURL` | decision 2: a required input, positional |
+| `Config.Query` | `ai.Options.Query` | |
+| `Config.Token` | `ai.Options.Token` | |
+| `Config.HTTP` | `ai.New`'s `httpClient` | decision 2: positional; nil panics (finding 8) |
+| `Config.Format` | `ai.New`'s `wireFormat` | decision 2: positional; nil panics (finding 8) |
+| `Config.Retry` | `ai.Options.Retry` | a value, its zero retrying nothing (finding 7) |
+| `RetryPolicy` | `ai.RetryPolicy` | the set adds 502 and 504 (decision 8) |
+| `RetryPolicy.MaxAttempts` | `ai.RetryPolicy.MaxAttempts` | 0 sends one, as 1 does (finding 7) |
+| `RetryPolicy.BaseDelay` | `ai.RetryPolicy.BaseDelay` | |
+| `RetryPolicy.MaxDelay` | `ai.RetryPolicy.MaxDelay` | |
+| `New` | `ai.New` | positional inputs, then `Options` (decision 2) |
+| `Client` (`client.Client`) | `ai.Client` | |
+| `APIError` | `ai.APIError` | gains `RetryAfter` (decision 5; finding 14) |
+| `APIError.Status` | `ai.APIError.Status` | |
+| `APIError.Message` | `ai.APIError.Message` | |
+| `APIError.Type` | `ai.APIError.Type` | |
+| `APIError.Code` | `ai.APIError.Code` | |
+| `APIError.Body` | `ai.APIError.Body` | |
+| `Generate` | `ai.Client.Generate` | |
+| `GenerateStream` | `ai.Client.GenerateStream` | an idle bound if set (decision 7) |
+| `protocol.Request` | `protocol.Request` | |
+| `Request.Model` | `protocol.Request.Model` | |
+| `Request.Instructions` | `protocol.Request.Instructions` | |
+| `Request.Input` | `protocol.Request.Input` | |
+| `Request.Reasoning` | `protocol.Request.Reasoning` | |
+| `Request.Text` | `protocol.Request.Text` | |
+| `Request.MaxOutputTokens` | `protocol.Request.MaxOutputTokens` | |
+| `MinMaxOutputTokens` | `protocol.MinMaxOutputTokens` | |
+| `Item` | `protocol.Item` | |
+| `Message` | `protocol.Message` | |
+| `Message.Role` | `protocol.Message.Role` | |
+| `RoleUser` | `protocol.RoleUser` | |
+| `Message.Content` | `protocol.Message.Content` | |
+| `InputImage` | `protocol.InputImage` | |
+| `InputImage.ImageURL` | `protocol.InputImage.ImageURL` | |
+| `DataURL` | `protocol.DataURL` | |
+| `InputText` | `protocol.InputText` | |
+| `ReasoningParam` | `protocol.ReasoningParam` | |
+| `ReasoningParam.Effort` | `protocol.ReasoningParam.Effort` | |
+| `protocol.ReasoningEffort` | `protocol.ReasoningEffort` | |
+| `TextParam` | `protocol.TextParam` | |
+| `TextParam.Format` | `protocol.TextParam.Format` | |
+| `JSONSchemaFormat` | `protocol.JSONSchemaFormat` | |
+| `JSONSchemaFormat.Name` | `protocol.JSONSchemaFormat.Name` | |
+| `JSONSchemaFormat.Schema` | `protocol.JSONSchemaFormat.Schema` | |
+| `JSONSchemaFormat.Strict` | `protocol.JSONSchemaFormat.Strict` | |
+| `Response` | `protocol.Response` | |
+| `Response.Output` | `protocol.Response.Output` | |
+| `Response.Status` | `protocol.Response.Status` | |
+| `StatusIncomplete` | `protocol.StatusIncomplete` | |
+| `Response.IncompleteDetails` | `protocol.Response.IncompleteDetails` | |
+| `IncompleteDetails` (the type) | `protocol.IncompleteDetails` | |
+| `IncompleteDetails.Reason` | `protocol.IncompleteDetails.Reason` | |
+| `max_output_tokens` | `protocol.ReasonMaxOutputTokens` | the reason's wire value |
+| `Response.Error` | `protocol.Response.Error` | |
+| `ResponseError` | `protocol.ResponseError` | |
+| `Response.Usage` | `protocol.Response.Usage` | |
+| `protocol.Usage` | `protocol.Usage` | |
+| `Usage.InputTokens` | `protocol.Usage.InputTokens` | |
+| `Usage.OutputTokens` | `protocol.Usage.OutputTokens` | |
+| `Accumulator` | `protocol.Accumulator` | |
+| `Accumulator.Add` | `protocol.Accumulator.Add` | |
+| `Accumulator.Response` | `protocol.Accumulator.Response` | |
+| `protocol.Event` | `protocol.Event` | |
+| `ResponseCreated` | `protocol.ResponseCreated` | |
+| `OutputTextDelta` | `protocol.OutputTextDelta` | |
+| `OutputTextDelta.Delta` | `protocol.OutputTextDelta.Delta` | |
+| `ResponseCompleted` | `protocol.ResponseCompleted` | |
+| `ResponseIncomplete` | `protocol.ResponseIncomplete` | |
+| `ResponseFailed` | `protocol.ResponseFailed` | |
+| `OutputText` | `protocol.OutputText` | |
+| `EmbeddingRequest` | `ai.EmbeddingRequest` | |
+| `EmbeddingRequest.Model` | `ai.EmbeddingRequest.Model` | |
+| `EmbeddingRequest.Input` | `ai.EmbeddingRequest.Input` | |
+| `Embeddings` | `ai.Embeddings` | |
+| `Embeddings.Vectors` | `ai.Embeddings.Vectors` | |
+| `Embeddings.Usage` | `ai.Embeddings.Usage` | |
+| `EmbeddingUsage` | `ai.EmbeddingUsage` | |
+| `EmbeddingUsage.PromptTokens` | `ai.EmbeddingUsage.PromptTokens` | finding 33 |
+| `EmbeddingUsage.TotalTokens` | `ai.EmbeddingUsage.TotalTokens` | |
+| `Embed` | `ai.Client.Embed` | |
+| `TranscriptionRequest` | `ai.TranscriptionRequest` | |
+| `TranscriptionRequest.Model` | `ai.TranscriptionRequest.Model` | |
+| `TranscriptionRequest.File` | `ai.TranscriptionRequest.Open` | reopened per attempt (finding 34) |
+| `TranscriptionRequest.FileName` | `ai.TranscriptionRequest.FileName` | |
+| `TranscriptionRequest.Language` | `ai.TranscriptionRequest.Language` | |
+| `TranscriptionRequest.Prompt` | `ai.TranscriptionRequest.Prompt` | |
+| `Transcription` | `ai.Transcription` | |
+| `Transcription.Text` | `ai.Transcription.Text` | |
+| `Transcription.Usage` | `ai.Transcription.Usage` | |
+| `TranscriptionUsage` | `ai.TranscriptionUsage` | |
+| `TranscriptionUsage.InputTokens` | `ai.TranscriptionUsage.InputTokens` | |
+| `TranscriptionUsage.OutputTokens` | `ai.TranscriptionUsage.OutputTokens` | |
+| `TranscriptionUsage.TotalTokens` | `ai.TranscriptionUsage.TotalTokens` | |
+| `Transcribe` | `ai.Client.Transcribe` | in the one retry loop, honoring Retry-After (finding 34) |
+| `format.Format` | `format.Format` | |
+| `format/completions` | package `completions` | |
+| `completions.New` | `completions.New` | |
+| `format/messages` | package `messages` | |
+| `format/responses` | package `responses` | |
+| `FunctionCall` | `protocol.FunctionCall` | |
+| `FunctionCallOutput` | `protocol.FunctionCallOutput` | |
+| `Reasoning` (the items) | `protocol.Reasoning` | |
+| `encrypted_content` | `protocol.Reasoning.EncryptedContent` | go-ai's slug (finding 4) |
+| `ReasoningParam.Summary` | `protocol.ReasoningParam.Summary` | |
+| `InputAudio` | `protocol.InputAudio` | wire type `go-ai:input_audio` (finding 4) |
+| `Native` (the tiers) | `Native` | each request's native-tier field (note below) |
+| `/models` | `ai.Client.Models` | finding 36; decision 6 |
+| `tools/infer` | `tools/infer` | the nested module; the layout section states it (planned) |
+
+The section's prose also names kinds rather than identifiers, each one of the protocol's: function
+tools are `protocol.FunctionTool`, tool choice `protocol.ToolChoice`, verbosity
+`protocol.TextParam.Verbosity`, image detail `protocol.InputImage.Detail`, and the refusal events
+`protocol.RefusalDelta` and `protocol.RefusalDone`. "The `Native` tiers" is one name, the field
+`Native`, which `protocol.Request`, `ai.EmbeddingRequest`, and `ai.TranscriptionRequest` each
+carry. `TranscriptionRequest.Open` takes a context, which the layers note's sketch of it doesn't:
+a clip opened from a store is a read that the call's context bounds. The harness-session surface
+is outside this review. The names docinfer owns, such as `docinfer.Pipeline`, `Bounds`,
+`Options.Final`, a chunk's `Error`, and the outcomes `incomplete` and `failed`, the spike's file
+names, and the standard library's, such as `http.Client`, map to nothing here.
+
+## Requests
+
+What docinfer and Cerebro ask of go-ai, and what the coordinator's notes ask beside them, each with
+its decision and the v1.ai.client task that owns it. "data-intelligence" is standards-lab's
+`context/data-intelligence.md`; the other sources are cited as the evaluation cites them. The
+decisions are stated in full above; a cell names its finding or decision. Concurrency bounds stay
+the caller's throughout.
+
+| request | who asks | decision | owner |
+| --- | --- | --- | --- |
+| A transcription clip the retry loop can reopen | docinfer (layers, "Requests to go-ai"); Cerebro | `TranscriptionRequest.Open`, once per attempt; `Transcribe` joins the retry loop (finding 34) | library |
+| Retry-After on the API error | docinfer (layers, "Embeddings and transcription") | `APIError.RetryAfter`, a duration, beside the reopenable clip (finding 14; decision 5) | library |
+| Per-call timeouts and cancellation by context | Cerebro; layers, "The client" | the caller's context ends a call or closes its stream; no library timeout; an idle bound when set (findings 9, 20; decision 7) | library |
+| The consumer key, in a header of its own if the gateway asks | Cerebro; layers, "Requests to go-ai" | the bearer token from `Options.Token`; `Options.Header` should the gateway ask (finding 12; decision 3) | library |
+| Embed batching | Cerebro | `EmbeddingRequest.Input` is the batch, one request; its size and fan-out are the caller's (finding 32) | library |
+| Stream events Cerebro can relay | Cerebro | the typed event set with sequence numbers, mapped by Cerebro; no SSE encoder (finding 21; decision 4) | library |
+| Retry proven against the live gateway's 429, 503, and Retry-After | Cerebro; layers, "Requests to go-ai" | proven against the live gateway once spike-model-gateway runs; the release doesn't wait (finding 17) | acceptance |
+| The surface docinfer calls kept | docinfer (layers, "Requests to go-ai"); data-intelligence, "The layers" | kept, under the name map | library |
+| The gateway's capacity replies retried as go-ai expects | data-intelligence, "What it asks of the goals beneath it" (v1.ai.hosting) | 408, 429, 502, 503, 504, and a connection failure before any reply (decision 8) | library |
+| A `/models` listing | ai-strategy, "Repositories and placement" | `Client.Models`, a GET through the same token and retry path (finding 36; decision 6) | library |
+| infer's `models` subcommand | ai-strategy, "Repositories and placement" | a listing over `Client.Models`; its flags and output are infer's | infer |
+| infer rerun against set A | data-intelligence, "Gates" | run through the formats docinfer's endpoints use | acceptance |
