@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"os"
@@ -177,6 +178,24 @@ func buildClient(base string, wireFormat format.Format, opts ai.Options) (*ai.Cl
 	return client, nil
 }
 
+// writeEnvironment is the root's help Footer: it names INFER_TOKEN, which
+// [buildClient] reads and no flag overrides, so no flags section lists it.
+// The help renders it in memory, so the write cannot fail.
+func writeEnvironment(w io.Writer) {
+	_, _ = fmt.Fprintf(w, "Environment:\n  %s   the bearer token sent with each request; unset or empty sends none\n",
+		config.EnvName(envPrefix, "token"))
+}
+
+// reportsReasoningTokens reports whether replies in wireFormat count their
+// reasoning tokens. messages' usage has no such count, and go-ai v0.1.0
+// decodes its absence as zero, so a zero there is "not reported", not
+// "none"; the format is the only way to tell them apart. It is here, beside
+// [formats], because this is the one file that names a format package.
+func reportsReasoningTokens(wireFormat format.Format) bool {
+	_, isMessages := wireFormat.(*messages.Format)
+	return !isMessages
+}
+
 // refusedSettings names the settings ai.New refuses in base and opts, as
 // "--base-url (INFER_BASE_URL)", or empty when it accepts each alone. go-ai
 // is the authority on what it refuses, and its errors carry no field, so
@@ -337,17 +356,21 @@ type rootFlags struct {
 // bindRootFlags defines the root flags on fs, the root command's flag set,
 // each naming the variable it overrides. The retry flags are strings, not
 // an int and durations, so a value that doesn't parse is refused with its
-// variable's, naming both, rather than by the flag package alone.
+// variable's, naming both, rather than by the flag package alone. Help
+// would then list each as a string, so each usage backquotes the type the
+// node parses it as, `int` or `duration`, which flag.UnquoteUsage, and so
+// go-cli-sdk's help, takes as the flag's placeholder in place of its Go
+// type's name.
 func bindRootFlags(fs *flag.FlagSet) *rootFlags {
 	env := func(name string) string { return " (env " + config.EnvName(envPrefix, name) + ")" }
-	fs.String("base-url", "", "the endpoint's API root, such as http://localhost:8080/v1"+env("base-url"))
+	fs.String("base-url", "", "the endpoint's API root, such as http://localhost:8000/v1"+env("base-url"))
 	fs.String("format", defaultFormat, "the wire format: completions, messages, or responses"+env("format"))
 	fs.String("model", "", "the model the request names"+env("model"))
-	fs.String("retries", "", "the most attempts of each request, the first included, so 3 retries twice, "+
+	fs.String("retries", "", "the most attempts of each request, the first included, as an `int`, so 3 retries twice, "+
 		"when the endpoint answers 408, 429, 502, 503, or 504 or the connection fails; 0 or 1 retries nothing"+env("retries"))
-	fs.String("retry-base-delay", "", "the longest wait before the first retry, such as 500ms, doubling for each retry after it; "+
+	fs.String("retry-base-delay", "", "the longest wait before the first retry, a `duration` such as 500ms, doubling for each retry after it; "+
 		"at most --retry-max-delay"+env("retry-base-delay"))
-	fs.String("retry-max-delay", "", "the longest wait between attempts, such as 30s, and the longest Retry-After waited for; "+
+	fs.String("retry-max-delay", "", "the longest wait between attempts, a `duration` such as 30s, and the longest Retry-After waited for; "+
 		"a longer Retry-After ends the retries"+env("retry-max-delay"))
 	return &rootFlags{fs: fs}
 }
@@ -403,7 +426,9 @@ type commandFlag struct {
 }
 
 // bind defines the flag on fs, its command's flag set, with def as its
-// default and usage naming the variable it overrides.
+// default and usage naming the variable it overrides. A usage that
+// backquotes a word, as in "this `duration`", gives help that word as the
+// flag's placeholder in place of "string", as [bindRootFlags] describes.
 func (f *commandFlag) bind(fs *flag.FlagSet, def, usage string) {
 	fs.StringVar(&f.value, f.name, def, usage+" (env "+f.variable+")")
 }

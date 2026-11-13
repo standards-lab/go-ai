@@ -22,7 +22,7 @@ go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
   accepted at any depth, each over its variable, `INFER_BASE_URL`, `INFER_FORMAT`, and
   `INFER_MODEL`, the flag winning when given. `--format` is `completions`, `messages`, or
   `responses`, and `completions` when unset. The bearer token is `INFER_TOKEN`'s alone, never a
-  flag's, and an empty one sends none. A missing base URL, an unknown format, or a value go-ai's
+  flag's, and an empty one sends none; the root help names it under `Environment:`. A missing base URL, an unknown format, or a value go-ai's
   `New` refuses exits 2 before any request, naming the flag and its variable.
 - The one-model fallback: with no model set, `embed`, `chat`, and `transcribe` list the
   endpoint's models first and send to the one listed, so an endpoint that serves one model needs
@@ -39,7 +39,9 @@ go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
   top level. A request go-ai's validation or the format's encoding refuses, such as a
   `--max-tokens` below 16, exits 2 before any request. It streams by default, writing each text
   delta as it arrives; `--stream=false` sends one unstreamed request. Either way it writes the
-  reply's status, token usage, reasoning tokens included, and reasoning item count to stderr; a
+  reply's status, token usage, and reasoning item count to stderr, as in `usage: 78 input tokens,
+  38 output tokens (27 reasoning), 116 total tokens`, or `(reasoning not reported)` through
+  `messages`, whose usage doesn't count reasoning tokens; a
   reply that isn't completed keeps the text written and exits 1 naming its status and reason, as
   in `incomplete: max_output_tokens`.
 - `transcribe`, which sends one audio file, opened again for each attempt, and writes its
@@ -52,7 +54,8 @@ go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
   `--retry-max-delay`, over `INFER_RETRIES`, `INFER_RETRY_BASE_DELAY`, and
   `INFER_RETRY_MAX_DELAY`, which set go-ai's retry policy for every command; unset retries
   nothing. `chat`'s `--idle-timeout`, over `INFER_IDLE_TIMEOUT`, ends a stream that sends nothing
-  for that long. A negative, inverted, or unparsable value exits 2, naming the flag and its
+  for that long. Help lists `--retries` as an `int` and the delays and the timeout as
+  `duration`s. A negative, inverted, or unparsable value exits 2, naming the flag and its
   variable.
 - The unit tier, which runs the App in-process against loopback endpoints with infer's own
   fixtures in `internal/apptest`, and the integration tier, behind the `integration` build tag,

@@ -97,6 +97,9 @@ func wantNoRequest(t *testing.T, e *apptest.Endpoint) {
 	}
 }
 
+// The root help names every command, each root flag with its variable and
+// the type it is parsed as, and INFER_TOKEN, which no flag overrides; it
+// names no token flag, and builds and sends nothing.
 func TestRun_RootHelp(t *testing.T) {
 	for _, args := range [][]string{nil, {"-h"}, {"--help"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -106,7 +109,12 @@ func TestRun_RootHelp(t *testing.T) {
 
 			wantCode(t, r, process.ExitUsage)
 			for _, want := range []string{"version", "models", "embed", "chat", "transcribe", "--base-url", "INFER_BASE_URL", "--format", "INFER_FORMAT", "--model", "INFER_MODEL",
-				"--retries", "INFER_RETRIES", "the first included", "--retry-base-delay", "INFER_RETRY_BASE_DELAY", "--retry-max-delay", "INFER_RETRY_MAX_DELAY"} {
+				"--retries", "INFER_RETRIES", "the first included", "--retry-base-delay", "INFER_RETRY_BASE_DELAY", "--retry-max-delay", "INFER_RETRY_MAX_DELAY",
+				// Each retry flag shows the type its node parses it as,
+				// not the string the flag holds.
+				"--retries int", "--retry-base-delay duration", "--retry-max-delay duration",
+				// INFER_TOKEN has no flag, so the footer names it.
+				"\nEnvironment:\n  INFER_TOKEN   the bearer token sent with each request"} {
 				if !strings.Contains(r.stdout, want) {
 					t.Errorf("stdout = %q, want the root help naming %s", r.stdout, want)
 				}

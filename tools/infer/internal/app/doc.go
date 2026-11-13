@@ -26,11 +26,13 @@
 // INFER_FORMAT, and INFER_MODEL, when given; --format is completions,
 // messages, or responses, and completions when neither is given. The
 // bearer token is INFER_TOKEN's, never a flag's, and an empty one sends
-// none. The root flags --retries, --retry-base-delay, and
-// --retry-max-delay, over INFER_RETRIES, INFER_RETRY_BASE_DELAY, and
-// INFER_RETRY_MAX_DELAY, set go-ai's retry policy for every command:
-// --retries is the most attempts of a request, the first included, and
-// unset retries nothing. A missing base URL, an unknown format, a retry
+// none; the root help's footer names it, as no flag does. The root flags
+// --retries, --retry-base-delay, and --retry-max-delay, over
+// INFER_RETRIES, INFER_RETRY_BASE_DELAY, and INFER_RETRY_MAX_DELAY, set
+// go-ai's retry policy for every command: --retries is the most attempts
+// of a request, the first included, and unset retries nothing. Each is a
+// string flag, parsed in its node, whose help names the type it is parsed
+// as, int or duration, as chat's --idle-timeout's does. A missing base URL, an unknown format, a retry
 // setting that doesn't parse, or a base URL or retry policy go-ai's New
 // refuses is a usage error, exit 2, naming the flag and its variable,
 // before any request.
@@ -42,7 +44,8 @@
 // each model ID the endpoint lists, one per line, in the endpoint's order,
 // and needs no model. embed sends its inputs, each argument or else each
 // line of stdin, as one batch, and writes one JSON array of numbers per
-// input, one per line, in input order, and the token usage to stderr.
+// input, one per line, in input order, and the token usage to stderr, as
+// in "usage: 22 input tokens, 22 total tokens".
 //
 // chat sends one prompt, the arguments joined by spaces or else stdin,
 // with --instructions, --image (repeatable: a file inlined as a data URL,
@@ -52,7 +55,10 @@
 // before any request. It streams by default, writing each text delta as
 // it arrives; --stream=false sends one unstreamed request. Either way it
 // ends the text with a newline and writes the reply's status, token usage,
-// and reasoning item count to stderr; a reply that isn't completed exits 1
+// and reasoning item count to stderr, the reasoning tokens as part of the
+// output, as in "usage: 78 input tokens, 38 output tokens (27 reasoning),
+// 116 total tokens", or "(reasoning not reported)" through messages, whose
+// usage has no reasoning count; a reply that isn't completed exits 1
 // naming its status and reason, as in "incomplete: max_output_tokens".
 // chat's --idle-timeout, set from INFER_IDLE_TIMEOUT, ends a stream that
 // sends nothing for that long, exit 1; it reaches only the chat client, so

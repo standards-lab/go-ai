@@ -861,7 +861,8 @@ accepted at any depth, each override a variable, `INFER_BASE_URL`, `INFER_FORMAT
 `completions` when neither is given; the format package's typed constructor is chosen in
 `infrastructure.go` alone, the caller's composition root (finding 3). The bearer token is
 `INFER_TOKEN`'s alone, never a flag's, so it never enters a command line, and an empty one sends
-none. A missing base URL, an unknown format, or a value `ai.New` refuses is a usage error, exit
+none; the root help names it under `Environment:`, a go-cli-sdk `Footer`, since no flag section
+lists it. A missing base URL, an unknown format, or a value `ai.New` refuses is a usage error, exit
 2, naming the flag and its variable, before any request. An endpoint and model per capability is
 a long-running program's need, not a one-shot client's: a run that wants another endpoint is
 another run.
@@ -881,7 +882,8 @@ alone:
   order.
 - **`embed`** sends its inputs, each argument or else each line of stdin, as one
   `EmbeddingRequest` batch through `Client.Embed`, and writes one JSON array of numbers per input,
-  one per line, in input order, with the usage on stderr.
+  one per line, in input order, with the usage on stderr, as in `usage: 22 input tokens, 22 total
+  tokens`.
 - **`chat`** sends one prompt, its arguments or else stdin, as a `protocol.Request`, with
   `--instructions`, `--image` (repeatable: a file inlined through `protocol.DataURL`, or an
   http(s) URL as given), `--reasoning`, `--max-tokens`, and `--native`, raw JSON merged into the
@@ -890,7 +892,11 @@ alone:
   is a usage error, exit 2. It streams through `Client.GenerateStream` by default, writing each
   `OutputTextDelta` as it arrives and folding the events with `protocol.Accumulator`;
   `--stream=false` sends one request through `Client.Generate`. Either way it writes the reply's
-  status, its usage, reasoning tokens included, and its count of reasoning items to stderr; a
+  status, its usage, and its count of reasoning items to stderr, the reasoning tokens shown as
+  part of the output, as in `usage: 78 input tokens, 38 output tokens (27 reasoning), 116 total
+  tokens`. go-ai v0.1.0 decodes an absent reasoning count as zero, so through `messages`, whose
+  usage has none, the line says `(reasoning not reported)`; the format, not the count, decides,
+  and the check is in `infrastructure.go`, which alone names a format package. A
   reply that isn't completed keeps the text written and exits 1 naming its status and reason, as
   in `incomplete: max_output_tokens`.
 - **`transcribe`** sends one audio file through `Client.Transcribe`, its `Open` opening the file
@@ -910,7 +916,9 @@ and `INFER_RETRY_MAX_DELAY`, set `ai.RetryPolicy` for every command; unset, the 
 zero value and retries nothing (finding 7). `chat`'s `--idle-timeout`, over `INFER_IDLE_TIMEOUT`,
 sets `Options.StreamIdleTimeout` (the surface section, decision 7). A negative, inverted, or
 unparsable value is a usage error, exit 2, naming the flag and its variable; `ai.New` is the
-authority on what it refuses. The transcription mode and the idle bound each belong to one
+authority on what it refuses. So each is a string flag, parsed in its node, and its usage
+backquotes the type it is parsed as, which `flag.UnquoteUsage`, and so go-cli-sdk's help, shows
+in place of `string`: `--retries int`, and `duration` for the delays and the timeout. The transcription mode and the idle bound each belong to one
 command, so each reaches a client node of its own, the transcriber and the chat client, built by
 the same constructor as the client the other commands share: no other command reads their
 variables, and an unknown mode never refuses a chat. With `--retry-max-delay` unset, a Retry-After above zero ends the retries

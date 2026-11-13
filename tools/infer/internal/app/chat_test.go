@@ -397,7 +397,7 @@ func TestChat_Streamed(t *testing.T) {
 	if body := oneBody(t, e, completionsRoute); body["stream"] != true {
 		t.Errorf("body stream = %v, want true", body["stream"])
 	}
-	want := "status: completed\nusage: 78 input tokens, 25 output tokens, 12 reasoning tokens, 103 total tokens\nreasoning items: 1\n"
+	want := "status: completed\nusage: 78 input tokens, 25 output tokens (12 reasoning), 103 total tokens\nreasoning items: 1\n"
 	if r.stderr != want {
 		t.Errorf("stderr = %q, want %q", r.stderr, want)
 	}
@@ -483,7 +483,7 @@ func TestChat_Unstreamed(t *testing.T) {
 	if _, ok := body["stream_options"]; ok {
 		t.Errorf("body stream_options = %v, want it absent", body["stream_options"])
 	}
-	want := "status: completed\nusage: 78 input tokens, 25 output tokens, 12 reasoning tokens, 103 total tokens\nreasoning items: 1\n"
+	want := "status: completed\nusage: 78 input tokens, 25 output tokens (12 reasoning), 103 total tokens\nreasoning items: 1\n"
 	if r.stderr != want {
 		t.Errorf("stderr = %q, want %q", r.stderr, want)
 	}
@@ -555,7 +555,7 @@ func TestChat_Incomplete(t *testing.T) {
 			if want := "1, 2,\n"; r.stdout != want {
 				t.Errorf("stdout = %q, want %q", r.stdout, want)
 			}
-			want := "status: incomplete\nusage: 78 input tokens, 25 output tokens, 12 reasoning tokens, 103 total tokens\nreasoning items: 0\n" +
+			want := "status: incomplete\nusage: 78 input tokens, 25 output tokens (12 reasoning), 103 total tokens\nreasoning items: 0\n" +
 				"infer chat: incomplete: max_output_tokens\n"
 			if r.stderr != want {
 				t.Errorf("stderr = %q, want %q", r.stderr, want)
@@ -633,15 +633,16 @@ func TestChat_FallbackRefusal(t *testing.T) {
 	}
 }
 
-// chat's help names each of its flags, and says what --native carries, and
-// builds and sends nothing.
+// chat's help names each of its flags, --idle-timeout as the duration its
+// node parses it as, and says what --native carries, and builds and sends
+// nothing.
 func TestChat_Help(t *testing.T) {
 	e := completedStream(t, "agent")
 
 	r := runApp(t, unreadable(e.URL), "chat", "--help")
 
 	wantCode(t, r, process.ExitUsage)
-	for _, want := range []string{"--instructions", "--image", "--reasoning", "--max-tokens", "--stream", "--idle-timeout", "INFER_IDLE_TIMEOUT",
+	for _, want := range []string{"--instructions", "--image", "--reasoning", "--max-tokens", "--stream", "--idle-timeout duration", "INFER_IDLE_TIMEOUT",
 		"JSON object merged into the request's top level, for parameters the typed flags don't cover"} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("stdout = %q, want chat's help naming %s", r.stdout, want)
@@ -653,7 +654,8 @@ func TestChat_Help(t *testing.T) {
 
 // Through messages, --max-tokens and --reasoning reach the wire as
 // max_tokens and thinking with output_config.effort, and the stream's text
-// deltas are written in order.
+// deltas are written in order. Messages' usage has no reasoning count, so
+// the summary says the reasoning tokens are not reported, not zero.
 func TestChat_Messages(t *testing.T) {
 	frames := []string{
 		`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"usage":{"input_tokens":31,"output_tokens":0}}}`,
@@ -680,7 +682,7 @@ func TestChat_Messages(t *testing.T) {
 	if body["max_tokens"] != 32.0 || thinking["type"] != "adaptive" || config["effort"] != "low" || body["system"] != "Be brief." || body["stream"] != true {
 		t.Errorf("body = %v, want max_tokens 32, adaptive thinking of effort low, the system prompt, and stream", body)
 	}
-	if want := "status: completed\nusage: 31 input tokens, 8 output tokens, 0 reasoning tokens, 39 total tokens\nreasoning items: 0\n"; r.stderr != want {
+	if want := "status: completed\nusage: 31 input tokens, 8 output tokens (reasoning not reported), 39 total tokens\nreasoning items: 0\n"; r.stderr != want {
 		t.Errorf("stderr = %q, want %q", r.stderr, want)
 	}
 }
@@ -697,6 +699,21 @@ func TestChat_MessagesWithoutMaxTokens(t *testing.T) {
 		t.Errorf("stderr = %q, want it to start with %q", r.stderr, want)
 	}
 	wantNoRequest(t, e)
+}
+
+// Through completions, a reply whose usage reports no reasoning tokens
+// shows zero of them: the summary decides "not reported" by the format,
+// not by the count.
+func TestChat_ZeroReasoningReported(t *testing.T) {
+	reply := `{"id":"chatcmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"Paris"},"finish_reason":"stop"}],"usage":` + usageJSON(0) + `}`
+	e := chatEndpoint(t, nil, completionsRoute, apptest.Reply(completionsRoute, reply))
+
+	r := runApp(t, agent(e), "chat", "--stream=false", "capital?")
+
+	wantCode(t, r, process.ExitOK)
+	if want := "status: completed\nusage: 78 input tokens, 25 output tokens (0 reasoning), 103 total tokens\nreasoning items: 0\n"; r.stderr != want {
+		t.Errorf("stderr = %q, want %q", r.stderr, want)
+	}
 }
 
 // Through responses, --max-tokens and --reasoning reach the wire as
@@ -722,7 +739,7 @@ func TestChat_Responses(t *testing.T) {
 	if body["max_output_tokens"] != 100.0 || reasoning["effort"] != "medium" || body["stream"] != false {
 		t.Errorf("body = %v, want max_output_tokens 100, reasoning effort medium, and no stream", body)
 	}
-	if want := "status: completed\nusage: 91 input tokens, 80 output tokens, 70 reasoning tokens, 171 total tokens\nreasoning items: 1\n"; r.stderr != want {
+	if want := "status: completed\nusage: 91 input tokens, 80 output tokens (70 reasoning), 171 total tokens\nreasoning items: 1\n"; r.stderr != want {
 		t.Errorf("stderr = %q, want %q", r.stderr, want)
 	}
 }

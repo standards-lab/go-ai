@@ -33,6 +33,7 @@ func New(streams cli.Streams) *App {
 		root: &cli.Command{
 			Name:    "infer",
 			Summary: "infer sends requests to one model endpoint through go-ai.",
+			Footer:  writeEnvironment,
 		},
 		streams: streams,
 	}
@@ -69,7 +70,7 @@ func (a *App) Run(ctx context.Context, args []string) int {
 // field names the node, and no comment repeats it.
 type Nodes struct {
 	LifecycleConfig *graph.Node[lifecycle.Config]
-	BaseURL         *graph.Node[string]        // the endpoint's API root, such as http://localhost:8080/v1
+	BaseURL         *graph.Node[string]        // the endpoint's API root, such as http://localhost:8000/v1
 	Format          *graph.Node[format.Format] // the wire format the client speaks
 	Model           *graph.Node[string]        // the model a request names; empty when not given
 	// RetryPolicy is when and how long every client waits to send a

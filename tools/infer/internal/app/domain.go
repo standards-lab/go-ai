@@ -130,7 +130,7 @@ func embedCommand(n *Nodes) *cli.Command {
 					return err
 				}
 			}
-			_, err = fmt.Fprintf(inv.Stderr, "usage: %d prompt tokens, %d total tokens\n", e.Usage.PromptTokens, e.Usage.TotalTokens)
+			_, err = fmt.Fprintf(inv.Stderr, "usage: %d input tokens, %d total tokens\n", e.Usage.PromptTokens, e.Usage.TotalTokens)
 			return err
 		},
 	}).Use(n.Client, n.Model)
@@ -219,7 +219,7 @@ func chatCommand(n *Nodes, idle *commandFlag) *cli.Command {
 	fs.IntVar(&f.maxTokens, "max-tokens", 0, "the most tokens the model generates, reasoning included; 16 or more")
 	fs.StringVar(&f.native, "native", "", "JSON object merged into the request's top level, for parameters the typed flags don't cover")
 	fs.BoolVar(&f.stream, "stream", true, "stream the reply, writing its text as it arrives")
-	idle.bind(fs, "", "end a streamed reply that sends nothing for this long, such as 30s; 0 sets no bound")
+	idle.bind(fs, "", "end a streamed reply that sends nothing for this `duration`, such as 30s; 0 sets no bound")
 	return cmd.Use(n.ChatClient, n.Model, n.Format)
 }
 
@@ -260,7 +260,7 @@ func chat(ctx context.Context, inv *cli.Invocation, n *Nodes, f *chatFlags) erro
 	if err := out.end(); err != nil {
 		return err
 	}
-	if err := writeSummary(inv.Stderr, resp); err != nil {
+	if err := writeSummary(inv.Stderr, resp, reportsReasoningTokens(inv.Get(n.Format))); err != nil {
 		return err
 	}
 	return replyError(resp)
@@ -434,26 +434,32 @@ func (o *textOut) end() error {
 }
 
 // writeSummary writes resp's summary to w: its status, its token usage,
-// reasoning tokens included, and the count of its reasoning output items,
-// each on its own line:
+// with the output tokens spent reasoning shown as part of the output, and
+// the count of its reasoning output items, each on its own line:
 //
 //	status: completed
-//	usage: 78 input tokens, 25 output tokens, 12 reasoning tokens, 103 total tokens
+//	usage: 78 input tokens, 38 output tokens (27 reasoning), 116 total tokens
 //	reasoning items: 1
 //
-// The reasoning tokens are as the endpoint reports them, zero when it
-// doesn't; the item count is the output's own, so it shows a reply with no
-// reasoning whatever the endpoint reports.
-func writeSummary(w io.Writer, resp *protocol.Response) error {
-	reasoning := 0
+// The reasoning tokens are as the endpoint reports them. When reasoning is
+// false, the format's usage has no reasoning count, as messages' has none,
+// so the summary says so, "(reasoning not reported)", rather than show a
+// zero go-ai can't tell from none. The item count is the output's own, so
+// it shows a reply with no reasoning whatever the endpoint reports.
+func writeSummary(w io.Writer, resp *protocol.Response, reasoning bool) error {
+	items := 0
 	for _, it := range resp.Output {
 		if _, ok := it.(protocol.Reasoning); ok {
-			reasoning++
+			items++
 		}
 	}
 	u := resp.Usage
-	_, err := fmt.Fprintf(w, "status: %s\nusage: %d input tokens, %d output tokens, %d reasoning tokens, %d total tokens\nreasoning items: %d\n",
-		resp.Status, u.InputTokens, u.OutputTokens, u.OutputTokensDetails.ReasoningTokens, u.TotalTokens, reasoning)
+	ofOutput := "reasoning not reported"
+	if reasoning {
+		ofOutput = fmt.Sprintf("%d reasoning", u.OutputTokensDetails.ReasoningTokens)
+	}
+	_, err := fmt.Fprintf(w, "status: %s\nusage: %d input tokens, %d output tokens (%s), %d total tokens\nreasoning items: %d\n",
+		resp.Status, u.InputTokens, u.OutputTokens, ofOutput, u.TotalTokens, items)
 	return err
 }
 

@@ -52,7 +52,7 @@ applies otherwise. The root flags are accepted at any depth, before or after the
   OpenAI-compatible routes whatever the format, and so does `transcribe` in route mode, but the
   format is still checked.
 - `INFER_TOKEN` is sent as the bearer token. It has no flag, so it never appears in a command
-  line or a shell history.
+  line or a shell history; the root help names it under `Environment:`.
 - `--retries` is the most attempts of each request, the first included, so `3` retries twice; `0`
   or `1` retries nothing. A request is sent again on a 408, 429, 502, 503, or 504 reply, or a
   connection failure before any reply.
@@ -129,8 +129,14 @@ infer models
 stdin, and writes one JSON array of numbers per input, one per line, in input order. The token
 usage goes to stderr, so stdout holds the vectors alone.
 
+```text
+$ infer embed "first passage" "second passage"
+[0.0123,-0.0456,...]
+[0.0789,-0.0012,...]
+usage: 22 input tokens, 22 total tokens
+```
+
 ```sh
-infer embed "first passage" "second passage"
 infer embed < passages.txt > vectors.jsonl
 ```
 
@@ -145,8 +151,15 @@ reply's summary:
 $ infer chat "What is a wire format? One sentence."
 A wire format is the exact layout of data as it is sent between programs.
 status: completed
-usage: 78 input tokens, 25 output tokens, 12 reasoning tokens, 103 total tokens
+usage: 78 input tokens, 38 output tokens (27 reasoning), 116 total tokens
 reasoning items: 1
+```
+
+The reasoning tokens are part of the output tokens. Through `messages`, whose usage doesn't count
+them, the usage line says so rather than show a zero:
+
+```text
+usage: 70 input tokens, 38 output tokens (reasoning not reported), 108 total tokens
 ```
 
 ```sh
@@ -178,7 +191,7 @@ already written, writes its summary, and exits 1 naming its status and reason:
 $ infer chat --max-tokens 16 "Tell me a long story."
 Once upon a time
 status: incomplete
-usage: 70 input tokens, 16 output tokens, 0 reasoning tokens, 86 total tokens
+usage: 70 input tokens, 16 output tokens (0 reasoning), 86 total tokens
 reasoning items: 0
 infer chat: incomplete: max_output_tokens
 ```

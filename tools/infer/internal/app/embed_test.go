@@ -222,7 +222,7 @@ func TestEmbed_UsageOnStderr(t *testing.T) {
 	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_MODEL": "embedder"}, "embed", "hello")
 
 	wantCode(t, r, process.ExitOK)
-	if want := "usage: 7 prompt tokens, 9 total tokens\n"; r.stderr != want {
+	if want := "usage: 7 input tokens, 9 total tokens\n"; r.stderr != want {
 		t.Errorf("stderr = %q, want %q", r.stderr, want)
 	}
 	if strings.Contains(r.stdout, "token") {
