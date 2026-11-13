@@ -29,7 +29,7 @@ func newClient(t *testing.T, base string, opts ai.Options) *ai.Client {
 }
 
 func TestGeneratePostsToMessagesWithVersionAndBearer(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, string(readTestdata(t, "conversation.json")))
+	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
 	c := newClient(t, srv.URL+"/v1", ai.Options{Token: func(context.Context) (string, error) { return "secret", nil }})
 	if _, err := c.Generate(t.Context(), ask(text(protocol.RoleUser, "hi"))); err != nil {
 		t.Fatalf("Generate: %v", err)
@@ -43,13 +43,13 @@ func TestGeneratePostsToMessagesWithVersionAndBearer(t *testing.T) {
 			t.Errorf("%s = %q, want [%q]", k, got, want)
 		}
 	}
-	assertJSON(t, r.Body, `{"model":"m","max_tokens":64,"stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`)
+	aitest.AssertJSON(t, r.Body, `{"model":"m","max_tokens":64,"stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`)
 }
 
 // TestGenerateSendsAPIKey wants Anthropic's x-api-key, set as a fixed header, on the request
 // beside the format's anthropic-version.
 func TestGenerateSendsAPIKey(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, string(readTestdata(t, "conversation.json")))
+	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
 	c := newClient(t, srv.URL, ai.Options{Header: http.Header{"x-api-key": {"key"}}})
 	if _, err := c.Generate(t.Context(), ask(text(protocol.RoleUser, "hi"))); err != nil {
 		t.Fatalf("Generate: %v", err)
@@ -74,7 +74,7 @@ func TestGenerateRefusesBeforeTheToken(t *testing.T) {
 	}})
 	for name, req := range map[string]*protocol.Request{"no MaxOutputTokens": noMax, "audio input": audio} {
 		t.Run(name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, string(readTestdata(t, "conversation.json")))
+			srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
 			called := false
 			c := newClient(t, srv.URL, ai.Options{Token: func(context.Context) (string, error) { called = true; return "secret", nil }})
 			if _, err := c.Generate(t.Context(), req); err == nil {

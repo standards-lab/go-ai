@@ -27,7 +27,7 @@ func newClient(t *testing.T, base string, token ai.TokenSource) *ai.Client {
 }
 
 func TestGeneratePostsToResponsesWithBearer(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, string(readTestdata(t, "conversation.json")))
+	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
 	c := newClient(t, srv.URL+"/v1", func(context.Context) (string, error) { return "secret", nil })
 	resp, err := c.Generate(t.Context(), ask(text(protocol.RoleUser, "hi")))
 	if err != nil {
@@ -43,14 +43,14 @@ func TestGeneratePostsToResponsesWithBearer(t *testing.T) {
 	if got := r.Header.Values("Authorization"); len(got) != 1 || got[0] != "Bearer secret" {
 		t.Errorf("Authorization = %q, want [%q]", got, "Bearer secret")
 	}
-	assertJSON(t, r.Body, `{"model":"m",`+stateless+`,"input":[
+	aitest.AssertJSON(t, r.Body, `{"model":"m",`+stateless+`,"input":[
 		{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}]}`)
 }
 
 // TestGenerateRefusesBeforeTheToken wants a request Validate refuses refused before the token
 // source is called or anything is sent.
 func TestGenerateRefusesBeforeTheToken(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, string(readTestdata(t, "conversation.json")))
+	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
 	called := false
 	c := newClient(t, srv.URL, func(context.Context) (string, error) { called = true; return "secret", nil })
 	req := ask(text(protocol.RoleUser, "hi"))

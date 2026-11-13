@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/responses"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -38,7 +39,7 @@ func runReasoning(t *testing.T, opts responses.Options, cases []reasoningCase) {
 	t.Helper()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertJSON(t, encodeWith(t, opts, ask(tc.input...)), `{"model":"m",`+stateless+`,"input":`+tc.want+`}`)
+			aitest.AssertJSON(t, encodeWith(t, opts, ask(tc.input...)), `{"model":"m",`+stateless+`,"input":`+tc.want+`}`)
 		})
 	}
 }
@@ -198,7 +199,7 @@ func dropCases(t *testing.T, user protocol.Message) []reasoningCase {
 // id the router's, and no encrypted_content, the router's being empty. The spec's form drops the
 // reasoning.
 func TestReasoningRoundTripRecorded(t *testing.T) {
-	resp, err := responses.New(responses.Options{}).DecodeResponse(readTestdata(t, "tool_call.json"))
+	resp, err := responses.New(responses.Options{}).DecodeResponse(aitest.ReadTestdata(t, "tool_call.json"))
 	if err != nil {
 		t.Fatalf("DecodeResponse: %v", err)
 	}
@@ -210,10 +211,10 @@ func TestReasoningRoundTripRecorded(t *testing.T) {
 		"name":"get_weather","arguments":"{\n  \"city\": \"Paris\"\n}"}`
 	outputJSON := `{"type":"function_call_output","call_id":"call_HMhSOwdRkvjir1D59ezHFChk5pTnYdJc","output":"{\"celsius\":17}"}`
 
-	assertJSON(t, encodeWith(t, responses.Options{ResendReasoningText: true}, ask(input...)), `{"model":"m",`+stateless+`,"input":[`+
+	aitest.AssertJSON(t, encodeWith(t, responses.Options{ResendReasoningText: true}, ask(input...)), `{"model":"m",`+stateless+`,"input":[`+
 		questionJSON+`,
 		{"type":"reasoning","id":"rs_H4pfaCFvrGf1ljLr7M56OB81gR3sEvYK","summary":[],
 			"content":[{"type":"reasoning_text","text":"User asks current weather in Paris. Use function get_weather."}]},`+
 		callJSON+`,`+outputJSON+`]}`)
-	assertJSON(t, encode(t, ask(input...)), `{"model":"m",`+stateless+`,"input":[`+questionJSON+`,`+callJSON+`,`+outputJSON+`]}`)
+	aitest.AssertJSON(t, encode(t, ask(input...)), `{"model":"m",`+stateless+`,"input":[`+questionJSON+`,`+callJSON+`,`+outputJSON+`]}`)
 }

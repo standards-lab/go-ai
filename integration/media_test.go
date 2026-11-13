@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/standards-lab/go-ai"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -22,7 +23,7 @@ func TestImageDescription(t *testing.T) {
 			Model: model,
 			Input: []protocol.Item{protocol.Message{Role: protocol.RoleUser, Content: []protocol.ContentPart{
 				protocol.InputText{Text: "Describe this image in one sentence."},
-				protocol.InputImage{ImageURL: protocol.DataURL("image/png", readTestdata(t, "shapes.png"))},
+				protocol.InputImage{ImageURL: protocol.DataURL("image/png", aitest.ReadTestdata(t, "shapes.png"))},
 			}}},
 			MaxOutputTokens: 256,
 		})
@@ -50,7 +51,7 @@ func TestAudioInResponsesRefused(t *testing.T) {
 		Model: model,
 		Input: []protocol.Item{protocol.Message{Role: protocol.RoleUser, Content: []protocol.ContentPart{
 			protocol.InputText{Text: "Transcribe this audio clip."},
-			protocol.InputAudio{Data: readTestdata(t, "phrase.wav"), Format: protocol.AudioFormatWAV},
+			protocol.InputAudio{Data: aitest.ReadTestdata(t, "phrase.wav"), Format: protocol.AudioFormatWAV},
 		}}},
 		MaxOutputTokens: 64,
 	})

@@ -2,12 +2,12 @@ package completions_test
 
 import (
 	"encoding/base64"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"reflect"
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/completions"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -21,30 +21,6 @@ func sealReasoning(t *testing.T, r string) string {
 		t.Fatal(err)
 	}
 	return "go-ai:completions/v1:" + base64.StdEncoding.EncodeToString(b)
-}
-
-// sameArguments sets each function call of want to the arguments of got's in its place, failing
-// t unless the two are the same JSON value: vLLM parses a call's arguments and writes them back
-// in an unstreamed reply, and streams the model's own text, its spacing included.
-func sameArguments(t *testing.T, got, want *protocol.Response) {
-	t.Helper()
-	if len(got.Output) != len(want.Output) {
-		return
-	}
-	for i, it := range want.Output {
-		w, ok := it.(protocol.FunctionCall)
-		g, ok2 := got.Output[i].(protocol.FunctionCall)
-		if !ok || !ok2 {
-			continue
-		}
-		gv, wv := jsontext.Value(g.Arguments), jsontext.Value(w.Arguments)
-		if gv.Canonicalize() != nil || wv.Canonicalize() != nil || string(gv) != string(wv) {
-			t.Errorf("output %d's arguments %q, want the JSON of %q", i, g.Arguments, w.Arguments)
-			continue
-		}
-		w.Arguments = g.Arguments
-		want.Output[i] = w
-	}
 }
 
 // The reasoning of the vLLM replies recorded in testdata/vllm.
@@ -181,7 +157,7 @@ func TestStreamVLLM(t *testing.T) {
 			if _, ok := r.events[len(r.events)-1].(protocol.ResponseCompleted); !ok {
 				t.Fatalf("last event = %#v, want response.completed", r.events[len(r.events)-1])
 			}
-			got := fold(t, r.events)
+			got := aitest.Fold(t, r.events)
 			if tc.reasoning != "" {
 				if rs, ok := got.Output[0].(protocol.Reasoning); !ok || rs.Content[0].Text != tc.reasoning {
 					t.Errorf("Output[0] = %#v, want the reasoning %q", got.Output[0], tc.reasoning)
@@ -191,8 +167,8 @@ func TestStreamVLLM(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
-			sameArguments(t, got, want)
-			assertResponse(t, got, want)
+			aitest.SameArguments(t, got, want)
+			aitest.AssertResponse(t, got, want)
 		})
 	}
 }

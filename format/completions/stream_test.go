@@ -7,13 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/completions"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/internal/sse"
 	"github.com/standards-lab/go-ai/protocol"
 )
@@ -75,14 +74,10 @@ func delta(delta, finish string) string {
 // usageChunk is reply chatcmpl-1's chunk of no choices that carries the usage.
 const usageChunk = `{"id":"chatcmpl-1","choices":[],"usage":{"completion_tokens":5,"prompt_tokens":7,"total_tokens":12}}`
 
-// readTestdata returns the file name in testdata.
+// readTestdata returns the file name under testdata as text.
 func readTestdata(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
+	return string(aitest.ReadTestdata(t, name))
 }
 
 // trace renders events one per line, each its spec type and the members it carries: a part
@@ -159,26 +154,6 @@ func assertTrace(t *testing.T, events []protocol.Event, want string) {
 	}
 	if got, want := trace(events), strings.Join(lines, "")+"\n"; got != want {
 		t.Errorf("events:\n%s\nwant:\n%s", got, want)
-	}
-}
-
-// fold folds events with an Accumulator, failing t if it refuses one, and returns its Response.
-func fold(t *testing.T, events []protocol.Event) *protocol.Response {
-	t.Helper()
-	var acc protocol.Accumulator
-	for _, e := range events {
-		if err := acc.Add(e); err != nil {
-			t.Fatalf("Accumulator.Add: %v", err)
-		}
-	}
-	return acc.Response()
-}
-
-// assertResponse fails t unless got and want are the same response.
-func assertResponse(t *testing.T, got, want *protocol.Response) {
-	t.Helper()
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Response = %#v\nwant       %#v", got, want)
 	}
 }
 
@@ -377,7 +352,7 @@ func TestStreamRecorded(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
-			assertResponse(t, fold(t, r.events), want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 		})
 	}
 }
@@ -476,7 +451,7 @@ func TestStreamParts(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
-			assertResponse(t, fold(t, r.events), want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 		})
 	}
 }
@@ -520,7 +495,7 @@ func TestStreamToolCallsInterleavedFoldAsSequential(t *testing.T) {
 	if sequential.err != nil || interleaved.err != nil {
 		t.Fatalf("stream errors = %v, %v", sequential.err, interleaved.err)
 	}
-	assertResponse(t, fold(t, interleaved.events), fold(t, sequential.events))
+	aitest.AssertResponse(t, aitest.Fold(t, interleaved.events), aitest.Fold(t, sequential.events))
 }
 
 // TestStreamToolCalls covers function calls: the first call closes the message ahead of it,
@@ -694,7 +669,7 @@ func TestStreamToolCalls(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
-			assertResponse(t, fold(t, r.events), want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 		})
 	}
 }
@@ -819,7 +794,7 @@ func TestStreamReasoning(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
-			assertResponse(t, fold(t, r.events), want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 		})
 	}
 }
@@ -832,7 +807,7 @@ func TestStreamReasoningRoundTrip(t *testing.T) {
 	if r.err != nil {
 		t.Fatalf("stream error: %v", r.err)
 	}
-	resp := fold(t, r.events)
+	resp := aitest.Fold(t, r.events)
 	call, ok := resp.Output[1].(protocol.FunctionCall)
 	if !ok {
 		t.Fatalf("Output[1] = %#v, want the function call", resp.Output[1])
@@ -843,7 +818,7 @@ func TestStreamReasoningRoundTrip(t *testing.T) {
 	}
 	req.Input = append(req.Input, resp.Output...)
 	req.Input = append(req.Input, protocol.FunctionCallOutput{CallID: call.CallID, Output: "21"})
-	assertJSON(t, encode(t, req), `{"model":"m","stream":false,"messages":[
+	aitest.AssertJSON(t, encode(t, req), `{"model":"m","stream":false,"messages":[
 		{"role":"user","content":"What is the weather in Paris right now?"},
 		{"role":"assistant","reasoning_content":"We need to call function get_weather.","tool_calls":[
 			{"id":"LsrzvhpPKdbtJyriZMr6ivjrWBgmWA3j","type":"function",
@@ -868,7 +843,7 @@ func TestStreamNoReplyID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeResponse: %v", err)
 	}
-	assertResponse(t, fold(t, r.events), want)
+	aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 }
 
 // TestStreamEnd covers how a stream ends: at [DONE], or at the stream's end once the
@@ -1067,10 +1042,10 @@ func TestStreamErrorFrame(t *testing.T) {
 				Error:  &protocol.ResponseError{Code: tc.payload.Code, Message: tc.payload.Message},
 				Usage:  tc.usage,
 			}
-			assertResponse(t, failed.Response, want)
-			assertResponse(t, fold(t, r.events), want)
+			aitest.AssertResponse(t, failed.Response, want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 			// The failed response's output is what the Accumulator held just before the frame.
-			before := fold(t, r.events[:n-2])
+			before := aitest.Fold(t, r.events[:n-2])
 			if !reflect.DeepEqual(before.Output, tc.output) {
 				t.Errorf("output before the frame = %#v\nwant the failed response's %#v", before.Output, tc.output)
 			}
@@ -1128,7 +1103,7 @@ func TestEncodeStream(t *testing.T) {
 	if len(header) != 0 {
 		t.Errorf("EncodeStreamRequest added headers %v, want none", header)
 	}
-	assertJSON(t, body, `{"model":"m","messages":[{"role":"user","content":"hi"}],
+	aitest.AssertJSON(t, body, `{"model":"m","messages":[{"role":"user","content":"hi"}],
 		"stream":true,"stream_options":{"include_usage":true},"temperature":0}`)
 }
 

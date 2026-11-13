@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/responses"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -109,7 +110,7 @@ func TestDecodeVLLM(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.file, func(t *testing.T) {
-			resp, err := decode(string(readTestdata(t, "vllm/"+tc.file)))
+			resp, err := decode(string(aitest.ReadTestdata(t, "vllm/"+tc.file)))
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
@@ -138,7 +139,7 @@ func TestStreamVLLM(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			body := string(readTestdata(t, "vllm/"+tc.name+".sse"))
+			body := string(aitest.ReadTestdata(t, "vllm/"+tc.name+".sse"))
 			r := decodeStream(t, body)
 			if r.err != nil {
 				t.Fatalf("stream error: %v", r.err)
@@ -152,13 +153,13 @@ func TestStreamVLLM(t *testing.T) {
 				t.Fatalf("last event = %#v, want a %T", last, tc.terminal)
 			}
 			want := terminalResponse(t, body)
-			got := fold(t, r.events)
+			got := aitest.Fold(t, r.events)
 			if tc.reasoning != "" {
 				if rs, ok := got.Output[0].(protocol.Reasoning); !ok || rs.Content[0].Text != tc.reasoning {
 					t.Errorf("Output[0] = %#v, want the reasoning %q", got.Output[0], tc.reasoning)
 				}
 			}
-			assertResponse(t, got, want)
+			aitest.AssertResponse(t, got, want)
 			assertDoneItems(t, r.events, want)
 		})
 	}
@@ -167,7 +168,7 @@ func TestStreamVLLM(t *testing.T) {
 // TestDecodeErrorVLLM decodes vLLM's 404 body for an unknown model, an OpenAI-style error of a
 // numeric code.
 func TestDecodeErrorVLLM(t *testing.T) {
-	message, typ, code := responses.New(responses.Options{}).DecodeError(readTestdata(t, "vllm/not_found.json"))
+	message, typ, code := responses.New(responses.Options{}).DecodeError(aitest.ReadTestdata(t, "vllm/not_found.json"))
 	const want = "The model `go-ai/no-such-model` does not exist. Valid aliases: openai/gpt-oss-120b."
 	if message != want || typ != "NotFoundError" || code != "404" {
 		t.Errorf("DecodeError = {%q %q %q}, want {%q %q %q}", message, typ, code, want, "NotFoundError", "404")

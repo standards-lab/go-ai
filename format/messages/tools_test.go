@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -164,7 +165,7 @@ func TestEncodeConversation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertJSON(t, encode(t, ask(tc.input...)),
+			aitest.AssertJSON(t, encode(t, ask(tc.input...)),
 				`{"model":"m","max_tokens":64,"stream":false,"messages":`+tc.want+`}`)
 		})
 	}
@@ -174,14 +175,14 @@ func TestEncodeConversation(t *testing.T) {
 // caller continues the conversation, and wants the thinking block and the tool_use block back as
 // they came, in one assistant message, ahead of the call's result.
 func TestReasoningRoundTrip(t *testing.T) {
-	resp, err := decode(string(readTestdata(t, "tool_use.json")))
+	resp, err := decode(string(aitest.ReadTestdata(t, "tool_use.json")))
 	if err != nil {
 		t.Fatalf("DecodeResponse: %v", err)
 	}
 	input := []protocol.Item{text(protocol.RoleUser, "What is the weather in Paris right now?")}
 	input = append(input, resp.Output...)
 	input = append(input, output("jtjN1bIEUcKA2FZ8Xhn4jIZYGKx2H2Cf", `{"city":"Paris","celsius":17}`))
-	assertJSON(t, encode(t, ask(input...)), `{"model":"m","max_tokens":64,"stream":false,"messages":[
+	aitest.AssertJSON(t, encode(t, ask(input...)), `{"model":"m","max_tokens":64,"stream":false,"messages":[
 		{"role":"user","content":[{"type":"text","text":"What is the weather in Paris right now?"}]},
 		{"role":"assistant","content":[
 			{"type":"thinking","thinking":`+quote(toolUseThinking)+`,"signature":""},
@@ -206,7 +207,7 @@ func TestRedactedRoundTrip(t *testing.T) {
 		t.Errorf("Output[0] = %#v, want %#v", resp.Output[0], want)
 	}
 	input := append([]protocol.Item{text(protocol.RoleUser, "q")}, resp.Output...)
-	assertJSON(t, encode(t, ask(input...)), `{"model":"m","max_tokens":64,"stream":false,"messages":[
+	aitest.AssertJSON(t, encode(t, ask(input...)), `{"model":"m","max_tokens":64,"stream":false,"messages":[
 		{"role":"user","content":[{"type":"text","text":"q"}]},
 		{"role":"assistant","content":[
 			{"type":"redacted_thinking","data":"EmwKAhgBEgy3va3pzix/LafPsn4a"},
@@ -250,7 +251,7 @@ func TestEncodeTools(t *testing.T) {
 			req := ask(text(protocol.RoleUser, "q"))
 			req.Tools = []protocol.FunctionTool{weather, clock}
 			req.ToolChoice = tc.choice
-			assertJSON(t, encode(t, req), `{"model":"m","max_tokens":64,"stream":false,
+			aitest.AssertJSON(t, encode(t, req), `{"model":"m","max_tokens":64,"stream":false,
 				"messages":[{"role":"user","content":[{"type":"text","text":"q"}]}],`+tc.want+`}`)
 		})
 	}
@@ -307,7 +308,7 @@ func TestEncodeOptions(t *testing.T) {
 			if tc.want != "" {
 				want += "," + tc.want
 			}
-			assertJSON(t, encode(t, req), want+"}")
+			aitest.AssertJSON(t, encode(t, req), want+"}")
 		})
 	}
 }

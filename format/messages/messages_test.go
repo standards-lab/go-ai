@@ -5,13 +5,12 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"net/http"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/messages"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -38,31 +37,6 @@ func encode(t *testing.T, req *protocol.Request) []byte {
 // decode decodes reply as the body of a 2xx reply.
 func decode(reply string) (*protocol.Response, error) {
 	return messages.New().DecodeResponse([]byte(reply))
-}
-
-// readTestdata returns the file name in testdata.
-func readTestdata(t *testing.T, name string) []byte {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
-// assertJSON fails t unless got and want are the same JSON, ignoring member order and spacing.
-func assertJSON(t *testing.T, got []byte, want string) {
-	t.Helper()
-	g, w := jsontext.Value(append([]byte(nil), got...)), jsontext.Value(want)
-	if err := g.Canonicalize(); err != nil {
-		t.Fatalf("body %s isn't JSON: %v", got, err)
-	}
-	if err := w.Canonicalize(); err != nil {
-		t.Fatalf("want %s isn't JSON: %v", want, err)
-	}
-	if string(g) != string(w) {
-		t.Errorf("body = %s\nwant   %s", g, w)
-	}
 }
 
 func text(role protocol.Role, s string) protocol.Message {
@@ -210,7 +184,7 @@ func TestEncode(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertJSON(t, encode(t, tc.req), tc.want)
+			aitest.AssertJSON(t, encode(t, tc.req), tc.want)
 		})
 	}
 }
@@ -370,7 +344,7 @@ func TestDecodeRecorded(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.file, func(t *testing.T) {
-			resp, err := messages.New().DecodeResponse(readTestdata(t, tc.file))
+			resp, err := messages.New().DecodeResponse(aitest.ReadTestdata(t, tc.file))
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}

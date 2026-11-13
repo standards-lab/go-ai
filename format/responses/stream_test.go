@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/responses"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/internal/sse"
 	"github.com/standards-lab/go-ai/protocol"
 )
@@ -188,26 +189,6 @@ func assertTrace(t *testing.T, events []protocol.Event, want string) {
 	}
 }
 
-// fold folds events with an Accumulator, failing t if it refuses one, and returns its Response.
-func fold(t *testing.T, events []protocol.Event) *protocol.Response {
-	t.Helper()
-	var acc protocol.Accumulator
-	for _, e := range events {
-		if err := acc.Add(e); err != nil {
-			t.Fatalf("Accumulator.Add: %v", err)
-		}
-	}
-	return acc.Response()
-}
-
-// assertResponse fails t unless got and want are the same response.
-func assertResponse(t *testing.T, got, want *protocol.Response) {
-	t.Helper()
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Response = %#v\nwant       %#v", got, want)
-	}
-}
-
 // event is the data of an event of typ, its other members the JSON object members members.
 func event(typ, members string) string {
 	if members == "" {
@@ -330,14 +311,14 @@ func TestStreamRecorded(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			body := string(readTestdata(t, tc.name+".sse"))
+			body := string(aitest.ReadTestdata(t, tc.name+".sse"))
 			r := decodeStream(t, body)
 			if r.err != nil {
 				t.Fatalf("stream error: %v", r.err)
 			}
 			assertTrace(t, r.events, tc.trace)
 			want := terminalResponse(t, body)
-			assertResponse(t, fold(t, r.events), want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 			assertDoneItems(t, r.events, want)
 		})
 	}
@@ -446,7 +427,7 @@ func TestStreamSpec(t *testing.T) {
 		22 response.output_item.done 1 protocol.Message{ID:"msg_1", Status:"completed", Role:"assistant", Content:[]protocol.ContentPart{protocol.OutputText{Text:"Checking."}, protocol.Refusal{Refusal:"No."}}}
 		23 response.completed 3 items`)
 	want := terminalResponse(t, body)
-	assertResponse(t, fold(t, r.events), want)
+	aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 	assertDoneItems(t, r.events, want)
 }
 
@@ -482,7 +463,7 @@ func TestStreamFills(t *testing.T) {
 		18 response.output_item.done 2 protocol.FunctionCall{ID:"fc_1", Status:"completed", CallID:"call_1", Name:"get_weather", Arguments:"{\"city\":\"Paris\"}"}
 		19 response.completed 3 items`)
 	want := terminalResponse(t, body)
-	assertResponse(t, fold(t, r.events), want)
+	aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 	assertDoneItems(t, r.events, want)
 
 	// A message whose done events the server leaves out has them made at its
@@ -547,7 +528,7 @@ func TestStreamTerminal(t *testing.T) {
 			if got := trace(r.events[len(r.events)-1:]); !strings.Contains(got, tc.want) {
 				t.Errorf("last event = %s, want %s", got, tc.want)
 			}
-			assertResponse(t, fold(t, r.events), terminalResponse(t, body))
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), terminalResponse(t, body))
 		})
 	}
 }
@@ -657,10 +638,10 @@ func TestStreamErrorFrame(t *testing.T) {
 				Status: protocol.StatusFailed,
 				Error:  &protocol.ResponseError{Code: tc.payload.Code, Message: tc.payload.Message},
 			}
-			assertResponse(t, failed.Response, want)
-			assertResponse(t, fold(t, r.events), want)
+			aitest.AssertResponse(t, failed.Response, want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 			// The failed response's output is what the Accumulator held just before the frame.
-			if before := fold(t, r.events[:n-2]); !reflect.DeepEqual(before.Output, tc.output) {
+			if before := aitest.Fold(t, r.events[:n-2]); !reflect.DeepEqual(before.Output, tc.output) {
 				t.Errorf("output before the frame = %#v\nwant the failed response's %#v", before.Output, tc.output)
 			}
 

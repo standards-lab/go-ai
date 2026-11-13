@@ -1,7 +1,6 @@
 package messages_test
 
 import (
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/messages"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/internal/sse"
 	"github.com/standards-lab/go-ai/protocol"
 )
@@ -182,26 +182,6 @@ func assertTrace(t *testing.T, events []protocol.Event, want string) {
 	}
 }
 
-// fold folds events with an Accumulator, failing t if it refuses one, and returns its Response.
-func fold(t *testing.T, events []protocol.Event) *protocol.Response {
-	t.Helper()
-	var acc protocol.Accumulator
-	for _, e := range events {
-		if err := acc.Add(e); err != nil {
-			t.Fatalf("Accumulator.Add: %v", err)
-		}
-	}
-	return acc.Response()
-}
-
-// assertResponse fails t unless got and want are the same response.
-func assertResponse(t *testing.T, got, want *protocol.Response) {
-	t.Helper()
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Response = %#v\nwant       %#v", got, want)
-	}
-}
-
 // asStreamed returns reply, an unstreamed reply's body, with the ids body, a text/event-stream
 // reply to the same request, gave: the reply's, message_start's, and each tool_use block's, the
 // one the stream's block in its place began with; and each thinking block's signature, the one
@@ -278,31 +258,6 @@ func asStreamed(t *testing.T, reply, body string) string {
 	return string(b)
 }
 
-// sameArguments sets each function call of want to the arguments of got's in its place, failing
-// t unless the two are the same JSON value: llama.cpp's router and vLLM parse a call's arguments
-// and write them back compact in an unstreamed reply's input, and stream the model's own text,
-// its spacing included, as the input_json deltas.
-func sameArguments(t *testing.T, got, want *protocol.Response) {
-	t.Helper()
-	if len(got.Output) != len(want.Output) {
-		return
-	}
-	for i, it := range want.Output {
-		w, ok := it.(protocol.FunctionCall)
-		g, ok2 := got.Output[i].(protocol.FunctionCall)
-		if !ok || !ok2 {
-			continue
-		}
-		gv, wv := jsontext.Value(g.Arguments), jsontext.Value(w.Arguments)
-		if gv.Canonicalize() != nil || wv.Canonicalize() != nil || string(gv) != string(wv) {
-			t.Errorf("output %d's arguments %q, want the JSON of %q", i, g.Arguments, w.Arguments)
-			continue
-		}
-		w.Arguments = g.Arguments
-		want.Output[i] = w
-	}
-}
-
 // TestStreamRecorded translates the recorded router streams to events, and folds them to the
 // Response DecodeResponse gives for the same reply unstreamed, item ids included.
 func TestStreamRecorded(t *testing.T) {
@@ -368,19 +323,19 @@ func TestStreamRecorded(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			body := string(readTestdata(t, tc.name+".sse"))
+			body := string(aitest.ReadTestdata(t, tc.name+".sse"))
 			r := decodeStream(t, body)
 			if r.err != nil {
 				t.Fatalf("stream error: %v", r.err)
 			}
 			assertTrace(t, r.events, tc.trace)
-			want, err := decode(asStreamed(t, string(readTestdata(t, tc.name+".json")), body))
+			want, err := decode(asStreamed(t, string(aitest.ReadTestdata(t, tc.name+".json")), body))
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
-			got := fold(t, r.events)
-			sameArguments(t, got, want)
-			assertResponse(t, got, want)
+			got := aitest.Fold(t, r.events)
+			aitest.SameArguments(t, got, want)
+			aitest.AssertResponse(t, got, want)
 		})
 	}
 }
@@ -536,7 +491,7 @@ func TestStreamOpenAtOnce(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
-			assertResponse(t, fold(t, r.events), want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 		})
 	}
 }
@@ -684,7 +639,7 @@ func TestStreamBlocks(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
-			assertResponse(t, fold(t, r.events), want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 		})
 	}
 }
@@ -719,7 +674,7 @@ func TestStreamEnvelopes(t *testing.T) {
 	if want := []string{thinkingEnvelope, redactedEnvelope}; !slices.Equal(envelopes, want) {
 		t.Errorf("reasoning envelopes = %q, want %q", envelopes, want)
 	}
-	assertJSON(t, encode(t, ask(fold(t, r.events).Output...)), `{"model":"m","max_tokens":64,"stream":false,"messages":[
+	aitest.AssertJSON(t, encode(t, ask(aitest.Fold(t, r.events).Output...)), `{"model":"m","max_tokens":64,"stream":false,"messages":[
 		{"role":"assistant","content":[
 			{"type":"thinking","thinking":"hm","signature":"sig"},
 			{"type":"redacted_thinking","data":"x"},
@@ -805,7 +760,7 @@ func TestStreamStopReason(t *testing.T) {
 			if r.err != nil {
 				t.Fatalf("stream error: %v", r.err)
 			}
-			resp := fold(t, r.events)
+			resp := aitest.Fold(t, r.events)
 			last := r.events[len(r.events)-1]
 			_, completed := last.(protocol.ResponseCompleted)
 			_, incomplete := last.(protocol.ResponseIncomplete)
@@ -904,10 +859,10 @@ func TestStreamErrorFrame(t *testing.T) {
 				Error:  &protocol.ResponseError{Code: tc.payload.Code, Message: tc.payload.Message},
 				Usage:  tc.usage,
 			}
-			assertResponse(t, failed.Response, want)
-			assertResponse(t, fold(t, r.events), want)
+			aitest.AssertResponse(t, failed.Response, want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 			// The failed response's output is what the Accumulator held just before the frame.
-			if before := fold(t, r.events[:n-2]); !reflect.DeepEqual(before.Output, tc.output) {
+			if before := aitest.Fold(t, r.events[:n-2]); !reflect.DeepEqual(before.Output, tc.output) {
 				t.Errorf("output before the frame = %#v\nwant the failed response's %#v", before.Output, tc.output)
 			}
 
@@ -1050,7 +1005,7 @@ func TestEncodeStream(t *testing.T) {
 	if want := (http.Header{"Anthropic-Version": {"2026-10-21"}}); !reflect.DeepEqual(header, want) {
 		t.Errorf("EncodeStreamRequest headers = %v, want %v", header, want)
 	}
-	assertJSON(t, body, `{"model":"m","max_tokens":64,"stream":true,"temperature":0,
+	aitest.AssertJSON(t, body, `{"model":"m","max_tokens":64,"stream":true,"temperature":0,
 		"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`)
 }
 

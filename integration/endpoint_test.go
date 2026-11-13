@@ -6,7 +6,6 @@ import (
 	"context"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -117,16 +116,6 @@ func eachFormatOf(t *testing.T, r role, fs []testFormat, scenario func(t *testin
 			scenario(t, c, model)
 		})
 	}
-}
-
-// readTestdata returns the file name in testdata.
-func readTestdata(t *testing.T, name string) []byte {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
 }
 
 // userText is a user message of one input_text part.

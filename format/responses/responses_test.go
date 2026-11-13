@@ -5,13 +5,12 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"net/http"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/responses"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -43,31 +42,6 @@ func encodeWith(t *testing.T, opts responses.Options, req *protocol.Request) []b
 // decode decodes reply as the body of a 2xx reply.
 func decode(reply string) (*protocol.Response, error) {
 	return responses.New(responses.Options{}).DecodeResponse([]byte(reply))
-}
-
-// readTestdata returns the file name in testdata.
-func readTestdata(t *testing.T, name string) []byte {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
-// assertJSON fails t unless got and want are the same JSON, ignoring member order and spacing.
-func assertJSON(t *testing.T, got []byte, want string) {
-	t.Helper()
-	g, w := jsontext.Value(append([]byte(nil), got...)), jsontext.Value(want)
-	if err := g.Canonicalize(); err != nil {
-		t.Fatalf("body %s isn't JSON: %v", got, err)
-	}
-	if err := w.Canonicalize(); err != nil {
-		t.Fatalf("want %s isn't JSON: %v", want, err)
-	}
-	if string(g) != string(w) {
-		t.Errorf("body = %s\nwant   %s", g, w)
-	}
 }
 
 // seal returns the responses format's envelope of the server's encrypted_content enc and the
@@ -224,7 +198,7 @@ func TestEncode(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertJSON(t, encode(t, tc.req), tc.want)
+			aitest.AssertJSON(t, encode(t, tc.req), tc.want)
 		})
 	}
 }
@@ -237,7 +211,7 @@ func TestEncodeStreamRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EncodeStreamRequest: %v", err)
 	}
-	assertJSON(t, body, `{"model":"m","stream":true,"store":false,"include":["reasoning.encrypted_content"],"input":[
+	aitest.AssertJSON(t, body, `{"model":"m","stream":true,"store":false,"include":["reasoning.encrypted_content"],"input":[
 		{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}]}`)
 	if len(header) != 0 {
 		t.Errorf("EncodeStreamRequest set headers %v, want none", header)
@@ -389,7 +363,7 @@ func TestDecodeRecorded(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.file, func(t *testing.T) {
-			resp, err := responses.New(responses.Options{}).DecodeResponse(readTestdata(t, tc.file))
+			resp, err := responses.New(responses.Options{}).DecodeResponse(aitest.ReadTestdata(t, tc.file))
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
@@ -519,7 +493,7 @@ func TestDecodeError(t *testing.T) {
 		body               string
 		message, typ, code string
 	}{
-		{"the audio extension, recorded", string(readTestdata(t, "input_audio.json")),
+		{"the audio extension, recorded", string(aitest.ReadTestdata(t, "input_audio.json")),
 			"'type' must be one of 'input_text', 'input_image', or 'input_file'", "invalid_request_error", "400"},
 		{"a string code", `{"error":{"message":"Slow down.","type":"rate_limit_error","code":"rate_limit_exceeded"}}`,
 			"Slow down.", "rate_limit_error", "rate_limit_exceeded"},

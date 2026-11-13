@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/completions"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -34,21 +35,6 @@ func encode(t *testing.T, req *protocol.Request) []byte {
 // decode decodes reply as the body of a 2xx reply.
 func decode(reply string) (*protocol.Response, error) {
 	return completions.New().DecodeResponse([]byte(reply))
-}
-
-// assertJSON fails t unless got and want are the same JSON, ignoring member order and spacing.
-func assertJSON(t *testing.T, got []byte, want string) {
-	t.Helper()
-	g, w := jsontext.Value(append([]byte(nil), got...)), jsontext.Value(want)
-	if err := g.Canonicalize(); err != nil {
-		t.Fatalf("body %s isn't JSON: %v", got, err)
-	}
-	if err := w.Canonicalize(); err != nil {
-		t.Fatalf("want %s isn't JSON: %v", want, err)
-	}
-	if string(g) != string(w) {
-		t.Errorf("body = %s\nwant   %s", g, w)
-	}
 }
 
 func text(role protocol.Role, s string) protocol.Message {
@@ -562,7 +548,7 @@ func TestEncode(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertJSON(t, encode(t, tc.req), tc.want)
+			aitest.AssertJSON(t, encode(t, tc.req), tc.want)
 		})
 	}
 }

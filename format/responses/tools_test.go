@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	"testing"
 
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -105,7 +106,7 @@ func TestEncodeTools(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertJSON(t, encode(t, tc.req), tc.want)
+			aitest.AssertJSON(t, encode(t, tc.req), tc.want)
 		})
 	}
 }
@@ -123,7 +124,7 @@ func TestEncodeFunctionItems(t *testing.T) {
 			protocol.InputText{Text: "12:00"}, protocol.InputText{Text: " CET"}}},
 		protocol.FunctionCallOutput{CallID: "call_3"},
 	)
-	assertJSON(t, encode(t, req), `{"model":"m",`+stateless+`,"input":[`+userHi+`,
+	aitest.AssertJSON(t, encode(t, req), `{"model":"m",`+stateless+`,"input":[`+userHi+`,
 		{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Paris\"}"},
 		{"type":"function_call","call_id":"call_2","name":"get_time","arguments":"{}"},
 		{"type":"function_call_output","id":"fco_1","call_id":"call_1","output":"{\"celsius\":17}"},

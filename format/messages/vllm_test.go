@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/messages"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -87,7 +88,7 @@ func TestDecodeVLLM(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.file, func(t *testing.T) {
-			resp, err := decode(string(readTestdata(t, "vllm/"+tc.file)))
+			resp, err := decode(string(aitest.ReadTestdata(t, "vllm/"+tc.file)))
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
@@ -113,7 +114,7 @@ func TestStreamVLLM(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			body := string(readTestdata(t, "vllm/"+tc.name+".sse"))
+			body := string(aitest.ReadTestdata(t, "vllm/"+tc.name+".sse"))
 			r := decodeStream(t, body)
 			if r.err != nil {
 				t.Fatalf("stream error: %v", r.err)
@@ -121,25 +122,25 @@ func TestStreamVLLM(t *testing.T) {
 			if _, ok := r.events[len(r.events)-1].(protocol.ResponseCompleted); !ok {
 				t.Fatalf("last event = %#v, want response.completed", r.events[len(r.events)-1])
 			}
-			got := fold(t, r.events)
+			got := aitest.Fold(t, r.events)
 			if tc.thinking != "" {
 				if rs, ok := got.Output[0].(protocol.Reasoning); !ok || rs.Content[0].Text != tc.thinking {
 					t.Errorf("Output[0] = %#v, want the reasoning %q", got.Output[0], tc.thinking)
 				}
 			}
-			want, err := decode(asStreamed(t, string(readTestdata(t, "vllm/"+tc.name+".json")), body))
+			want, err := decode(asStreamed(t, string(aitest.ReadTestdata(t, "vllm/"+tc.name+".json")), body))
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
-			sameArguments(t, got, want)
-			assertResponse(t, got, want)
+			aitest.SameArguments(t, got, want)
+			aitest.AssertResponse(t, got, want)
 		})
 	}
 }
 
 // TestDecodeErrorVLLM decodes vLLM's 404 body for an unknown model, Anthropic's error shape.
 func TestDecodeErrorVLLM(t *testing.T) {
-	message, typ, code := messages.New().DecodeError(readTestdata(t, "vllm/not_found.json"))
+	message, typ, code := messages.New().DecodeError(aitest.ReadTestdata(t, "vllm/not_found.json"))
 	const want = "The model `go-ai/no-such-model` does not exist. Valid aliases: openai/gpt-oss-120b."
 	if message != want || typ != "not_found_error" || code != "" {
 		t.Errorf("DecodeError = {%q %q %q}, want {%q %q %q}", message, typ, code, want, "not_found_error", "")
