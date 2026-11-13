@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/standards-lab/go-ai/format"
@@ -29,9 +30,11 @@ type Options struct {
 	// Token authenticates each attempt as a bearer token. Nil sends no Authorization header.
 	Token TokenSource
 	// Header holds fixed headers sent on every request, such as Anthropic's x-api-key or a
-	// gateway's consumer-key header. A header the format sets, such as anthropic-version,
-	// replaces one of the same name. New refuses one naming Content-Type, Accept, or
-	// Authorization, which the Client sets itself.
+	// gateway's consumer-key header. Names are matched in any case, so names that differ only
+	// in case are one header, its values those of each spelling in sorted order. A header the
+	// format sets, such as anthropic-version, replaces one of the same name. New refuses one
+	// naming Content-Type, Accept, or Authorization, which the Client sets itself, and one that
+	// can't be sent: a name that isn't a header name, or a value with a control character.
 	Header http.Header
 	// Retry is the policy for sending a request again when the endpoint may answer it later, as
 	// RetryPolicy describes. The zero value retries nothing.
@@ -87,8 +90,9 @@ var clientHeaders = []string{"Content-Type", "Accept", "Authorization"}
 //
 // A nil httpClient or wireFormat panics by name, as a wiring defect. A baseURL that isn't an
 // absolute http or https URL without query or fragment, a negative attempt count or delay, a
-// BaseDelay above MaxDelay, a Header naming Content-Type, Accept, or Authorization, or an
-// unknown TranscriptionMode is an error.
+// BaseDelay above MaxDelay, a Header name that isn't a header name or that names Content-Type,
+// Accept, or Authorization, a Header value with a control character, or an unknown
+// TranscriptionMode is an error.
 func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts Options) (*Client, error) {
 	if httpClient == nil {
 		panic("ai: New: httpClient is nil; pass the *http.Client that sends the requests")
@@ -145,13 +149,48 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
 func fixedHeader(h http.Header) (http.Header, error) {
 	out := make(http.Header, len(h))
 	for _, name := range slices.Sorted(maps.Keys(h)) {
+		if !validHeaderName(name) {
+			return nil, fmt.Errorf("ai: Options.Header name %q isn't a header name", name)
+		}
 		key := http.CanonicalHeaderKey(name)
 		if slices.Contains(clientHeaders, key) {
 			return nil, fmt.Errorf("ai: Options.Header names %s, which the Client sets", key)
 		}
+		for _, v := range h[name] {
+			if !validHeaderValue(v) {
+				return nil, fmt.Errorf("ai: Options.Header %s has a value with a control character", key)
+			}
+		}
 		out[key] = append(out[key], h[name]...)
 	}
 	return out, nil
+}
+
+// validHeaderName reports whether name is a header field name, a token of RFC 9110, as net/http
+// requires of a header it sends.
+func validHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, c := range []byte(name) {
+		isTchar := 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' ||
+			strings.IndexByte("!#$%&'*+-.^_`|~", c) >= 0
+		if !isTchar {
+			return false
+		}
+	}
+	return true
+}
+
+// validHeaderValue reports whether v is a header field value net/http sends: no control
+// character but the horizontal tab.
+func validHeaderValue(v string) bool {
+	for _, c := range []byte(v) {
+		if (c < ' ' && c != '\t') || c == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // Generate sends req in the Client's format and returns the model's response. It validates req

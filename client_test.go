@@ -124,6 +124,43 @@ func TestNewRefusesHeader(t *testing.T) {
 	}
 }
 
+// TestNewRefusesUnsendableHeader wants a fixed header net/http can't send refused by New, not
+// by every request: a name that isn't a token, and a value with a control character.
+func TestNewRefusesUnsendableHeader(t *testing.T) {
+	cases := []struct {
+		name   string
+		header http.Header
+		want   string
+	}{
+		{"empty name", http.Header{"": {"x"}}, "isn't a header name"},
+		{"name with a space", http.Header{"X Key": {"x"}}, "isn't a header name"},
+		{"name with a colon", http.Header{"X-Key:": {"x"}}, "isn't a header name"},
+		{"value with a newline", http.Header{"X-Key": {"a\r\nX-Injected: b"}}, "control character"},
+		{"value with a NUL", http.Header{"X-Key": {"ok", "a\x00b"}}, "control character"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(), ai.Options{Header: tc.header})
+			if err == nil || !strings.HasPrefix(err.Error(), "ai: ") || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("New = %v, %v; want an error containing %q", c, err, tc.want)
+			}
+		})
+	}
+}
+
+// TestNewTakesSendableHeader wants a fixed header of a token name and a value of a tab and
+// non-ASCII bytes sent as it is.
+func TestNewTakesSendableHeader(t *testing.T) {
+	srv := aitest.NewServer(t, http.StatusOK, okReply)
+	c := newClient(t, srv.URL, ai.Options{Header: http.Header{"X-Key_1!": {"a\tb é"}}})
+	if _, err := c.Generate(t.Context(), hello()); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got := srv.Only(t).Header.Get("X-Key_1!"); got != "a\tb é" {
+		t.Errorf("X-Key_1! = %q, want %q", got, "a\tb é")
+	}
+}
+
 func TestNewMakesNoRequest(t *testing.T) {
 	srv := aitest.NewServer(t, http.StatusOK, okReply)
 	called := false
