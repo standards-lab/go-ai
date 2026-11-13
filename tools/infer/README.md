@@ -34,8 +34,9 @@ prints its help.
 ## Configuration
 
 Each run talks to one endpoint, in one wire format. Every setting but the token and the headers
-is a flag over an `INFER_` variable: the flag wins when it is given, even as an empty value, and the variable
-applies otherwise. The root flags are accepted at any depth, before or after the command.
+is a flag over an `INFER_` variable: the flag wins when it is given, even as an empty value, and
+the variable applies otherwise. The root flags are accepted at any depth, before or after the
+command.
 
 | flag | variable | default | read by |
 | --- | --- | --- | --- |
@@ -62,8 +63,8 @@ applies otherwise. The root flags are accepted at any depth, before or after the
   more `Name: value` lines separated by newlines, each line trimmed of surrounding space and a
   blank line skipped. Like the token, it has no flag, since a value such as a key is a secret and
   may hold a comma, and the root help names it under `Environment:`. A line with no colon or no
-  name, a name infer sets itself, `Authorization`, `Content-Type`, or `Accept`, or a name or value
-  that can't be sent, such as a name with a space, exits 2 before any request, naming
+  name, a name go-ai sets itself (`Authorization`, `Content-Type`, or `Accept`), or a name or
+  value that can't be sent, such as a name with a space, exits 2 before any request, naming
   `INFER_HEADER` and never echoing the value. The bearer token goes in `INFER_TOKEN`, not here.
 - `--retries` is the most attempts of each request, the first included, so `3` retries twice; `0`
   or `1` retries nothing. A request is sent again on a 408, 429, 502, 503, or 504 reply, or a
@@ -99,7 +100,7 @@ of at most `--retry-base-delay`, doubling for each retry after it, and never abo
 `--retry-max-delay`. A reply's Retry-After replaces the backoff, and one longer than
 `--retry-max-delay` ends the retries, returning the last error at once. So:
 
-- With `--retry-max-delay` unset, `0`, any Retry-After above 0 ends the retries at once, and
+- With `--retry-max-delay` unset or `0`, any Retry-After above 0 ends the retries at once, and
   retries that need no Retry-After are sent with no wait.
 - A base delay needs a max delay at least as long: `--retry-base-delay 500ms` alone exits 2.
 
@@ -269,8 +270,8 @@ $ infer --format messages transcribe --mode chat clip.wav
 infer transcribe: --mode chat needs a format that carries audio; --format messages doesn't: ai: transcribe: messages: input 0: content 0: part protocol.InputAudio has no Messages form
 ```
 
-A chat-mode reply that isn't completed exits 1 naming its status and reason, and
-writes no transcript.
+A chat-mode reply that isn't completed exits 1 naming its status and reason, and writes no
+transcript.
 
 ```sh
 infer transcribe --mode chat clip.wav
@@ -320,8 +321,10 @@ a scenario whose variable is unset skips, naming it. A role whose endpoint requi
 takes them from two optional variables, as go-ai's tier does: `AI_<ROLE>_TOKEN`, mapped onto
 `INFER_TOKEN`, and `AI_<ROLE>_HEADER`, one or more `Name: value` lines, mapped onto
 `INFER_HEADER`. They reach the program through the test's environment, not the overrides each
-run logs as a shell line, so no scenario's log, failing or not, shows a token or header value.
-`mise run integration` runs the tier verbose:
+run logs as a shell line, so no scenario's log, failing or not, shows a token or header value. A
+credentials scenario, against a loopback endpoint the suite serves, never skips: it checks that
+the token and header reach the endpoint and that the log shows neither. `mise run integration`
+runs the tier verbose:
 
 ```sh
 AI_AGENT_BASE_URL=http://localhost:8000/v1 mise run integration

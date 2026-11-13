@@ -23,12 +23,12 @@ go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
   `INFER_MODEL`, the flag winning when given. `--format` is `completions`, `messages`, or
   `responses`, and `completions` when unset. The bearer token is `INFER_TOKEN`'s alone, never a
   flag's, and an empty one sends none. `INFER_HEADER`, never a flag's either, holds headers sent
-  with every request, such as a gateway's `api-key`, one `Name: value` per line, each line trimmed
-  and a blank one skipped; a line with no colon or no name, a name of `Authorization`,
-  `Content-Type`, or `Accept`, or a name or value that can't be sent exits 2 before any request,
-  naming `INFER_HEADER` and never echoing the value. The root help names both under
-  `Environment:`. A missing base URL, an unknown format, or a value go-ai's
-  `New` refuses exits 2 before any request, naming the flag and its variable.
+  with every request, such as a gateway's `api-key`, one `Name: value` per line, each line
+  trimmed and a blank one skipped. A header line with no colon or no name, a name of
+  `Authorization`, `Content-Type`, or `Accept`, or a name or value that can't be sent exits 2
+  before any request, naming `INFER_HEADER` and never echoing the value. The root help names both
+  variables under `Environment:`. A missing base URL, an unknown format, or a value go-ai's `New`
+  refuses exits 2 before any request, naming the flag and its variable.
 - The one-model fallback: with no model set, `embed`, `chat`, and `transcribe` list the
   endpoint's models first and send to the one listed, so an endpoint that serves one model needs
   no `--model`. An endpoint that lists none exits 1 saying so, and one that lists several exits 1
@@ -42,19 +42,20 @@ go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
   `--instructions`, `--image` (repeatable: a file inlined as a data URL, or an http(s) URL as
   given), `--reasoning`, `--max-tokens`, and `--native`, a JSON object merged into the request's
   top level. A request go-ai's validation or the format's encoding refuses, such as a
-  `--max-tokens` below 16, exits 2 before any request. It streams by default, writing each text
-  delta as it arrives; `--stream=false` sends one unstreamed request. Either way it writes the
-  reply's status, token usage, and reasoning item count to stderr, as in `usage: 78 input tokens,
-  38 output tokens (27 reasoning), 116 total tokens`, or `(reasoning not reported)` through
-  `messages`, whose usage doesn't count reasoning tokens; a
-  reply that isn't completed keeps the text written and exits 1 naming its status and reason, as
-  in `incomplete: max_output_tokens`.
+  `--max-tokens` below 16, exits 2 before any request, naming the flag to change. It streams by
+  default, writing each text delta as it arrives; `--stream=false` sends one unstreamed request.
+  Either way it writes the reply's status, token usage, and reasoning item count to stderr, as
+  in `usage: 78 input tokens, 38 output tokens (27 reasoning), 116 total tokens`, or `(reasoning
+  not reported)` through `messages`, whose usage doesn't count reasoning tokens. A reply that
+  isn't completed keeps the text written and exits 1 naming its status and reason, as in
+  `incomplete: max_output_tokens`.
 - `transcribe`, which sends one audio file, opened again for each attempt, and writes its
   transcript, with the token usage on stderr. `--mode`, over `INFER_TRANSCRIPTION_MODE`, is
   `route`, the endpoint's transcription route, when unset, or `chat`, a chat request in the
-  format, for an endpoint whose audio model has no transcription route. Chat mode through a
-  format that can't carry audio exits 1 before the file is opened; an incomplete chat-mode reply
-  exits 1 naming its status and reason.
+  format, for an endpoint whose audio model has no transcription route. A route-mode 404 exits 1
+  with a hint to try `--mode chat`. Chat mode through a format that can't carry audio exits 1
+  before the file is opened, naming `--mode` and `--format`; an incomplete chat-mode reply exits 1
+  naming its status and reason.
 - Retry, opt-in through the root flags `--retries`, `--retry-base-delay`, and
   `--retry-max-delay`, over `INFER_RETRIES`, `INFER_RETRY_BASE_DELAY`, and
   `INFER_RETRY_MAX_DELAY`, which set go-ai's retry policy for every command; unset retries

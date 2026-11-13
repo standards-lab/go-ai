@@ -22,4 +22,9 @@ client and processing layers").
   bound on a started stream.
 - **infer**: the CLI in `tools/infer`, over the client's released surface: the commands models,
   embed, chat, and transcribe against one endpoint per run, set by flags over `INFER_` variables,
-  with a fallback to the one model the endpoint lists.
+  with credentials from `INFER_TOKEN` and `INFER_HEADER` alone and a fallback to the one model the
+  endpoint lists. `tools/infer/quickstart.md` tours each command and each failure with real
+  output.
+- **Integration tiers**: go-ai's and infer's, run by `mise run integration` against one endpoint
+  per role, named by `AI_<ROLE>_BASE_URL`, with the role's optional credentials in
+  `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER`.

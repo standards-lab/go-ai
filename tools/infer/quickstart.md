@@ -1,8 +1,7 @@
 # infer quickstart
 
 This guide walks through `infer` from install to each command, then through the ways a command
-fails. [README.md](README.md) is the reference for every flag, variable, and exit code; this is
-the guided tour.
+fails. [README.md](README.md) is the reference for every flag, variable, and exit code.
 
 Every output below is from a real run. Outputs vary by model, so each section names the model
 its output came from. The endpoint addresses, such as `http://localhost:8000/v1`, are
@@ -112,7 +111,8 @@ With a model set, nothing is listed first.
 
 ### A credential
 
-This part is setup only: these endpoints take no credential, so it has no output to show.
+The endpoints this guide ran against take no credential, so this section is setup only, with no
+output.
 
 An endpoint that takes a bearer token takes it from `INFER_TOKEN`:
 
@@ -129,7 +129,7 @@ export INFER_HEADER='api-key: <your key>'
 ```
 
 Several headers go on separate lines of the one variable. `INFER_HEADER` refuses
-`Authorization`, `Content-Type`, and `Accept`, which infer sets itself. The bearer token goes in
+`Authorization`, `Content-Type`, and `Accept`, which go-ai sets itself. The bearer token goes in
 `INFER_TOKEN`.
 
 ## models
@@ -532,7 +532,7 @@ Usage: infer models [flags]
 Run 'infer models --help' for details.
 ```
 
-Exits 2. infer sets `Authorization` itself, from `INFER_TOKEN`. Put the token in `INFER_TOKEN`
+Exits 2. go-ai sets `Authorization` itself, from the token in `INFER_TOKEN`. Put the token in `INFER_TOKEN`
 and keep `INFER_HEADER` for a header of the endpoint's own, such as `api-key`. The message names
 the header but never echoes its value: `s3cret-value` appears nowhere in it. A line with no colon
 is refused by its line number alone:
@@ -544,7 +544,7 @@ Usage: infer models [flags]
 Run 'infer models --help' for details.
 ```
 
-#### --retries -1
+#### A negative --retries
 
 ```text
 $ infer models --retries -1

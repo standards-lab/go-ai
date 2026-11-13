@@ -826,6 +826,7 @@ go-ai/                        module github.com/standards-lab/go-ai
     ├── go.mod                go-ai v0.1.0, go-cli-sdk v0.4.0, go-core v0.12.0
     ├── CHANGELOG.md          infer's
     ├── README.md
+    ├── quickstart.md         a guided tour of each command and failure, with real output
     ├── cmd/infer/
     ├── integration/          infer's integration tier, behind the integration build tag
     └── internal/
@@ -861,16 +862,17 @@ accepted at any depth, each override a variable, `INFER_BASE_URL`, `INFER_FORMAT
 `completions` when neither is given; the format package's typed constructor is chosen in
 `infrastructure.go` alone, the caller's composition root (finding 3). The bearer token is
 `INFER_TOKEN`'s alone, never a flag's, so it never enters a command line, and an empty one sends
-none. A credential sent in a header of its own, such as a gateway's or a cloud endpoint's
-`api-key`, is `INFER_HEADER`'s, also never a flag's: one or more `Name: value` lines separated by
-newlines, each trimmed and a blank one skipped, sent through `Options.Header` by all three client
-nodes. A line with no colon or no name is infer's refusal; a name the client sets or a name or
-value net/http can't send is `ai.New`'s, attributed to `INFER_HEADER` by putting the headers to
-`ai.New` alone, as the other settings are; no refusal echoes a value. The root help names both
-under `Environment:`, a go-cli-sdk `Footer`, since no flag section lists them. A missing base URL, an unknown format, or a value `ai.New` refuses is a usage error, exit
-2, naming the flag and its variable, before any request. An endpoint and model per capability is
-a long-running program's need, not a one-shot client's: a run that wants another endpoint is
-another run.
+none. `INFER_HEADER`, also never a flag's, holds a credential sent in a header of its own, such
+as a gateway's or a cloud endpoint's `api-key`: one or more `Name: value` lines separated by
+newlines, each trimmed and a blank one skipped, which all three client nodes send through
+`Options.Header`. `infer` refuses a line with no colon or no name. `ai.New` refuses a name the
+client sets or a name or value net/http can't send, and `infer` attributes that refusal to
+`INFER_HEADER` by putting the headers to `ai.New` alone, as it does each other setting. No
+refusal echoes a value. The root help names both variables under `Environment:`, a go-cli-sdk
+`Footer`, since no flag section lists them. A missing base URL, an unknown format, or a value
+`ai.New` refuses is a usage error, exit 2, naming the flag and its variable, before any request.
+An endpoint and model per capability is a long-running program's need, not a one-shot client's:
+a run that wants another endpoint is another run.
 
 **The one-model fallback.** With no model set, a command that sends to a model lists the
 endpoint's models through `Client.Models` first and sends to the one listed. A purpose base URL
@@ -894,21 +896,23 @@ alone:
   http(s) URL as given), `--reasoning`, `--max-tokens`, and `--native`, raw JSON merged into the
   request's top level through `Native`, the native tier (finding 25). It checks the request with
   `protocol.Request.Validate` and the format's own encoding before anything is sent, so a refusal
-  is a usage error, exit 2. go-ai's errors carry no field, so the flag to change is found by
-  checking the request again with each flag's field alone put back to a value every format
-  accepts, as `ai.New`'s refusals are attributed; when exactly one such request is accepted, its
-  flag precedes go-ai's reason, as in `--max-tokens: protocol: request's max output tokens 15 is
-  below the minimum, 16`, or `--format messages needs --max-tokens: ` when none was given, and
-  otherwise go-ai's reason stands alone. It streams through `Client.GenerateStream` by default, writing each
-  `OutputTextDelta` as it arrives and folding the events with `protocol.Accumulator`;
-  `--stream=false` sends one request through `Client.Generate`. Either way it writes the reply's
-  status, its usage, and its count of reasoning items to stderr, the reasoning tokens shown as
-  part of the output, as in `usage: 78 input tokens, 38 output tokens (27 reasoning), 116 total
-  tokens`. go-ai v0.1.0 decodes an absent reasoning count as zero, so through `messages`, whose
-  usage has none, the line says `(reasoning not reported)`; the format, not the count, decides,
-  and the check is in `infrastructure.go`, which alone names a format package. A
-  reply that isn't completed keeps the text written and exits 1 naming its status and reason, as
-  in `incomplete: max_output_tokens`.
+  is a usage error, exit 2. go-ai's errors carry no field, so `infer` finds the flag to change as
+  it attributes `ai.New`'s refusals: it checks the request again once per flag, with that flag's
+  field alone put back to a value every format accepts. When exactly one of these requests is
+  accepted, its flag precedes go-ai's reason, as in `--max-tokens: protocol: request's max output
+  tokens 15 is below the minimum, 16`, or `--format messages needs --max-tokens: ` when no
+  `--max-tokens` was given. When none is accepted, as with two flags each refused, the flag is
+  the one whose request is refused for a different reason, the errors compared whole. Otherwise,
+  as with two flags refused only together, go-ai's reason stands alone. It streams through
+  `Client.GenerateStream` by default, writing each `OutputTextDelta` as it arrives and folding
+  the events with `protocol.Accumulator`; `--stream=false` sends one request through
+  `Client.Generate`. Either way it writes the reply's status, its usage, and its count of
+  reasoning items to stderr, the reasoning tokens shown as part of the output, as in `usage: 78
+  input tokens, 38 output tokens (27 reasoning), 116 total tokens`. go-ai v0.1.0 decodes an
+  absent reasoning count as zero, so through `messages`, whose usage has none, the line says
+  `(reasoning not reported)`. The format, not the count, decides, and `infrastructure.go`, which
+  alone names a format package, makes the check. A reply that isn't completed keeps the text
+  written and exits 1 naming its status and reason, as in `incomplete: max_output_tokens`.
 - **`transcribe`** sends one audio file through `Client.Transcribe`, its `Open` opening the file
   again for each attempt, and writes the transcript, with the usage on stderr. `--mode`, over
   `INFER_TRANSCRIPTION_MODE`, sets `Options.TranscriptionMode`: `route`, the default, or `chat`,
@@ -932,14 +936,16 @@ zero value and retries nothing (finding 7). `chat`'s `--idle-timeout`, over `INF
 sets `Options.StreamIdleTimeout` (the surface section, decision 7). A negative, inverted, or
 unparsable value is a usage error, exit 2, naming the flag and its variable; `ai.New` is the
 authority on what it refuses. A base delay above zero with the max delay unset or zero, which
-`ai.New` refuses as above its most delay, is worded as what to change: `--retry-base-delay
-(INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long`. So each is a string flag, parsed in its node, and its usage
+`ai.New` refuses as "above its most delay", gets a message that says what to change:
+`--retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at
+least as long`. Each of these four flags is a string flag that its node parses, and its usage
 backquotes the type it is parsed as, which `flag.UnquoteUsage`, and so go-cli-sdk's help, shows
-in place of `string`: `--retries int`, and `duration` for the delays and the timeout. The transcription mode and the idle bound each belong to one
-command, so each reaches a client node of its own, the transcriber and the chat client, built by
-the same constructor as the client the other commands share: no other command reads their
-variables, and an unknown mode never refuses a chat. With `--retry-max-delay` unset, a Retry-After above zero ends the retries
-at once, as `MaxDelay` caps every wait (finding 13), so a working policy sets all three.
+in place of `string`: `--retries int`, and `duration` for the delays and the timeout. The
+transcription mode and the idle bound each belong to one command, so each reaches a client node
+of its own, the transcriber and the chat client, built by the same constructor as the client the
+other commands share: no other command reads their variables, and an unknown mode never refuses
+a chat. With `--retry-max-delay` unset, a Retry-After above zero ends the retries at once, as
+`MaxDelay` caps every wait (finding 13), so a working policy sets all three.
 
 **Two test tiers.** The unit tier runs the App in-process against loopback `httptest` endpoints,
 with `infer`'s own fixtures in `internal/apptest`, never go-ai's internal helpers, and asserts
@@ -948,10 +954,11 @@ integration build tag, builds `cmd/infer` and runs it one shot at a time on go-c
 `processtest`, mapping each `AI_<ROLE>_BASE_URL` the base module's tier reads (finding 41) onto
 `INFER_BASE_URL` after clearing every `INFER_` variable, with no model set, so each role's
 endpoint must list one; a scenario whose variable is unset skips. Both tiers read a role's
-optional credentials, `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER`, the base module's into
-`Options.Token` and `Options.Header`, `infer`'s onto `INFER_TOKEN` and `INFER_HEADER` through the
-test's environment rather than a run's logged overrides, so no failing scenario prints a value. `mise run integration` runs it
-after the base module's tier; no CI job runs either.
+optional credentials, `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER`. The base module's tier puts them
+in `Options.Token` and `Options.Header`; `infer`'s maps them onto `INFER_TOKEN` and
+`INFER_HEADER` in the test's environment rather than in a run's logged overrides, so no failing
+scenario prints a value. `mise run integration` runs it after the base module's tier; no CI job
+runs either.
 
 ### What each task adds
 

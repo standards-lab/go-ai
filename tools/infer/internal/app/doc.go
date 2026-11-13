@@ -61,10 +61,11 @@
 // JSON object merged into the request's top level. A request go-ai's
 // Validate or the format's encoding refuses is a usage error, exit 2,
 // before any request, naming the flag to change ahead of go-ai's reason,
-// the one whose value the reason is about when two are refused, as in "--max-tokens: protocol: request's
-// max output tokens 15 is below the minimum, 16", or "--format messages
-// needs --max-tokens: " ahead of messages' refusal of none. It streams by default, writing each text delta as
-// it arrives; --stream=false sends one unstreamed request. Either way it
+// the one whose value the reason is about when two are refused, as in
+// "--max-tokens: protocol: request's max output tokens 15 is below the
+// minimum, 16", or "--format messages needs --max-tokens: " ahead of
+// messages' refusal of none. It streams by default, writing each text
+// delta as it arrives; --stream=false sends one unstreamed request. Either way it
 // ends the text with a newline and writes the reply's status, token usage,
 // and reasoning item count to stderr, the reasoning tokens as part of the
 // output, as in "usage: 78 input tokens, 38 output tokens (27 reasoning),
