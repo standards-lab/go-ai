@@ -12,7 +12,8 @@
 //     configuration, and the go-ai client of the one endpoint a run talks
 //     to; it is the one file that names a format package;
 //   - domain.go: defineDomain and mountDomain, infer's commands over the
-//     client, models first;
+//     client, models and embed, and resolveModel, the one-model fallback
+//     each command that sends to a model resolves its model with;
 //   - version.go: the version command, which declares no nodes.
 //
 // Each run talks to one endpoint. The root flags --base-url, --format, and
@@ -23,6 +24,14 @@
 // none. A missing base URL, an unknown format, or a base URL go-ai's New
 // refuses is a usage error, exit 2, naming the flag and its variable,
 // before any request.
+//
+// With no model set, a command that sends to a model lists the endpoint's
+// models first and sends to the one listed; none, or several, exits 1,
+// several named in the endpoint's order, as in "several models: agent,
+// vision; pass --model". A set model lists nothing first. embed sends its
+// inputs, each argument or else each line of stdin, as one batch, and
+// writes one JSON array of numbers per input, one per line, in input order,
+// and the token usage to stderr.
 //
 // [Nodes] holds one handle per node: each define function fills its own
 // part of one Nodes value, and its constructors read the lower layers'

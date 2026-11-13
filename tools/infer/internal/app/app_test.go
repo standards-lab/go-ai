@@ -48,9 +48,15 @@ type harness struct {
 // over fresh buffers and empty standard input.
 func newHarness(t *testing.T, env map[string]string) *harness {
 	t.Helper()
+	return newHarnessIn(t, env, "")
+}
+
+// newHarnessIn is [newHarness] with stdin as standard input.
+func newHarnessIn(t *testing.T, env map[string]string, stdin string) *harness {
+	t.Helper()
 	apptest.Env(t, env)
 	h := &harness{stdout: new(bytes.Buffer), stderr: new(bytes.Buffer)}
-	h.app = app.New(cli.Streams{Stdin: strings.NewReader(""), Stdout: h.stdout, Stderr: h.stderr})
+	h.app = app.New(cli.Streams{Stdin: strings.NewReader(stdin), Stdout: h.stdout, Stderr: h.stderr})
 	h.built = apptest.Builds(h.app)
 	return h
 }
@@ -99,7 +105,7 @@ func TestRun_RootHelp(t *testing.T) {
 			r := runApp(t, unreadable(e.URL), args...)
 
 			wantCode(t, r, process.ExitUsage)
-			for _, want := range []string{"version", "models", "--base-url", "INFER_BASE_URL", "--format", "INFER_FORMAT", "--model", "INFER_MODEL"} {
+			for _, want := range []string{"version", "models", "embed", "--base-url", "INFER_BASE_URL", "--format", "INFER_FORMAT", "--model", "INFER_MODEL"} {
 				if !strings.Contains(r.stdout, want) {
 					t.Errorf("stdout = %q, want the root help naming %s", r.stdout, want)
 				}

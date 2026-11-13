@@ -1,9 +1,12 @@
 package apptest
 
 import (
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -158,6 +161,48 @@ func Models(ids ...string) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	})
+}
+
+// Embeddings returns a handler that answers POST /v1/embeddings with the
+// OpenAI-compatible embeddings reply of vectors, vectors[i] at index i, as
+// encoding_format base64 shapes it, and usage of promptTokens and
+// totalTokens; it answers any other request with 404. It replies with
+// vectors whatever the request's input, so a test gives one vector per
+// input it sends.
+func Embeddings(promptTokens, totalTokens int, vectors ...[]float32) http.Handler {
+	type item struct {
+		Object    string `json:"object"`
+		Index     int    `json:"index"`
+		Embedding string `json:"embedding"`
+	}
+	type usage struct {
+		PromptTokens int `json:"prompt_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	}
+	reply := struct {
+		Object string `json:"object"`
+		Data   []item `json:"data"`
+		Usage  usage  `json:"usage"`
+	}{Object: "list", Data: []item{}, Usage: usage{PromptTokens: promptTokens, TotalTokens: totalTokens}}
+	for i, v := range vectors {
+		b := make([]byte, 4*len(v))
+		for j, f := range v {
+			binary.LittleEndian.PutUint32(b[4*j:], math.Float32bits(f))
+		}
+		reply.Data = append(reply.Data, item{Object: "embedding", Index: i, Embedding: base64.StdEncoding.EncodeToString(b)})
+	}
+	body, err := json.Marshal(reply)
+	if err != nil {
+		panic(err) // strings and integers always marshal
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/embeddings" {
 			http.NotFound(w, r)
 			return
 		}

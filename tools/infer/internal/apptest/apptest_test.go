@@ -157,3 +157,35 @@ func get(t *testing.T, url, auth string) string {
 	}
 	return string(body)
 }
+
+// Embeddings answers POST /v1/embeddings with each vector, as base64 of
+// little-endian float32s at its index, and the usage; any other request
+// is 404.
+func TestEmbeddings_Reply(t *testing.T) {
+	e := apptest.Serve(t, apptest.Embeddings(3, 4, []float32{1, -2}, []float32{}))
+
+	post, err := http.Post(e.URL+"/embeddings", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = post.Body.Close() }()
+	body, err := io.ReadAll(post.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := http.Get(e.URL + "/embeddings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = other.Body.Close()
+
+	// 1 is 0x3f800000 and -2 is 0xc0000000, each little-endian.
+	want := `{"object":"list","data":[{"object":"embedding","index":0,"embedding":"AACAPwAAAMA="},` +
+		`{"object":"embedding","index":1,"embedding":""}],"usage":{"prompt_tokens":3,"total_tokens":4}}`
+	if string(body) != want {
+		t.Errorf("reply = %s, want %s", body, want)
+	}
+	if other.StatusCode != http.StatusNotFound {
+		t.Errorf("GET /v1/embeddings status = %d, want %d", other.StatusCode, http.StatusNotFound)
+	}
+}
