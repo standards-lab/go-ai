@@ -178,6 +178,12 @@ reads the clip whole and sends one request in the client's own format: the clip 
 its format from `FileName`'s extension (.wav or .mp3), beside an instruction, `Prompt` or else
 `ai.TranscriptionInstruction(Language)`. It needs a format that carries audio, as Chat Completions
 does; a format that refuses audio, such as Messages, is refused before anything is sent.
+`Language` is a name, such as "English", which the instruction reads as given.
+
+Like the route, chat mode returns a whole transcript or an error. A reply the model didn't
+complete, such as one stopped at the engine's output token bound, returns an
+`*ai.IncompleteTranscriptError` and no transcript, and isn't retried, since the same clip meets
+the same bound again.
 
 ```go
 audio, err := ai.New("http://localhost:8002/v1", httpClient, completions.New(), ai.Options{
@@ -189,7 +195,11 @@ tr, err := audio.Transcribe(ctx, &ai.TranscriptionRequest{
 	FileName: "clip.wav",
 	Language: "English",
 })
-// tr.Text is the reply's output text, and tr.Usage its usage
+var incomplete *ai.IncompleteTranscriptError
+if errors.As(err, &incomplete) {
+	// incomplete.Status and incomplete.Reason, such as protocol.ReasonMaxOutputTokens
+}
+// otherwise tr.Text is the reply's output text, and tr.Usage its usage
 ```
 
 ## Development

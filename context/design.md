@@ -359,9 +359,11 @@ The nine items the evaluation left open, each decided with its reason:
    that can't be used is an error.
 3. **`Options.Header` carries fixed request headers.** It serves Anthropic's `x-api-key` and a
    gateway's consumer-key header, should the gateway ask for one, without a `RoundTripper` of the
-   caller's. `Token` stays the bearer token, called once per attempt. A header the format sets,
-   such as `anthropic-version`, replaces one of the same name; one naming `Content-Type`,
-   `Accept`, or `Authorization`, which the client sets, is refused by `New`.
+   caller's. `Token` stays the bearer token, called once per attempt. Names that differ only in
+   case are one header. A header the format sets, such as `anthropic-version`, replaces one of
+   the same name. `New` refuses one naming `Content-Type`, `Accept`, or `Authorization`, which
+   the client sets, and one net/http can't send: a name that isn't a header name, or a value
+   with a control character.
 4. **go-ai ships no Open Responses SSE encoder; a caller maps the events itself** (finding 21).
    A service relays progress as its own event shapes, not as Open Responses' wire, and a chat
    stream's server-sent events are go-web-sdk's SSE helper's (data-intelligence). The events are
@@ -401,12 +403,14 @@ The nine items the evaluation left open, each decided with its reason:
    whose status isn't completed, most often one incomplete because the model stopped at the
    engine's output token bound, which a chat-mode request can't raise, returns an
    `*IncompleteTranscriptError` naming the status, the reason, its cause, and what to do, and no
-   `Transcription`. It is not retried, as the same clip meets the same bound again. Chat mode needs a format that carries audio, Chat Completions today; a
-   format that refuses audio, such as Messages, any `Native` form field, and an extension other
-   than .wav or .mp3 are refused before the clip is opened or anything is sent. `New` refuses any
-   other mode. The mode is the caller's, set once per client: probing the route and falling back
-   to chat would cost a request per call and hide a misconfigured endpoint, and pinning Chat
-   Completions in the root package would make the transport name a format.
+   `Transcription`. It is not retried, as the same clip meets the same bound again. Chat mode
+   needs a format that carries audio, Chat Completions today. Before the clip is opened or
+   anything is sent, it encodes a request of the same shape with a placeholder clip, so a format
+   that refuses audio, such as Messages, refuses it there; any `Native` form field and an
+   extension other than .wav or .mp3 are refused earlier still. `New` refuses any other mode.
+   The mode is the caller's, set once per client: probing the route and falling back to chat
+   would cost a request per call and hide a misconfigured endpoint, and pinning Chat Completions
+   in the root package would make the transport name a format.
 
 ### The root package
 
@@ -445,8 +449,9 @@ type Client struct{ /* unexported */ }
 
 // New returns a Client and makes no request. A nil httpClient or wireFormat panics by name.
 // A baseURL that isn't an absolute http or https URL without query or fragment, a negative
-// attempt count or delay, a BaseDelay above MaxDelay, a Header naming Content-Type, Accept,
-// or Authorization, or an unknown TranscriptionMode is an error.
+// attempt count or delay, a BaseDelay above MaxDelay, a Header name that isn't a header name or
+// that names Content-Type, Accept, or Authorization, a Header value with a control character, or
+// an unknown TranscriptionMode is an error.
 func New(baseURL string, httpClient *http.Client, wireFormat format.Format,
     opts Options) (*Client, error)
 
@@ -780,8 +785,9 @@ infer task `tools/infer`.
    `v0.1.0` to `v0.4.0` name `github.com/JaimeStill/spike-ai-pipeline-client`, another module
    path, so no version of go-ai's own precedes them, and its changelog carries none of the spike's
    entries (finding 48). Both modules stay below 1.0: the surface is open to change until its
-   callers build on it and the acceptance task proves it against set A and the live gateway,
-   and every library of the standard beneath it, go-core included, is still at v0.
+   callers build on it and the acceptance task proves it against the workstations' vLLM
+   endpoints and the live gateway, and every library of the standard beneath it, go-core
+   included, is still at v0.
 7. **The library task releases the root; the infer task releases `tools/infer`.** The release
    ripples bottom-up: `infer` pins the root release it was validated against, so the root is
    tagged first, and a later change spanning both releases the same way. `infer`'s versions move
@@ -986,7 +992,7 @@ package's other declarations port as the spike has them.
 - `Options.Retry` is a `RetryPolicy` value; `RetryPolicy.check` no longer refuses zero attempts,
   and a `MaxAttempts` of 0 sends one (finding 7).
 - `Options.Header` is added, and `New` refuses one naming `Content-Type`, `Accept`, or
-  `Authorization` (finding 12; decision 3).
+  `Authorization`, and one net/http can't send (finding 12; decision 3).
 - `Options.StreamIdleTimeout` is added, bounding each read of a started stream in `stream.go`
   (finding 22; decision 7).
 - `retry.go`'s set adds 502 and 504 (finding 13; decision 8).
@@ -1062,5 +1068,5 @@ subcommands over the base module's surface (modules, "infer's module").
   the spike's three client rules, two of them changed (finding 53).
 - **The retry proof against the live gateway's 429, 503, and Retry-After** (acceptance), once
   spike-model-gateway runs (finding 17).
-- **The infer rerun against set A** (data-intelligence, "Gates"), through the formats the
-  processing layer's endpoints use, and the fixes it finds (acceptance).
+- **The infer rerun against the workstations' vLLM endpoints** (data-intelligence, "Gates"),
+  through the formats the processing layer's endpoints use, and the fixes it finds (acceptance).
