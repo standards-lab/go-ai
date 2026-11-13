@@ -63,7 +63,7 @@ func TestEmbedWireRequest(t *testing.T) {
 			t.Errorf("%s = %q, want %q", k, v, want)
 		}
 	}
-	// The empty input goes out as it is: llama.cpp b11669 embeds it.
+	// The empty input goes out as it is: llama.cpp embeds it.
 	if want := `{"model":"m","input":["a",""],"encoding_format":"base64"}`; string(got.Body) != want {
 		t.Errorf("body = %s\nwant   %s", got.Body, want)
 	}

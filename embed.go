@@ -25,8 +25,8 @@ type EmbeddingRequest struct {
 	// Model is the embedding model's id. It is required.
 	Model string
 	// Input is the texts to embed, at least one, sent as one request: how large a batch is, and
-	// how many run at once, are the caller's. An empty string is sent as it is: llama.cpp
-	// b11669 embeds it, and an endpoint that refuses it answers with an *APIError.
+	// how many run at once, are the caller's. An empty string is sent as it is: llama.cpp embeds
+	// it, and an endpoint that refuses it answers with an *APIError.
 	Input []string
 	// Native is the native tier: a JSON object whose members are merged into the top level of
 	// the wire body as they are, for a feature of the endpoint the typed fields don't cover,

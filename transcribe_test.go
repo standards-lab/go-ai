@@ -20,10 +20,13 @@ import (
 	"time"
 
 	"github.com/standards-lab/go-ai"
+	"github.com/standards-lab/go-ai/format"
+	"github.com/standards-lab/go-ai/format/messages"
+	"github.com/standards-lab/go-ai/format/responses"
 	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
-// transcribeReply is llama.cpp b11669's transcription reply, as gb10-2 sends it.
+// transcribeReply is llama.cpp's transcription reply, as gb10-2 sends it.
 const transcribeReply = `{"type":"transcript.text.done","text":"The access code is 7429.",` +
 	`"usage":{"type":"tokens","input_tokens":174,"output_tokens":11,"total_tokens":185,` +
 	`"input_tokens_details":{"cached_tokens":169}}}`
@@ -215,6 +218,45 @@ func TestTranscribeDecodesReply(t *testing.T) {
 	}
 	if *got != want {
 		t.Errorf("Transcribe = %+v, want %+v", *got, want)
+	}
+}
+
+// TestTranscribeAnyFormat wants a route-mode Transcribe to upload the clip as a multipart form to
+// the OpenAI-compatible transcription route on a Client of a format whose own route is
+// elsewhere, with none of the format's headers, and decode the route's reply.
+func TestTranscribeAnyFormat(t *testing.T) {
+	formats := map[string]format.Format{"messages": messages.New(), "responses": responses.New(responses.Options{})}
+	for name, wireFormat := range formats {
+		t.Run(name, func(t *testing.T) {
+			srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
+			c, err := ai.New(srv.URL+"/v1", http.DefaultClient, wireFormat, ai.Options{})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
+				Model: "m", Open: open(strings.NewReader("RIFF")), FileName: "clip.wav",
+			})
+			if err != nil {
+				t.Fatalf("Transcribe: %v", err)
+			}
+			if got.Text != "The access code is 7429." {
+				t.Errorf("Text = %q, want the route's text", got.Text)
+			}
+			req := srv.Only(t)
+			if req.Method != http.MethodPost || req.Path != "/v1/audio/transcriptions" {
+				t.Errorf("request = %s %s, want POST /v1/audio/transcriptions", req.Method, req.Path)
+			}
+			if v := req.Header.Get("Anthropic-Version"); v != "" {
+				t.Errorf("anthropic-version = %q, want none: the format's headers are its route's", v)
+			}
+			parts := readForm(t, req)
+			if file := parts["file"]; string(file.body) != "RIFF" || file.fileName != "clip.wav" {
+				t.Errorf("file part = %q named %q, want the clip named clip.wav", file.body, file.fileName)
+			}
+			if string(parts["model"].body) != "m" {
+				t.Errorf("model field = %q, want m", parts["model"].body)
+			}
+		})
 	}
 }
 
