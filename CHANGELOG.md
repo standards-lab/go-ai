@@ -7,7 +7,7 @@ only; `tools/infer` keeps its own.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-11-12
+## [v0.1.0] - 2026-11-12
 
 The first release of go-ai's base module: a model client over the wire formats the model engines
 serve natively, on the standard library alone. It is ported from spike-ai-pipeline-client v0.4.0
@@ -67,4 +67,4 @@ one.
   `tools/infer/CHANGELOG.md` for a `tools/infer/v*` tag.
 
 [Unreleased]: https://github.com/standards-lab/go-ai/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.1.0
+[v0.1.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.1.0
