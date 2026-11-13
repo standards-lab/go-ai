@@ -202,6 +202,28 @@ if errors.As(err, &incomplete) {
 // otherwise tr.Text is the reply's output text, and tr.Usage its usage
 ```
 
+## infer
+
+`infer` is go-ai's command-line client, in the nested module `tools/infer`, built on the base
+module's released surface alone. Each run talks to the endpoint `--base-url` or `INFER_BASE_URL`
+names, in the format `--format` or `INFER_FORMAT` names, `completions` by default, with the
+bearer token from `INFER_TOKEN` and any headers, such as a gateway's `api-key`, from
+`INFER_HEADER`. With no `--model` set, it sends to the one model the endpoint lists.
+
+```sh
+go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.1.0
+export INFER_BASE_URL=http://localhost:8000/v1
+
+infer models                                  # each model ID, one per line
+infer embed "first passage" "second passage"  # one JSON vector per input, one per line
+infer chat --reasoning low "Is 1009 prime?"   # the reply streamed, its summary on stderr
+infer transcribe --mode chat clip.wav         # the transcript, sent over chat
+```
+
+[tools/infer/quickstart.md](tools/infer/quickstart.md) walks through setup, each command, and
+the ways a command fails, with real output.
+[tools/infer/README.md](tools/infer/README.md) documents every flag, variable, and exit code.
+
 ## Development
 
 The repository uses [mise](https://mise.jdx.dev):
@@ -229,10 +251,25 @@ a variable holding the endpoint's API root, including `/v1`, with no default:
 - `AI_TRANSCRIPTION_BASE_URL`: an endpoint that serves the transcription route, for route-mode
   `Transcribe`.
 
-`mise run integration` runs the tier verbose. A scenario whose variable is unset skips, naming
-it, so with none set the run skips whole. Each scenario sends to the one model its endpoint's
-`/models` lists. The check builds, vets, and lints the tier under its tag but never runs it, and
-no CI job runs it, as the models are on the organization's own machines.
+For an endpoint that requires credentials, such as a gateway or a cloud endpoint, the tier reads
+two optional variables per role: `AI_<ROLE>_TOKEN`, sent as the bearer token through
+`Options.Token`, and `AI_<ROLE>_HEADER`, one or more `Name: value` lines separated by newlines,
+sent through `Options.Header`:
+
+```sh
+AI_AGENT_BASE_URL=https://gateway.example/agent/v1 AI_AGENT_HEADER='api-key: …' mise run integration
+```
+
+With neither set, a role's requests carry no credential. No failing scenario prints a token or a
+header value.
+
+`mise run integration` runs the tier verbose, and then infer's, which runs the built `infer`
+against the same variables, the credentials mapped onto `INFER_TOKEN` and `INFER_HEADER`. A
+scenario whose variable is unset skips, naming it, so with none set go-ai's tier skips whole
+and infer's runs only its baseline and its loopback credentials scenario. Each scenario sends to
+the one model its endpoint's `/models` lists. The check builds, vets, and lints the tier under
+its tag but never runs it, and no CI job runs it, as the models are on the organization's own
+machines.
 
 ## Modules and tags
 
@@ -243,7 +280,8 @@ go-ai/              module github.com/standards-lab/go-ai, tagged v<semver>
 
 The base module is released on `v<semver>` tags, from `v0.1.0`, with its changes in
 [CHANGELOG.md](CHANGELOG.md). `infer` comes as the nested module `tools/infer`, released on
-`tools/infer/v<semver>` tags with its own changelog; a nested module's directory is outside the
+`tools/infer/v<semver>` tags, from `tools/infer/v0.1.0`, with its changes in
+[tools/infer/CHANGELOG.md](tools/infer/CHANGELOG.md); a nested module's directory is outside the
 base module's zip, so importing go-ai never fetches what `infer` requires. A tag of either form
 makes a GitHub release from its module's changelog. Both modules stay below 1.0 while the surface
 settles.

@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -42,18 +41,20 @@ const agentBound = 1024
 // generation only, which on a reasoning model takes tens of seconds.
 const requestTimeout = 3 * time.Minute
 
-// endpoint returns a Client of r's endpoint, speaking f, adjusted by opts, and the one model the
-// endpoint lists. It skips t when r's variable is unset, and fails t when New refuses the URL,
-// the model list can't be had, or it names other than exactly one model.
+// endpoint returns a Client of r's endpoint, speaking f, adjusted by opts and by r's
+// credentials, AI_<ROLE>_TOKEN and AI_<ROLE>_HEADER, as newClient reads them, and the one model
+// the endpoint lists. It skips t when r's variable is unset, and fails t when a credential
+// doesn't parse, New refuses the URL or the credentials, the model list can't be had, or it
+// names other than exactly one model; no failure prints a token or header value.
 func endpoint(t *testing.T, r role, f format.Format, opts ai.Options) (*ai.Client, string) {
 	t.Helper()
 	base := os.Getenv(string(r))
 	if base == "" {
 		t.Skipf("%s is unset: set it to the endpoint's API root, such as http://localhost:8000/v1", r)
 	}
-	c, err := ai.New(base, &http.Client{}, f, opts)
+	c, err := newClient(string(r), base, f, opts, os.Getenv)
 	if err != nil {
-		t.Fatalf("New(%s=%q): %v", r, base, err)
+		t.Fatal(err)
 	}
 	models, err := c.Models(requestContext(t))
 	if err != nil {

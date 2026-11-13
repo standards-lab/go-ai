@@ -6,7 +6,7 @@ jq = "1.8.2"
 # Space-separated list of module directories. "." is the base module and
 # tools/infer the CLI's; each is added as the library and infer tasks build it.
 [env]
-GO_MODULES = "."
+GO_MODULES = ". tools/infer"
 
 [tasks.check]
 description = "Build, vet, format, fix, tidy, test, and lint every module; writes nothing"
@@ -41,9 +41,13 @@ done
 # The integration tier runs the integration-tagged tests against the endpoints the AI_*_BASE_URL
 # variables name, which pass through from the caller's environment: AI_AGENT_BASE_URL,
 # AI_VISION_BASE_URL, AI_AUDIO_BASE_URL, AI_EMBEDDING_BASE_URL, and AI_TRANSCRIPTION_BASE_URL,
-# each an API root including /v1. A scenario whose variable is unset skips, so with none set the
-# run skips whole and passes. It runs verbose, so the log lists each scenario passed or skipped,
-# with the variable a skip wants. It never starts a server, and no CI job runs it.
+# each an API root including /v1. Each role may add its credentials, also passed through:
+# AI_<ROLE>_TOKEN, the bearer token, and AI_<ROLE>_HEADER, one or more "Name: value" lines
+# separated by newlines, such as AI_AGENT_TOKEN and AI_AGENT_HEADER; unset, none is sent, and no
+# failing scenario prints a token or header value. A scenario whose variable is unset skips, so
+# with none set the run skips whole and passes. It runs verbose, so the log lists each scenario
+# passed or skipped, with the variable a skip wants. It never starts a server, and no CI job runs
+# it.
 [tasks.integration]
 description = "Run the integration tier against the endpoints the AI_*_BASE_URL variables name"
 run = '''
