@@ -288,10 +288,10 @@ command's usage line, left out below.
 | `client: --retries (INFER_RETRIES): ai: retry policy has a negative attempt count` | Use 0 or more. |
 | `client: --retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long` | Set `--retry-max-delay`, such as `10s`. |
 
-### Refused by the endpoint (exit 1)
+### Refused past the command line (exit 1)
 
-The request was valid, and the endpoint refused it. The wording after the status is the
-endpoint's own.
+The command line was valid. The endpoint refused the request, or its models or format leave
+infer nothing to send. The wording after an HTTP status is the endpoint's own.
 
 ```text
 $ infer --model gpt-4o chat "Say hello."

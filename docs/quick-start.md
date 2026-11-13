@@ -469,10 +469,9 @@ func newClient() (*ai.Client, error) {
 
 - `Token` is called before each attempt, and its result is sent as the bearer token. An empty
   token sends none, so the program still runs against an endpoint that needs no credential.
-- `Retry` sends a request up to four times in all. It retries on a 408, 429, 502, 503, or 504
-  reply, or on a connection that fails before any reply. It waits a random backoff of up to
-  500ms, doubling each time, at most 30s. A reply's Retry-After replaces the backoff. A retried
-  POST may run twice on the endpoint.
+- `Retry` sends a request up to four times in all, on the replies and failures that
+  [features](features.md#retries) lists. It waits a random backoff of up to 500ms, doubling each
+  time, at most 30s. A retried POST may run twice on the endpoint.
 - `StreamIdleTimeout` ends a stream that sends nothing for a minute.
 - The transport's `ResponseHeaderTimeout` bounds the wait for a reply. `http.Client.Timeout`
   would also cut off a long stream, so it stays unset.

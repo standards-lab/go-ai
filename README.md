@@ -124,7 +124,7 @@ endpoint must serve one model.
 | --- | --- | --- |
 | `AI_AGENT_BASE_URL` | reasoning, function calling, structured output | chat, stream, tools, structured, and reasoning, in every format |
 | `AI_VISION_BASE_URL` | reads images | image, in every format |
-| `AI_AUDIO_BASE_URL` | reads audio in a chat request | chat-mode `Transcribe` |
+| `AI_AUDIO_BASE_URL` | reads audio in a chat request | chat-mode `Transcribe`, and the endpoint's refusal of audio sent as Open Responses |
 | `AI_EMBEDDING_BASE_URL` | embeddings | `Embed` |
 | `AI_TRANSCRIPTION_BASE_URL` | serves the transcription route | route-mode `Transcribe` |
 

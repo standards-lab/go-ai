@@ -29,7 +29,7 @@ output, and ends with the common failures and their fixes. This README is the re
 | `models` | none | each model ID, in the endpoint's order | |
 | `chat` | the prompt: the arguments joined by spaces, or stdin | the reply's text | the reply's status, usage, and reasoning item count |
 | `embed` | each argument, or each line of stdin | one JSON array per input, in input order | the token usage |
-| `transcribe` | one `.wav` or `.mp3` file | the transcript | the token usage |
+| `transcribe` | one audio file, `.wav` or `.mp3` in chat mode | the transcript | the token usage |
 | `version` | none | the installed module version | |
 
 `infer` alone, or `--help` on any command, prints help. Help and `version` read no
@@ -84,13 +84,15 @@ and asks for `--model`.
 
 ### Retries
 
-Retry is off until `--retries` is above 1. `--retries` counts every attempt, so `3` retries
-twice. A request is retried on a 408, 429, 502, 503, or 504 reply, or a connection that fails
-before any reply.
+Retry is off until `--retries` is above 1. The three flags set go-ai's
+[retry policy](../../docs/features.md#retries), which says what is retried and how long each wait
+is:
 
-Before each retry, infer waits a random time up to `--retry-base-delay`, doubling each time,
-never above `--retry-max-delay`. A reply's Retry-After replaces the wait. A Retry-After longer
-than `--retry-max-delay` stops the retries. Set all three:
+- `--retries` is `MaxAttempts`. It counts every attempt, so `3` retries twice.
+- `--retry-base-delay` is `BaseDelay`, the cap on the first wait, which doubles for each retry.
+- `--retry-max-delay` is `MaxDelay`, the cap on every wait and the longest Retry-After waited for.
+
+Set all three:
 
 ```sh
 infer --retries 3 --retry-base-delay 500ms --retry-max-delay 10s chat "Say hello."
@@ -136,8 +138,8 @@ own, because a 404 can also mean a wrong base URL.
 | Code | Meaning |
 | --- | --- |
 | 0 | Success. |
-| 1 | A failure past the command line: the endpoint's error, a model infer can't choose, a reply that isn't completed, an idle stream, or a file that can't be read. |
-| 2 | Help, or a usage error: an unknown command or flag, a missing or invalid setting, no input, or a request go-ai refuses before sending. |
+| 1 | A failure past the command line: the endpoint's error, a model infer can't choose, a reply that isn't completed, an idle stream, a file that can't be read, or `--mode chat` through a format that carries no audio. |
+| 2 | Help, or a usage error: an unknown command or flag, a missing or invalid setting, no input, or a chat request go-ai refuses before sending. |
 
 A failure is reported once on stderr, prefixed with the command, as in `infer chat: …`.
 

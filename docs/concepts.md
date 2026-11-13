@@ -116,8 +116,8 @@ client, err := ai.New("http://localhost:8000/v1", httpClient, completions.New(),
 })
 ```
 
-A nil HTTP client or format is a wiring mistake, so `New` panics and names it. A base URL,
-header, or retry policy it can't use is an error.
+A nil HTTP client or format is a wiring mistake, so `New` panics and names it. A base URL or
+option it can't use is an error.
 
 The client has five operations. `Generate` and `GenerateStream` go through the format.
 `Embed`, `Models`, and route-mode `Transcribe` go to the OpenAI-compatible routes

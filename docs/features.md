@@ -16,7 +16,8 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
 ```
 
 - `baseURL` is the endpoint's API root, `/v1` included, such as `http://localhost:8000/v1`. It
-  must be absolute. Each operation appends its route.
+  must be an absolute `http` or `https` URL with no query or fragment; `Options.Query` holds the
+  query. Each operation appends its route.
 - `httpClient` sends every request. Its transport carries the timeouts and any
   instrumentation.
 - `wireFormat` is a format's constructor result, such as `completions.New()`.
@@ -130,11 +131,12 @@ bound again.
 
 ### Errors
 
+Every error a call returns is prefixed with its operation, such as `ai: generate:`, and wraps
+its cause. Two causes are typed, matched with `errors.As`:
+
 - `*ai.APIError` is any non-2xx reply. It carries `Status`, the endpoint's `Message`, `Type`,
-  and `Code`, the raw `Body`, and `RetryAfter`, the wait the reply asked for. Match it with
-  `errors.As`.
+  and `Code`, the raw `Body`, and `RetryAfter`, the wait the reply asked for.
 - `*ai.IncompleteTranscriptError` is chat-mode transcription's incomplete reply.
-- Every other error is wrapped and prefixed with the operation, such as `ai: generate:`.
 
 ## protocol: the model
 
@@ -200,7 +202,7 @@ sends, refuses, drops, and normalizes. In short:
 | Instructions | a leading system message | the top-level `system` | `instructions` |
 | `MaxOutputTokens` | `max_completion_tokens` | `max_tokens`, required | `max_output_tokens` |
 | Audio input | its own `input_audio` part | refused | the `go-ai:input_audio` extension |
-| Drops | a reasoning summary request | an image's detail, a reasoning summary, verbosity, and a JSON schema's name, description, and strict flag | nothing |
+| Hints dropped | a reasoning summary request | an image's detail, a reasoning summary, verbosity, and a JSON schema's name, description, and strict flag | nothing |
 | Item ids | derived from the reply's id | derived from the reply's id | the server's |
 
 `responses.Options` adjusts the Open Responses format to an endpoint that departs from the
