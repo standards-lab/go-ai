@@ -207,7 +207,8 @@ if errors.As(err, &incomplete) {
 `infer` is go-ai's command-line client, in the nested module `tools/infer`, built on the base
 module's released surface alone. Each run talks to the endpoint `--base-url` or `INFER_BASE_URL`
 names, in the format `--format` or `INFER_FORMAT` names, `completions` by default, with the
-bearer token from `INFER_TOKEN`. With no `--model` set, it sends to the one model the endpoint
+bearer token from `INFER_TOKEN` and any headers, such as a gateway's `api-key`, from
+`INFER_HEADER`. With no `--model` set, it sends to the one model the endpoint
 lists.
 
 ```sh
@@ -262,7 +263,7 @@ With neither set, a role's requests carry no credential, and no failing scenario
 or a header value.
 
 `mise run integration` runs the tier verbose, and then infer's, which runs the built `infer`
-against the same variables. A scenario whose variable is unset skips, naming it, so with none
+against the same variables, the credentials mapped onto `INFER_TOKEN` and `INFER_HEADER`. A scenario whose variable is unset skips, naming it, so with none
 set the run skips whole. Each scenario sends to the one model its endpoint's
 `/models` lists. The check builds, vets, and lints the tier under its tag but never runs it, and
 no CI job runs it, as the models are on the organization's own machines.

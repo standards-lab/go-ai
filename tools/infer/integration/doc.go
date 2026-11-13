@@ -13,6 +13,11 @@
 //     as INFER_BASE_URL.
 //   - [BaseURL] returns the endpoint an AI_<ROLE>_BASE_URL variable names,
 //     skipping the test when it is unset.
+//   - [Endpoint] returns the INFER_BASE_URL override of a role's endpoint,
+//     as BaseURL gives it, and maps the role's AI_<ROLE>_TOKEN and
+//     AI_<ROLE>_HEADER, when set, onto INFER_TOKEN and INFER_HEADER in the
+//     test's environment, which the program inherits, so no run's logged
+//     shell line, and so no failure, shows a token or header value.
 //   - [Media] returns the path of a medium the suite sends: an image or an
 //     audio clip of go-ai's own integration testdata.
 //
@@ -21,10 +26,16 @@
 // own integration tier names them: AI_AGENT_BASE_URL, AI_VISION_BASE_URL,
 // AI_AUDIO_BASE_URL, AI_EMBEDDING_BASE_URL, and AI_TRANSCRIPTION_BASE_URL,
 // each an API root including /v1. A scenario maps its role's variable onto
-// INFER_BASE_URL, and its format onto INFER_FORMAT, sets no model, so infer
-// sends to the one model the endpoint lists, and skips when the variable is
-// unset; with none set, only the baseline runs. The scenarios are:
+// INFER_BASE_URL, its credentials, AI_<ROLE>_TOKEN and AI_<ROLE>_HEADER,
+// when set, onto INFER_TOKEN and INFER_HEADER, for an endpoint that
+// requires them, such as a gateway, and its format onto INFER_FORMAT, sets
+// no model, so infer sends to the one model the endpoint lists, and skips
+// when the variable is unset; with none set, only the baseline and the
+// credentials scenario run. The scenarios are:
 //
+//   - credentials, against a loopback endpoint the suite serves, so it
+//     never skips: a role's token and header reach the endpoint through
+//     the built binary, and the run's log shows neither value;
 //   - models on every role, wanting exactly one model ID;
 //   - chat on the agent, in each format, streamed and unstreamed, wanting
 //     a completed answer, and an incomplete one at --max-tokens 16, exit 1

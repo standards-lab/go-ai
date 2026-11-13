@@ -26,7 +26,12 @@
 // INFER_FORMAT, and INFER_MODEL, when given; --format is completions,
 // messages, or responses, and completions when neither is given. The
 // bearer token is INFER_TOKEN's, never a flag's, and an empty one sends
-// none; the root help's footer names it, as no flag does. The root flags
+// none. INFER_HEADER, never a flag's either, holds headers sent on every
+// request, such as a gateway's api-key, one "Name: value" per line, each
+// line trimmed and a blank one skipped; a line with no colon or no name, a
+// name the client sets (Authorization, Content-Type, or Accept), or a name
+// or value net/http can't send is a usage error naming INFER_HEADER, never
+// its value. The root help's footer names both, as no flag does. The root flags
 // --retries, --retry-base-delay, and --retry-max-delay, over
 // INFER_RETRIES, INFER_RETRY_BASE_DELAY, and INFER_RETRY_MAX_DELAY, set
 // go-ai's retry policy for every command: --retries is the most attempts

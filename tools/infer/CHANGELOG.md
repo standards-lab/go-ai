@@ -22,7 +22,12 @@ go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
   accepted at any depth, each over its variable, `INFER_BASE_URL`, `INFER_FORMAT`, and
   `INFER_MODEL`, the flag winning when given. `--format` is `completions`, `messages`, or
   `responses`, and `completions` when unset. The bearer token is `INFER_TOKEN`'s alone, never a
-  flag's, and an empty one sends none; the root help names it under `Environment:`. A missing base URL, an unknown format, or a value go-ai's
+  flag's, and an empty one sends none. `INFER_HEADER`, never a flag's either, holds headers sent
+  with every request, such as a gateway's `api-key`, one `Name: value` per line, each line trimmed
+  and a blank one skipped; a line with no colon or no name, a name of `Authorization`,
+  `Content-Type`, or `Accept`, or a name or value that can't be sent exits 2 before any request,
+  naming `INFER_HEADER` and never echoing the value. The root help names both under
+  `Environment:`. A missing base URL, an unknown format, or a value go-ai's
   `New` refuses exits 2 before any request, naming the flag and its variable.
 - The one-model fallback: with no model set, `embed`, `chat`, and `transcribe` list the
   endpoint's models first and send to the one listed, so an endpoint that serves one model needs
@@ -60,7 +65,9 @@ go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
 - The unit tier, which runs the App in-process against loopback endpoints with infer's own
   fixtures in `internal/apptest`, and the integration tier, behind the `integration` build tag,
   which runs the built binary against the endpoints the `AI_<ROLE>_BASE_URL` variables name,
-  through `mise run integration`; a scenario whose variable is unset skips.
+  through `mise run integration`; a scenario whose variable is unset skips. A role's optional
+  `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER` map onto `INFER_TOKEN` and `INFER_HEADER`, and no
+  scenario's log shows their values.
 
 [Unreleased]: https://github.com/standards-lab/go-ai/compare/tools/infer/v0.1.0...HEAD
 [v0.1.0]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.1.0

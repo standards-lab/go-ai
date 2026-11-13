@@ -861,8 +861,13 @@ accepted at any depth, each override a variable, `INFER_BASE_URL`, `INFER_FORMAT
 `completions` when neither is given; the format package's typed constructor is chosen in
 `infrastructure.go` alone, the caller's composition root (finding 3). The bearer token is
 `INFER_TOKEN`'s alone, never a flag's, so it never enters a command line, and an empty one sends
-none; the root help names it under `Environment:`, a go-cli-sdk `Footer`, since no flag section
-lists it. A missing base URL, an unknown format, or a value `ai.New` refuses is a usage error, exit
+none. A credential sent in a header of its own, such as a gateway's or a cloud endpoint's
+`api-key`, is `INFER_HEADER`'s, also never a flag's: one or more `Name: value` lines separated by
+newlines, each trimmed and a blank one skipped, sent through `Options.Header` by all three client
+nodes. A line with no colon or no name is infer's refusal; a name the client sets or a name or
+value net/http can't send is `ai.New`'s, attributed to `INFER_HEADER` by putting the headers to
+`ai.New` alone, as the other settings are; no refusal echoes a value. The root help names both
+under `Environment:`, a go-cli-sdk `Footer`, since no flag section lists them. A missing base URL, an unknown format, or a value `ai.New` refuses is a usage error, exit
 2, naming the flag and its variable, before any request. An endpoint and model per capability is
 a long-running program's need, not a one-shot client's: a run that wants another endpoint is
 another run.
@@ -942,7 +947,10 @@ what each command sends and writes. The integration tier, `tools/infer/integrati
 integration build tag, builds `cmd/infer` and runs it one shot at a time on go-core's
 `processtest`, mapping each `AI_<ROLE>_BASE_URL` the base module's tier reads (finding 41) onto
 `INFER_BASE_URL` after clearing every `INFER_` variable, with no model set, so each role's
-endpoint must list one; a scenario whose variable is unset skips. `mise run integration` runs it
+endpoint must list one; a scenario whose variable is unset skips. Both tiers read a role's
+optional credentials, `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER`, the base module's into
+`Options.Token` and `Options.Header`, `infer`'s onto `INFER_TOKEN` and `INFER_HEADER` through the
+test's environment rather than a run's logged overrides, so no failing scenario prints a value. `mise run integration` runs it
 after the base module's tier; no CI job runs either.
 
 ### What each task adds

@@ -40,13 +40,13 @@ var formats = []string{"completions", "messages", "responses"}
 const answerBound = "1024"
 
 // runOn runs the built program once against r's endpoint, its API root
-// mapped onto INFER_BASE_URL, with env added and no model set, so infer
-// sends to the one model the endpoint lists. It skips t when r's variable
-// is unset.
+// mapped onto INFER_BASE_URL and its credentials, when set, onto
+// INFER_TOKEN and INFER_HEADER, as [integration.Endpoint] maps them, with
+// env added and no model set, so infer sends to the one model the endpoint
+// lists. It skips t when r's variable is unset.
 func runOn(t *testing.T, r role, env []string, args ...string) processtest.Result {
 	t.Helper()
-	base := integration.BaseURL(t, string(r))
-	return integration.RunEnv(t, append([]string{"INFER_BASE_URL=" + base}, env...), args...)
+	return integration.RunEnv(t, append(integration.Endpoint(t, string(r)), env...), args...)
 }
 
 // eachFormat runs scenario as a subtest of t for each of formats, named for

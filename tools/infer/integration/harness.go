@@ -55,6 +55,33 @@ func BaseURL(t testing.TB, variable string) string {
 	return base
 }
 
+// Endpoint returns the overrides that point a run at the endpoint of the
+// role whose API root variable is baseVariable, such as AI_AGENT_BASE_URL:
+// INFER_BASE_URL set to [BaseURL]'s, which skips t when the variable is
+// unset. It maps the role's credentials onto infer's as well, each only
+// when set and non-empty: AI_<ROLE>_TOKEN onto INFER_TOKEN and
+// AI_<ROLE>_HEADER onto INFER_HEADER. Those it sets in the test's own
+// environment, with t.Setenv, which the program inherits, rather than as
+// overrides, since a run logs its overrides in the shell line that replays
+// it: a scenario's log, and so its failure, shows its base URL but never a
+// token or header value. It logs the credentials it mapped by their
+// variables' names alone. Main cleared every INFER_ variable before the
+// suite ran, so with neither set the program reads neither; t.Setenv
+// panics in a parallel test, which no scenario is.
+func Endpoint(t testing.TB, baseVariable string) []string {
+	t.Helper()
+	base := BaseURL(t, baseVariable)
+	role := strings.TrimSuffix(baseVariable, "_BASE_URL")
+	for _, name := range []string{"TOKEN", "HEADER"} {
+		from, to := role+"_"+name, envPrefix+name
+		if v := os.Getenv(from); v != "" {
+			t.Setenv(to, v)
+			t.Logf("%s set from %s; its value isn't shown", to, from)
+		}
+	}
+	return []string{"INFER_BASE_URL=" + base}
+}
+
 // mediaDir is the directory of the media the suite sends, from the suite's
 // package directory, where go test runs it: go-ai's own integration
 // testdata, whose README gives each file's provenance. It is read in place

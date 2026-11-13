@@ -45,14 +45,15 @@ var formats = map[string]func() format.Format{
 // defineInfrastructure defines the infrastructure nodes on g into n: the
 // lifecycle configuration; the endpoint settings and the retry policy, each
 // read from its INFER_ variables and its root flags; the client of the
-// endpoint, built from them and INFER_TOKEN; and two clients of the same
-// endpoint for one command each: the transcriber, in the transcription mode
-// read from INFER_TRANSCRIPTION_MODE and transcribe's --mode, and the chat
-// client, bounded by the idle timeout read from INFER_IDLE_TIMEOUT and
-// chat's --idle-timeout. It constructs nothing: each value is read in its
-// node's constructor, which runs only when a Build reaches the node, so
-// configuration is read only for a command that declares a node, never in
-// [New] and never for a run that builds nothing.
+// endpoint, built from them, INFER_TOKEN, and INFER_HEADER; and two
+// clients of the same endpoint for one command each: the transcriber, in
+// the transcription mode read from INFER_TRANSCRIPTION_MODE and
+// transcribe's --mode, and the chat client, bounded by the idle timeout
+// read from INFER_IDLE_TIMEOUT and chat's --idle-timeout. It constructs
+// nothing: each value is read in its node's constructor, which runs only
+// when a Build reaches the node, so configuration is read only for a
+// command that declares a node, never in [New] and never for a run that
+// builds nothing.
 //
 // The mode and the idle timeout are settings of the client,
 // ai.Options.TranscriptionMode and StreamIdleTimeout, but each is one
@@ -60,7 +61,8 @@ var formats = map[string]func() format.Format{
 // other commands share: building them into that one would read both
 // variables for every command, and an unknown mode would refuse a chat that
 // never transcribes. All three clients are [newClient]'s, so the endpoint,
-// the format, the token, and the retry policy reach each alike.
+// the format, the token, the headers, and the retry policy reach each
+// alike.
 func defineInfrastructure(g *graph.Graph, n *Nodes, flags *rootFlags, cmd commandFlags) {
 	n.LifecycleConfig = g.Define("lifecycle config", newLifecycleConfig)
 	n.BaseURL = g.Define("base url", newSetting(flags, "base-url", ""))
@@ -155,18 +157,26 @@ func newClient(n *Nodes, opts func(*graph.Scope) ai.Options) func(*graph.Scope) 
 }
 
 // buildClient returns the go-ai client of the endpoint at base, in
-// wireFormat, with opts, sending INFER_TOKEN as its bearer token, read once
-// here; an empty token sends no Authorization header, as go-ai's
-// TokenSource documents. A missing base URL is a usage error naming
-// --base-url and INFER_BASE_URL; so is anything ai.New refuses, as
-// [settingsRefusal] reports it. The client sets no timeout: a long stream is bounded by
-// the run's context and the idle timeout alone. It makes no request.
+// wireFormat, with opts, sending INFER_TOKEN as its bearer token and
+// INFER_HEADER's headers on every request, each read once here; an empty
+// token sends no Authorization header, as go-ai's TokenSource documents,
+// and an empty INFER_HEADER sends no header. A missing base URL is a usage
+// error naming --base-url and INFER_BASE_URL; an INFER_HEADER line that
+// isn't "Name: value" is one naming INFER_HEADER, as [parseHeader] reports
+// it; so is anything ai.New refuses, as [settingsRefusal] reports it. The
+// client sets no timeout: a long stream is bounded by the run's context and
+// the idle timeout alone. It makes no request.
 func buildClient(base string, wireFormat format.Format, opts ai.Options) (*ai.Client, error) {
 	if base == "" {
 		return nil, cli.Usagef("no base URL: set %s", flagOrVar("base-url"))
 	}
 	token := os.Getenv(config.EnvName(envPrefix, "token"))
 	opts.Token = func(context.Context) (string, error) { return token, nil }
+	header, err := parseHeader(os.Getenv(headerVariable))
+	if err != nil {
+		return nil, err
+	}
+	opts.Header = header
 	client, err := ai.New(base, &http.Client{}, wireFormat, opts)
 	if err != nil {
 		return nil, settingsRefusal(base, wireFormat, opts, err)
@@ -174,12 +184,51 @@ func buildClient(base string, wireFormat format.Format, opts ai.Options) (*ai.Cl
 	return client, nil
 }
 
-// writeEnvironment is the root's help Footer: it names INFER_TOKEN, which
-// [buildClient] reads and no flag overrides, so no flags section lists it.
-// The help renders it in memory, so the write cannot fail.
+// headerVariable is the variable that holds the fixed headers sent on
+// every request, which no flag overrides: a header such as a gateway's
+// api-key is a secret, as the token is.
+var headerVariable = config.EnvName(envPrefix, "header")
+
+// parseHeader returns the headers v holds: one "Name: value" per line,
+// split at the first colon, the line, the name, and the value each trimmed
+// of surrounding space, and a blank line skipped; a name given on several
+// lines has each value. A line with no colon, or no name before it, is a
+// usage error naming INFER_HEADER and the line's number, never its text,
+// since the value is a secret. It refuses nothing else: ai.New refuses a
+// name the client sets or a name or value net/http can't send, and
+// [settingsRefusal] names INFER_HEADER for it. An empty v is no header.
+func parseHeader(v string) (http.Header, error) {
+	var h http.Header
+	for i, line := range strings.Split(v, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		name, value, ok := strings.Cut(line, ":")
+		if !ok {
+			return nil, cli.Usagef("%s line %d has no colon: each line is \"Name: value\"", headerVariable, i+1)
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil, cli.Usagef("%s line %d has no name before its colon: each line is \"Name: value\"", headerVariable, i+1)
+		}
+		if h == nil {
+			h = make(http.Header)
+		}
+		h.Add(name, strings.TrimSpace(value))
+	}
+	return h, nil
+}
+
+// writeEnvironment is the root's help Footer: it names INFER_TOKEN and
+// INFER_HEADER, which [buildClient] reads and no flag overrides, so no
+// flags section lists them. The help renders it in memory, so the write
+// cannot fail.
 func writeEnvironment(w io.Writer) {
-	_, _ = fmt.Fprintf(w, "Environment:\n  %s   the bearer token sent with each request; unset or empty sends none\n",
-		config.EnvName(envPrefix, "token"))
+	_, _ = fmt.Fprintf(w, "Environment:\n"+
+		"  %s    the bearer token sent with each request; unset or empty sends none\n"+
+		"  %s   headers sent with each request, one \"Name: value\" per line, such as a gateway's api-key\n",
+		config.EnvName(envPrefix, "token"), headerVariable)
 }
 
 // reportsReasoningTokens reports whether replies in wireFormat count their
@@ -222,15 +271,16 @@ func carriesAudio(wireFormat format.Format) bool {
 // (INFER_BASE_URL): " ahead of err, or err alone when it accepts each
 // alone. go-ai is the authority on what it refuses, and its errors carry no
 // field, so each setting is put to ai.New again on its own, beside values
-// it never refuses: the base URL with no options; the attempt count alone;
-// the most delay alone; and the base delay under the longest most delay. A
-// base delay above the most delay is refused in neither of the last two
-// alone, only together, so a policy refused when no field is names both
-// delays. When the most delay is unset, or zero, in that case, the refusal
-// says the base delay needs one rather than repeat go-ai's "above its most
-// delay", which reads as though a most delay were given; go-ai has still
-// refused it. Only a refused New calls it, so the probes cost nothing in a
-// run that builds.
+// it never refuses: the base URL with no options; INFER_HEADER's headers
+// alone, which go-ai refuses naming the header but never giving its value;
+// the attempt count alone; the most delay alone; and the base delay under
+// the longest most delay. A base delay above the most delay is refused in
+// neither of the last two alone, only together, so a policy refused when no
+// field is names both delays. When the most delay is unset, or zero, in
+// that case, the refusal says the base delay needs one rather than repeat
+// go-ai's "above its most delay", which reads as though a most delay were
+// given; go-ai has still refused it. Only a refused New calls it, so the
+// probes cost nothing in a run that builds.
 func settingsRefusal(base string, wireFormat format.Format, opts ai.Options, err error) error {
 	refuses := func(base string, o ai.Options) bool {
 		_, err := ai.New(base, &http.Client{}, wireFormat, o)
@@ -241,6 +291,9 @@ func settingsRefusal(base string, wireFormat format.Format, opts ai.Options, err
 	}
 	p := opts.Retry
 	var names []string
+	if refuses(base, ai.Options{Header: opts.Header}) {
+		names = append(names, headerVariable)
+	}
 	if refuses(base, ai.Options{Retry: ai.RetryPolicy{MaxAttempts: p.MaxAttempts}}) {
 		names = append(names, flagAndVar("retries"))
 	}

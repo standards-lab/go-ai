@@ -30,8 +30,8 @@ prints its help.
 
 ## Configuration
 
-Each run talks to one endpoint, in one wire format. Every setting but the token is a flag over an
-`INFER_` variable: the flag wins when it is given, even as an empty value, and the variable
+Each run talks to one endpoint, in one wire format. Every setting but the token and the headers
+is a flag over an `INFER_` variable: the flag wins when it is given, even as an empty value, and the variable
 applies otherwise. The root flags are accepted at any depth, before or after the command.
 
 | flag | variable | default | read by |
@@ -45,6 +45,7 @@ applies otherwise. The root flags are accepted at any depth, before or after the
 | `--idle-timeout` | `INFER_IDLE_TIMEOUT` | `0`: no bound | chat |
 | `--mode` | `INFER_TRANSCRIPTION_MODE` | `route` | transcribe |
 | none | `INFER_TOKEN` | none: no Authorization header | models, embed, chat, transcribe |
+| none | `INFER_HEADER` | none: no header of its own | models, embed, chat, transcribe |
 
 - `--base-url` is the endpoint's API root, including `/v1`, such as
   `http://localhost:8000/v1`.
@@ -53,6 +54,14 @@ applies otherwise. The root flags are accepted at any depth, before or after the
   format is still checked.
 - `INFER_TOKEN` is sent as the bearer token. It has no flag, so it never appears in a command
   line or a shell history; the root help names it under `Environment:`.
+- `INFER_HEADER` holds headers sent with every request, for an endpoint that takes its
+  credential in a header of its own, such as a gateway's or a cloud endpoint's `api-key`: one or
+  more `Name: value` lines separated by newlines, each line trimmed of surrounding space and a
+  blank line skipped. Like the token, it has no flag, since a value such as a key is a secret and
+  may hold a comma, and the root help names it under `Environment:`. A line with no colon or no
+  name, a name infer sets itself, `Authorization`, `Content-Type`, or `Accept`, or a name or value
+  that can't be sent, such as a name with a space, exits 2 before any request, naming
+  `INFER_HEADER` and never echoing the value. The bearer token goes in `INFER_TOKEN`, not here.
 - `--retries` is the most attempts of each request, the first included, so `3` retries twice; `0`
   or `1` retries nothing. A request is sent again on a 408, 429, 502, 503, or 504 reply, or a
   connection failure before any reply.
@@ -73,6 +82,9 @@ infer models: client: no base URL: set --base-url or INFER_BASE_URL
 
 $ infer models --retry-base-delay 500ms
 infer models: client: --retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long
+
+$ INFER_HEADER='Authorization: Bearer …' infer models
+infer models: client: INFER_HEADER: ai: Options.Header names Authorization, which the Client sets
 ```
 
 Help and `version` read no configuration, so they run with none set.
@@ -116,6 +128,15 @@ The examples set the endpoint once in the environment:
 ```sh
 export INFER_BASE_URL=http://localhost:8000/v1
 export INFER_TOKEN=...          # only where the endpoint asks for one
+```
+
+An endpoint that takes its key in a header of its own, such as a gateway's, takes it from
+`INFER_HEADER`, one `Name: value` per line:
+
+```sh
+export INFER_BASE_URL=https://gateway.example/agent/v1
+export INFER_HEADER='api-key: …'
+infer chat "Say hello."
 ```
 
 ### models
@@ -286,10 +307,16 @@ holding its API root, including `/v1`, as go-ai's own tier names them:
 
 `models` runs on every role. Each scenario maps its variable onto `INFER_BASE_URL`, after
 clearing every `INFER_` variable it inherited, and sets no model, so each endpoint must list one;
-a scenario whose variable is unset skips, naming it. `mise run integration` runs the tier verbose:
+a scenario whose variable is unset skips, naming it. A role whose endpoint requires credentials
+takes them from two optional variables, as go-ai's tier does: `AI_<ROLE>_TOKEN`, mapped onto
+`INFER_TOKEN`, and `AI_<ROLE>_HEADER`, one or more `Name: value` lines, mapped onto
+`INFER_HEADER`. They reach the program through the test's environment, not the overrides each
+run logs as a shell line, so no scenario's log, failing or not, shows a token or header value.
+`mise run integration` runs the tier verbose:
 
 ```sh
 AI_AGENT_BASE_URL=http://localhost:8000/v1 mise run integration
+AI_AGENT_BASE_URL=https://gateway.example/agent/v1 AI_AGENT_HEADER='api-key: …' mise run integration
 ```
 
 The suite sends the media in go-ai's `integration/testdata`, so it runs from a checkout of the

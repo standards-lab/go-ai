@@ -98,8 +98,9 @@ func wantNoRequest(t *testing.T, e *apptest.Endpoint) {
 }
 
 // The root help names every command, each root flag with its variable and
-// the type it is parsed as, and INFER_TOKEN, which no flag overrides; it
-// names no token flag, and builds and sends nothing.
+// the type it is parsed as, and INFER_TOKEN and INFER_HEADER, which no
+// flag overrides; it names no token or header flag, and builds and sends
+// nothing.
 func TestRun_RootHelp(t *testing.T) {
 	for _, args := range [][]string{nil, {"-h"}, {"--help"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -113,14 +114,16 @@ func TestRun_RootHelp(t *testing.T) {
 				// Each retry flag shows the type its node parses it as,
 				// not the string the flag holds.
 				"--retries int", "--retry-base-delay duration", "--retry-max-delay duration",
-				// INFER_TOKEN has no flag, so the footer names it.
-				"\nEnvironment:\n  INFER_TOKEN   the bearer token sent with each request"} {
+				// INFER_TOKEN and INFER_HEADER have no flag, so the
+				// footer names them.
+				"\nEnvironment:\n  INFER_TOKEN    the bearer token sent with each request",
+				"\n  INFER_HEADER   headers sent with each request, one \"Name: value\" per line"} {
 				if !strings.Contains(r.stdout, want) {
 					t.Errorf("stdout = %q, want the root help naming %s", r.stdout, want)
 				}
 			}
-			if strings.Contains(r.stdout, "--token") {
-				t.Errorf("stdout = %q, want no token flag", r.stdout)
+			if strings.Contains(r.stdout, "--token") || strings.Contains(r.stdout, "--header") {
+				t.Errorf("stdout = %q, want no token or header flag", r.stdout)
 			}
 			if r.stderr != "" {
 				t.Errorf("stderr = %q, want empty", r.stderr)
