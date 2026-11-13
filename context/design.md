@@ -889,7 +889,12 @@ alone:
   http(s) URL as given), `--reasoning`, `--max-tokens`, and `--native`, raw JSON merged into the
   request's top level through `Native`, the native tier (finding 25). It checks the request with
   `protocol.Request.Validate` and the format's own encoding before anything is sent, so a refusal
-  is a usage error, exit 2. It streams through `Client.GenerateStream` by default, writing each
+  is a usage error, exit 2. go-ai's errors carry no field, so the flag to change is found by
+  checking the request again with each flag's field alone put back to a value every format
+  accepts, as `ai.New`'s refusals are attributed; when exactly one such request is accepted, its
+  flag precedes go-ai's reason, as in `--max-tokens: protocol: request's max output tokens 15 is
+  below the minimum, 16`, or `--format messages needs --max-tokens: ` when none was given, and
+  otherwise go-ai's reason stands alone. It streams through `Client.GenerateStream` by default, writing each
   `OutputTextDelta` as it arrives and folding the events with `protocol.Accumulator`;
   `--stream=false` sends one request through `Client.Generate`. Either way it writes the reply's
   status, its usage, and its count of reasoning items to stderr, the reasoning tokens shown as
@@ -904,7 +909,12 @@ alone:
   `INFER_TRANSCRIPTION_MODE`, sets `Options.TranscriptionMode`: `route`, the default, or `chat`,
   for an endpoint whose audio model has no transcription route (the surface section, decision 9).
   Chat mode through a format that can't carry audio is go-ai's refusal, exit 1, before the file
-  is opened; an `*ai.IncompleteTranscriptError` exits 1 naming its status and reason.
+  is opened, after `--mode chat needs a format that carries audio; --format messages doesn't: `,
+  the format's capability decided in `infrastructure.go` as the reasoning count is; an
+  `*ai.IncompleteTranscriptError` exits 1 naming its status and reason. A route-mode 404, an
+  `*ai.APIError` of status 404, exits 1 with the error and, on a second line, `(the endpoint
+  serves no transcription route; try --mode chat)`; `infer` neither probes chat mode nor falls
+  back to it.
 
 The template's version command stands beside them. Help and a usage error exit 2, any other
 failure exits 1, reported once on stderr; help and version read no configuration and send
@@ -916,7 +926,9 @@ and `INFER_RETRY_MAX_DELAY`, set `ai.RetryPolicy` for every command; unset, the 
 zero value and retries nothing (finding 7). `chat`'s `--idle-timeout`, over `INFER_IDLE_TIMEOUT`,
 sets `Options.StreamIdleTimeout` (the surface section, decision 7). A negative, inverted, or
 unparsable value is a usage error, exit 2, naming the flag and its variable; `ai.New` is the
-authority on what it refuses. So each is a string flag, parsed in its node, and its usage
+authority on what it refuses. A base delay above zero with the max delay unset or zero, which
+`ai.New` refuses as above its most delay, is worded as what to change: `--retry-base-delay
+(INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long`. So each is a string flag, parsed in its node, and its usage
 backquotes the type it is parsed as, which `flag.UnquoteUsage`, and so go-cli-sdk's help, shows
 in place of `string`: `--retries int`, and `duration` for the delays and the timeout. The transcription mode and the idle bound each belong to one
 command, so each reaches a client node of its own, the transcriber and the chat client, built by

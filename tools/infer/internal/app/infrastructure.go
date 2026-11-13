@@ -158,9 +158,8 @@ func newClient(n *Nodes, opts func(*graph.Scope) ai.Options) func(*graph.Scope) 
 // wireFormat, with opts, sending INFER_TOKEN as its bearer token, read once
 // here; an empty token sends no Authorization header, as go-ai's
 // TokenSource documents. A missing base URL is a usage error naming
-// --base-url and INFER_BASE_URL; so is anything ai.New refuses, with its
-// refusal, naming the flags and variables of the settings [refusedSettings]
-// finds it refused. The client sets no timeout: a long stream is bounded by
+// --base-url and INFER_BASE_URL; so is anything ai.New refuses, as
+// [settingsRefusal] reports it. The client sets no timeout: a long stream is bounded by
 // the run's context and the idle timeout alone. It makes no request.
 func buildClient(base string, wireFormat format.Format, opts ai.Options) (*ai.Client, error) {
 	if base == "" {
@@ -170,10 +169,7 @@ func buildClient(base string, wireFormat format.Format, opts ai.Options) (*ai.Cl
 	opts.Token = func(context.Context) (string, error) { return token, nil }
 	client, err := ai.New(base, &http.Client{}, wireFormat, opts)
 	if err != nil {
-		if names := refusedSettings(base, wireFormat, opts); names != "" {
-			return nil, cli.Usagef("%s: %w", names, err)
-		}
-		return nil, cli.Usagef("%w", err)
+		return nil, settingsRefusal(base, wireFormat, opts, err)
 	}
 	return client, nil
 }
@@ -196,23 +192,52 @@ func reportsReasoningTokens(wireFormat format.Format) bool {
 	return !isMessages
 }
 
-// refusedSettings names the settings ai.New refuses in base and opts, as
-// "--base-url (INFER_BASE_URL)", or empty when it accepts each alone. go-ai
-// is the authority on what it refuses, and its errors carry no field, so
-// each setting is put to ai.New again on its own, beside values it never
-// refuses: the base URL with no options; the attempt count alone; the most
-// delay alone; and the base delay under the longest most delay. A base
-// delay above the most delay is refused in neither of the last two alone,
-// only together, so a policy refused when no field is names both delays.
-// Only a refused New calls it, so the probes cost nothing in a run that
-// builds.
-func refusedSettings(base string, wireFormat format.Format, opts ai.Options) string {
+// formatName returns the format setting that names wireFormat, such as
+// "messages", or empty for a format no setting names, as a caller's
+// Replace of the format node may give. It is here, beside [formats],
+// because this is the one file that names a format package.
+func formatName(wireFormat format.Format) string {
+	switch wireFormat.(type) {
+	case *completions.Format:
+		return "completions"
+	case *messages.Format:
+		return "messages"
+	case *responses.Format:
+		return "responses"
+	}
+	return ""
+}
+
+// carriesAudio reports whether a request in wireFormat can carry an audio
+// part, as a chat-mode transcription sends. messages has no audio block, so
+// go-ai refuses the part there; the others carry it. go-ai remains the
+// authority: transcribe asks this only to word a refusal go-ai has made.
+func carriesAudio(wireFormat format.Format) bool {
+	_, isMessages := wireFormat.(*messages.Format)
+	return !isMessages
+}
+
+// settingsRefusal returns the usage error of err, ai.New's refusal of base
+// and opts, naming the settings it refused, as "--base-url
+// (INFER_BASE_URL): " ahead of err, or err alone when it accepts each
+// alone. go-ai is the authority on what it refuses, and its errors carry no
+// field, so each setting is put to ai.New again on its own, beside values
+// it never refuses: the base URL with no options; the attempt count alone;
+// the most delay alone; and the base delay under the longest most delay. A
+// base delay above the most delay is refused in neither of the last two
+// alone, only together, so a policy refused when no field is names both
+// delays. When the most delay is unset, or zero, in that case, the refusal
+// says the base delay needs one rather than repeat go-ai's "above its most
+// delay", which reads as though a most delay were given; go-ai has still
+// refused it. Only a refused New calls it, so the probes cost nothing in a
+// run that builds.
+func settingsRefusal(base string, wireFormat format.Format, opts ai.Options, err error) error {
 	refuses := func(base string, o ai.Options) bool {
 		_, err := ai.New(base, &http.Client{}, wireFormat, o)
 		return err != nil
 	}
 	if refuses(base, ai.Options{}) {
-		return flagAndVar("base-url")
+		return cli.Usagef("%s: %w", flagAndVar("base-url"), err)
 	}
 	p := opts.Retry
 	var names []string
@@ -226,9 +251,17 @@ func refusedSettings(base string, wireFormat format.Format, opts ai.Options) str
 		names = append(names, flagAndVar("retry-max-delay"))
 	}
 	if len(names) == 0 && refuses(base, ai.Options{Retry: p}) {
+		// Refused together and not alone, a zero most delay is under a
+		// base delay above zero.
+		if p.MaxDelay == 0 {
+			return cli.Usagef("%s needs %s at least as long", flagAndVar("retry-base-delay"), flagAndVar("retry-max-delay"))
+		}
 		names = append(names, flagAndVar("retry-base-delay"), flagAndVar("retry-max-delay"))
 	}
-	return strings.Join(names, " and ")
+	if len(names) == 0 {
+		return cli.Usagef("%w", err)
+	}
+	return cli.Usagef("%s: %w", strings.Join(names, " and "), err)
 }
 
 // newRetryPolicy returns the retry policy node's constructor: the policy

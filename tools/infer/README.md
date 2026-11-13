@@ -70,6 +70,9 @@ the flag and its variable:
 ```text
 $ infer models
 infer models: client: no base URL: set --base-url or INFER_BASE_URL
+
+$ infer models --retry-base-delay 500ms
+infer models: client: --retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long
 ```
 
 Help and `version` read no configuration, so they run with none set.
@@ -184,8 +187,19 @@ infer --format messages chat --max-tokens 512 "Say hello."
 
 A request go-ai refuses, such as a `--max-tokens` below 16, an unknown effort, a `--native` that
 isn't a JSON object or sets a member a typed flag sets, or a Messages request with no
-`--max-tokens`, exits 2 before anything is sent. A reply that isn't completed keeps the text
-already written, writes its summary, and exits 1 naming its status and reason:
+`--max-tokens`, exits 2 before anything is sent, naming the flag to change ahead of go-ai's
+reason when one flag alone causes the refusal:
+
+```text
+$ infer chat --max-tokens 15 "Say hello."
+infer chat: --max-tokens: protocol: request's max output tokens 15 is below the minimum, 16
+
+$ infer --format messages chat "Say hello."
+infer chat: --format messages needs --max-tokens: messages: request has no max output tokens, which Messages requires as max_tokens
+```
+
+A reply that isn't completed keeps the text already written, writes its summary, and exits 1
+naming its status and reason:
 
 ```text
 $ infer chat --max-tokens 16 "Tell me a long story."
@@ -206,10 +220,26 @@ file to the endpoint's OpenAI-compatible transcription route:
 infer transcribe clip.wav
 ```
 
+An endpoint with no transcription route answers 404, which exits 1 with the endpoint's error and
+a hint at chat mode; infer neither tries chat mode itself nor falls back to it:
+
+```text
+$ infer transcribe clip.wav
+infer transcribe: ai: transcribe: 404 Not Found: {"detail":"Not Found"}
+(the endpoint serves no transcription route; try --mode chat)
+```
+
 In chat mode it sends the clip as input audio in a chat request in the format, for an endpoint
 whose audio model has no transcription route. The file's extension, `.wav` or `.mp3`, gives its
 encoding, and the format must carry audio, as `completions` does; `messages` exits 1 before the
-file is opened. A chat-mode reply that isn't completed exits 1 naming its status and reason, and
+file is opened, naming both settings ahead of go-ai's reason:
+
+```text
+$ infer --format messages transcribe --mode chat clip.wav
+infer transcribe: --mode chat needs a format that carries audio; --format messages doesn't: ai: transcribe: messages: input 0: content 0: part protocol.InputAudio has no Messages form
+```
+
+A chat-mode reply that isn't completed exits 1 naming its status and reason, and
 writes no transcript.
 
 ```sh

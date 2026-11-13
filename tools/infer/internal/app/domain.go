@@ -188,7 +188,10 @@ type chatFlags struct {
 // combination of them the format can't carry, such as a --max-tokens below
 // go-ai's minimum, an effort go-ai doesn't define, a --native that isn't a
 // JSON object with unique members or that sets a member a typed flag sets,
-// or, through messages, no --max-tokens at all. The model isn't resolved
+// or, through messages, no --max-tokens at all. It names the flag to
+// change ahead of go-ai's reason, as [refusedRequest] finds it, as in
+// "--max-tokens: protocol: request's max output tokens 15 is below the
+// minimum, 16". The model isn't resolved
 // yet when the request is checked, so an unset one is checked as a stand-in
 // name.
 //
@@ -236,8 +239,9 @@ func chat(ctx context.Context, inv *cli.Invocation, n *Nodes, f *chatFlags) erro
 	if err != nil {
 		return err
 	}
-	if err := checkRequest(req, inv.Get(n.Format), f.stream); err != nil {
-		return cli.Usagef("%w", err)
+	wireFormat := inv.Get(n.Format)
+	if err := checkRequest(req, wireFormat, f.stream); err != nil {
+		return refusedRequest(req, wireFormat, f.stream, err)
 	}
 	client := inv.Get(n.ChatClient)
 	if req.Model, err = resolveModel(ctx, client, req.Model); err != nil {
@@ -260,7 +264,7 @@ func chat(ctx context.Context, inv *cli.Invocation, n *Nodes, f *chatFlags) erro
 	if err := out.end(); err != nil {
 		return err
 	}
-	if err := writeSummary(inv.Stderr, resp, reportsReasoningTokens(inv.Get(n.Format))); err != nil {
+	if err := writeSummary(inv.Stderr, resp, reportsReasoningTokens(wireFormat)); err != nil {
 		return err
 	}
 	return replyError(resp)
@@ -359,6 +363,55 @@ func checkRequest(req *protocol.Request, wireFormat format.Format, stream bool) 
 	}
 	_, err := encode(&check, make(http.Header))
 	return err
+}
+
+// refusedRequest returns the usage error of err, go-ai's refusal of req,
+// as [checkRequest] makes it in wireFormat, streamed when stream is set:
+// err, after the flag it is attributed to, as in "--max-tokens: ", or
+// alone when it is attributed to none.
+//
+// go-ai's errors carry no field, so the refusal is attributed as
+// [settingsRefusal] attributes ai.New's, by checking the request again:
+// once for each flag that set a field go-ai checks, with that field alone
+// put back to a value go-ai accepts in every format, the least max output
+// tokens, no effort, or no native object. The flag is the refusal's when
+// that request alone is accepted, and so is the only cause, and when no
+// other flag's is: two flags refused only together, or a request still
+// refused with each put back, as with a refused --native through messages
+// with no --max-tokens, name none. Clearing a field, rather than setting
+// one on a request of none, keeps the probes free of what to start from:
+// messages refuses a request with no max output tokens, so there is no
+// request of no fields every format accepts. A max-tokens refusal with no
+// --max-tokens given is messages', which requires one, and names the
+// format: "--format messages needs --max-tokens: ".
+//
+// --instructions and --image are not attributed: go-ai refuses neither
+// as chat sets them, the instructions any text and each image an http(s)
+// URL or a base64 data URL of an image type, which every format carries.
+func refusedRequest(req *protocol.Request, wireFormat format.Format, stream bool, err error) error {
+	accepted := func(clear func(*protocol.Request)) bool {
+		r := *req
+		clear(&r)
+		return checkRequest(&r, wireFormat, stream) == nil
+	}
+	var flags []string
+	if accepted(func(r *protocol.Request) { r.MaxOutputTokens = protocol.MinMaxOutputTokens }) {
+		if req.MaxOutputTokens != 0 {
+			flags = append(flags, "--max-tokens")
+		} else if name := formatName(wireFormat); name != "" {
+			flags = append(flags, fmt.Sprintf("--format %s needs --max-tokens", name))
+		}
+	}
+	if accepted(func(r *protocol.Request) { r.Reasoning = protocol.ReasoningParam{} }) {
+		flags = append(flags, "--reasoning")
+	}
+	if accepted(func(r *protocol.Request) { r.Native = nil }) {
+		flags = append(flags, "--native")
+	}
+	if len(flags) != 1 {
+		return cli.Usagef("%w", err)
+	}
+	return cli.Usagef("%s: %w", flags[0], err)
 }
 
 // streamReply sends req through client as a stream, writing each output
@@ -502,11 +555,16 @@ func replyError(resp *protocol.Response) error {
 // format that can't carry audio, such as messages, before the file is
 // opened or anything is sent; the refusal is exit 1, not a usage error, as
 // it is the endpoint's format and the mode together, not either value,
-// that can't transcribe. It follows the model's resolution, as go-ai
+// that can't transcribe, and names both settings ahead of go-ai's reason,
+// as in "--mode chat needs a format that carries audio; --format messages
+// doesn't: ai: transcribe: messages: ...". It follows the model's
+// resolution, as go-ai
 // refuses in Transcribe, so with no model set the models are listed first.
 // A chat-mode reply that isn't completed is go-ai's
 // *ai.IncompleteTranscriptError, exit 1, naming its status and reason, and
-// writes no transcript, as it holds part of one at most.
+// writes no transcript, as it holds part of one at most. A route-mode 404
+// is the endpoint's error, exit 1, and a second line hinting at chat mode,
+// as [transcribeError] words it.
 func transcribeCommand(n *Nodes, mode *commandFlag) *cli.Command {
 	cmd := &cli.Command{
 		Name:     "transcribe",
@@ -527,7 +585,7 @@ func transcribeCommand(n *Nodes, mode *commandFlag) *cli.Command {
 				FileName: filepath.Base(file),
 			})
 			if err != nil {
-				return err
+				return transcribeError(err, inv.Get(n.TranscriptionMode), inv.Get(n.Format))
 			}
 			out := &textOut{w: inv.Stdout}
 			if err := out.write(t.Text); err != nil {
@@ -543,5 +601,35 @@ func transcribeCommand(n *Nodes, mode *commandFlag) *cli.Command {
 	}
 	mode.bind(cmd.Flags(), defaultTranscriptionMode,
 		"how to transcribe: route, the endpoint's transcription route, or chat, a chat request in the format")
-	return cmd.Use(n.Transcriber, n.Model)
+	return cmd.Use(n.Transcriber, n.Model, n.TranscriptionMode, n.Format)
+}
+
+// transcribeError returns err, Transcribe's error in mode through
+// wireFormat, worded to name the setting to change, still exit 1.
+//
+// In chat mode through a format that can't carry audio, as [carriesAudio]
+// says, it names the mode and the format ahead of err. go-ai has refused
+// before the file is opened, for the format or for a request it refuses
+// earlier, such as a file name with no audio extension; either way the
+// format can't transcribe, so the naming holds whichever reason err gives.
+//
+// In route mode, a 404, an *ai.APIError of status 404, is err and then, on
+// a second line, a hint at chat mode: the endpoint has no transcription
+// route, and chat mode, which sends a chat request instead, may serve. The
+// hint is a line of its own, in parentheses, so the error is reported once,
+// whole on its first line, and the hint reads as advice on it rather than
+// as part of the endpoint's reply. infer neither probes chat mode nor falls
+// back to it: a 404 can mean a wrong base URL as well.
+func transcribeError(err error, mode ai.TranscriptionMode, wireFormat format.Format) error {
+	switch mode {
+	case ai.TranscribeChat:
+		if !carriesAudio(wireFormat) {
+			return fmt.Errorf("--mode chat needs a format that carries audio; --format %s doesn't: %w", formatName(wireFormat), err)
+		}
+	case ai.TranscribeRoute:
+		if apiErr, ok := errors.AsType[*ai.APIError](err); ok && apiErr.Status == http.StatusNotFound {
+			return fmt.Errorf("%w\n(the endpoint serves no transcription route; try --mode chat)", err)
+		}
+	}
+	return err
 }

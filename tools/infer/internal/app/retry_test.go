@@ -216,7 +216,13 @@ func TestRetryRefusals(t *testing.T) {
 		{
 			name: "base delay without a most delay",
 			args: []string{"models", "--retry-base-delay", "1s"},
-			want: "client: --retry-base-delay (INFER_RETRY_BASE_DELAY) and --retry-max-delay (INFER_RETRY_MAX_DELAY): ai: retry policy's base delay is above its most delay",
+			want: "client: --retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long",
+		},
+		{
+			name: "base delay with a zero most delay",
+			env:  map[string]string{"INFER_RETRY_BASE_DELAY": "500ms"},
+			args: []string{"models", "--retry-max-delay", "0s"},
+			want: "client: --retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long",
 		},
 		{
 			name: "negative retries through the chat client",
@@ -237,7 +243,7 @@ func TestRetryRefusals(t *testing.T) {
 		{
 			name: "negative idle timeout flag",
 			args: []string{"chat", "--idle-timeout", "-1s", "hello"},
-			want: "idle timeout: --idle-timeout (INFER_IDLE_TIMEOUT): negative duration -1s",
+			want: "idle timeout: --idle-timeout (INFER_IDLE_TIMEOUT): negative duration -1s; 0 sets no bound",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -249,8 +255,8 @@ func TestRetryRefusals(t *testing.T) {
 
 			wantCode(t, r, process.ExitUsage)
 			label := "infer " + tc.args[0] + ": "
-			if want := label + tc.want; !strings.HasPrefix(r.stderr, want) {
-				t.Errorf("stderr = %q, want it to start with %q", r.stderr, want)
+			if first, _, _ := strings.Cut(r.stderr, "\n"); first != label+tc.want {
+				t.Errorf("stderr = %q, want its first line %q", r.stderr, label+tc.want)
 			}
 			if n := strings.Count(r.stderr, label); n != 1 {
 				t.Errorf("stderr = %q, want the error reported once", r.stderr)

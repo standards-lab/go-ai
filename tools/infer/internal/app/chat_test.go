@@ -327,34 +327,50 @@ func TestChat_ImageRefusals(t *testing.T) {
 	}
 }
 
-// A request go-ai refuses is a usage error, exit 2, carrying go-ai's
-// reason, before any request, the model listing included: by its Validate,
-// or by the format's encoding.
+// A request go-ai refuses is a usage error, exit 2, before any request,
+// the model listing included: go-ai's reason, by its Validate or by the
+// format's encoding, after the flag to change. A refusal no one flag
+// causes, as when two are refused or one is refused only beside another
+// unset, is go-ai's reason alone.
 func TestChat_RefusedRequests(t *testing.T) {
+	const (
+		nativeObject = "protocol: request's native field isn't a JSON object with unique member names"
+		noMaxTokens  = "messages: request has no max output tokens, which Messages requires as max_tokens"
+	)
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
+		name   string
+		format string // the format setting; completions when empty
+		args   []string
+		want   string // the error's line, after "infer chat: "
 	}{
-		{"max tokens 1", []string{"--max-tokens", "1"}, "max output tokens 1 is below the minimum, 16"},
-		{"max tokens 15", []string{"--max-tokens", "15"}, "max output tokens 15 is below the minimum, 16"},
-		{"negative max tokens", []string{"--max-tokens", "-1"}, "max output tokens -1 is negative"},
-		{"unknown effort", []string{"--reasoning", "extreme"}, `unknown reasoning effort "extreme"`},
-		{"malformed native", []string{"--native", `{"temperature":`}, "native field isn't a JSON object"},
-		{"array native", []string{"--native", `[1,2]`}, "native field isn't a JSON object"},
-		{"string native", []string{"--native", `"x"`}, "native field isn't a JSON object"},
-		{"repeated native member", []string{"--native", `{"top_k":1,"top_k":2}`}, "native field isn't a JSON object"},
-		{"native clashing with a typed member", []string{"--native", `{"stream":false}`}, "native member stream clashes"},
-		{"native clashing unstreamed", []string{"--stream=false", "--max-tokens", "20", "--native", `{"max_completion_tokens":5}`}, "native member max_completion_tokens clashes"},
+		{"max tokens 1", "", []string{"--max-tokens", "1"}, "--max-tokens: protocol: request's max output tokens 1 is below the minimum, 16"},
+		{"max tokens 15", "", []string{"--max-tokens", "15"}, "--max-tokens: protocol: request's max output tokens 15 is below the minimum, 16"},
+		{"negative max tokens", "", []string{"--max-tokens", "-1"}, "--max-tokens: protocol: request's max output tokens -1 is negative"},
+		{"unknown effort", "", []string{"--reasoning", "extreme"}, `--reasoning: protocol: request has unknown reasoning effort "extreme"`},
+		{"malformed native", "", []string{"--native", `{"temperature":`}, "--native: " + nativeObject},
+		{"array native", "", []string{"--native", `[1,2]`}, "--native: " + nativeObject},
+		{"string native", "", []string{"--native", `"x"`}, "--native: " + nativeObject},
+		{"repeated native member", "", []string{"--native", `{"top_k":1,"top_k":2}`}, "--native: " + nativeObject},
+		{"native clashing with a typed member", "", []string{"--native", `{"stream":false}`}, "--native: completions: native member stream clashes with a member the request sets"},
+		{"native clashing unstreamed", "", []string{"--stream=false", "--max-tokens", "20", "--native", `{"max_completion_tokens":5}`}, "--native: completions: native member max_completion_tokens clashes with a member the request sets"},
+		{"messages without max tokens", "messages", nil, "--format messages needs --max-tokens: " + noMaxTokens},
+		{"messages max tokens 15", "messages", []string{"--max-tokens", "15"}, "--max-tokens: protocol: request's max output tokens 15 is below the minimum, 16"},
+		{"two flags refused", "", []string{"--max-tokens", "5", "--reasoning", "extreme"}, "protocol: request's max output tokens 5 is below the minimum, 16"},
+		{"two flags refused together", "", []string{"--reasoning", "low", "--native", `{"reasoning_effort":"low"}`}, "completions: native member reasoning_effort clashes with a member the request sets"},
+		{"native clash through messages without max tokens", "messages", []string{"--native", `{"stream":false}`}, noMaxTokens},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := completedStream(t, "agent")
+			env := map[string]string{"INFER_BASE_URL": e.URL}
+			if tc.format != "" {
+				env["INFER_FORMAT"] = tc.format
+			}
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, append(append([]string{"chat"}, tc.args...), "hello")...)
+			r := runApp(t, env, append(append([]string{"chat"}, tc.args...), "hello")...)
 
 			wantCode(t, r, process.ExitUsage)
-			if first, _, _ := strings.Cut(r.stderr, "\n"); !strings.HasPrefix(first, "infer chat: ") || !strings.Contains(first, tc.want) || strings.Count(r.stderr, "infer chat: ") != 1 {
-				t.Errorf("stderr = %q, want one infer chat error carrying %q", r.stderr, tc.want)
+			if first, _, _ := strings.Cut(r.stderr, "\n"); first != "infer chat: "+tc.want || strings.Count(r.stderr, "infer chat: ") != 1 {
+				t.Errorf("stderr = %q, want one error, %q", r.stderr, "infer chat: "+tc.want)
 			}
 			if r.stdout != "" {
 				t.Errorf("stdout = %q, want empty", r.stdout)
@@ -685,20 +701,6 @@ func TestChat_Messages(t *testing.T) {
 	if want := "status: completed\nusage: 31 input tokens, 8 output tokens (reasoning not reported), 39 total tokens\nreasoning items: 0\n"; r.stderr != want {
 		t.Errorf("stderr = %q, want %q", r.stderr, want)
 	}
-}
-
-// Messages requires max_tokens, so a messages chat with no --max-tokens is
-// the format's refusal, exit 2, before any request.
-func TestChat_MessagesWithoutMaxTokens(t *testing.T) {
-	e := chatEndpoint(t, []string{"agent"}, "messages", apptest.Stream("messages"))
-
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_FORMAT": "messages"}, "chat", "hello")
-
-	wantCode(t, r, process.ExitUsage)
-	if want := "infer chat: messages: request has no max output tokens"; !strings.HasPrefix(r.stderr, want) {
-		t.Errorf("stderr = %q, want it to start with %q", r.stderr, want)
-	}
-	wantNoRequest(t, e)
 }
 
 // Through completions, a reply whose usage reports no reasoning tokens

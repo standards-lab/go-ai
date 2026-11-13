@@ -35,7 +35,10 @@
 // as, int or duration, as chat's --idle-timeout's does. A missing base URL, an unknown format, a retry
 // setting that doesn't parse, or a base URL or retry policy go-ai's New
 // refuses is a usage error, exit 2, naming the flag and its variable,
-// before any request.
+// before any request. A base delay above zero with no max delay, or a
+// zero one, is refused as needing one: "--retry-base-delay
+// (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY)
+// at least as long".
 //
 // With no model set, a command that sends to a model lists the endpoint's
 // models first and sends to the one listed; none, or several, exits 1,
@@ -52,7 +55,10 @@
 // or an http(s) URL as given), --reasoning, --max-tokens, and --native, a
 // JSON object merged into the request's top level. A request go-ai's
 // Validate or the format's encoding refuses is a usage error, exit 2,
-// before any request. It streams by default, writing each text delta as
+// before any request, naming the flag to change ahead of go-ai's reason
+// when one flag alone causes it, as in "--max-tokens: protocol: request's
+// max output tokens 15 is below the minimum, 16", or "--format messages
+// needs --max-tokens: " ahead of messages' refusal of none. It streams by default, writing each text delta as
 // it arrives; --stream=false sends one unstreamed request. Either way it
 // ends the text with a newline and writes the reply's status, token usage,
 // and reasoning item count to stderr, the reasoning tokens as part of the
@@ -73,8 +79,11 @@
 // mode is a usage error naming both. The mode reaches only the
 // transcriber, so no other command reads it. Chat mode through a format
 // that can't carry audio, such as messages, is go-ai's refusal, exit 1,
-// before the file is opened; an incomplete chat-mode reply exits 1 naming
-// its status and reason.
+// before the file is opened, after "--mode chat needs a format that
+// carries audio; --format messages doesn't: "; an incomplete chat-mode
+// reply exits 1 naming its status and reason. A 404 in route mode exits 1
+// with the endpoint's error and, on a second line, "(the endpoint serves
+// no transcription route; try --mode chat)".
 //
 // [Nodes] holds one handle per node: each define function fills its own
 // part of one Nodes value, and its constructors read the lower layers'

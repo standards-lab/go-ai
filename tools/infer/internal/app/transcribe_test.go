@@ -240,9 +240,9 @@ func TestTranscribe_ReopensEachAttempt(t *testing.T) {
 }
 
 // Chat mode through messages, a format that can't carry audio, is go-ai's
-// refusal, exit 1, before the file is opened or anything is sent: the file
-// doesn't exist, so a run that opened it would fail with a file error
-// instead.
+// refusal, exit 1, after the mode and the format it names, before the file
+// is opened or anything is sent: the file doesn't exist, so a run that
+// opened it would fail with a file error instead.
 func TestTranscribe_ChatThroughMessages(t *testing.T) {
 	e := transcribeEndpoint(t, nil, completedChat())
 	env := whisper(e)
@@ -252,16 +252,76 @@ func TestTranscribe_ChatThroughMessages(t *testing.T) {
 	r := runApp(t, env, "transcribe", "--mode", "chat", missing)
 
 	wantCode(t, r, process.ExitFailure)
-	if want := "infer transcribe: ai: transcribe: messages: "; !strings.HasPrefix(r.stderr, want) || !strings.Contains(r.stderr, "InputAudio has no Messages form") {
-		t.Errorf("stderr = %q, want messages' refusal of audio, starting %q", r.stderr, want)
-	}
-	if strings.Contains(r.stderr, "missing.wav") || strings.Contains(r.stderr, "no such file") {
-		t.Errorf("stderr = %q, want no file error: the file is never opened", r.stderr)
+	want := "infer transcribe: --mode chat needs a format that carries audio; --format messages doesn't: " +
+		"ai: transcribe: messages: input 0: content 0: part protocol.InputAudio has no Messages form\n"
+	if r.stderr != want {
+		t.Errorf("stderr = %q, want %q", r.stderr, want)
 	}
 	if r.stdout != "" {
 		t.Errorf("stdout = %q, want empty", r.stdout)
 	}
 	wantNoRequest(t, e)
+}
+
+// notFound answers every request 404, as an endpoint without the route
+// does, with vLLM's body.
+func notFound() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"detail":"Not Found"}`)
+	})
+}
+
+// A route-mode 404 is the endpoint's error, exit 1, reported once, and a
+// second line hinting at chat mode; infer sends the upload once and tries
+// no chat request. A 404 in chat mode, or another status in route mode,
+// is the error alone: the hint is for a missing transcription route.
+func TestTranscribe_NotFound(t *testing.T) {
+	const notFoundError = `infer transcribe: ai: transcribe: 404 Not Found: {"detail":"Not Found"}`
+	for _, tc := range []struct {
+		name    string
+		mode    string
+		route   http.Handler // the transcription route's handler
+		chat    http.Handler // the chat route's handler
+		want    string
+		uploads int
+	}{
+		{"route 404", "route", notFound(), completedChat(),
+			notFoundError + "\n(the endpoint serves no transcription route; try --mode chat)\n", 1},
+		{"chat 404", "chat", apptest.Reply(transcriptionsRoute, routeReply("hello world")), notFound(),
+			notFoundError + "\n", 0},
+		{"route 500", "route", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "boom", http.StatusInternalServerError)
+		}), completedChat(), "infer transcribe: ai: transcribe: 500 Internal Server Error: boom\n", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.Handle("POST /v1/"+transcriptionsRoute, tc.route)
+			mux.Handle("POST /v1/"+completionsRoute, tc.chat)
+			e := apptest.Serve(t, mux)
+
+			r := runApp(t, whisper(e), "transcribe", "--mode", tc.mode, writeClip(t, "clip.wav"))
+
+			wantCode(t, r, process.ExitFailure)
+			if r.stderr != tc.want {
+				t.Errorf("stderr = %q, want %q", r.stderr, tc.want)
+			}
+			if r.stdout != "" {
+				t.Errorf("stdout = %q, want empty", r.stdout)
+			}
+			if n := len(uploads(t, e)); n != tc.uploads {
+				t.Errorf("sent %d transcription route requests, want %d", n, tc.uploads)
+			}
+			if tc.mode == "route" {
+				for _, req := range e.Requests() {
+					if req.Path == "/v1/"+completionsRoute {
+						t.Errorf("request %s %s, want no chat request", req.Method, req.Path)
+					}
+				}
+			}
+		})
+	}
 }
 
 // A chat-mode reply the model didn't complete is exit 1, naming its status
