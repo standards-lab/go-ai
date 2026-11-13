@@ -811,6 +811,7 @@ go-ai/                        module github.com/standards-lab/go-ai
 ├── go.mod                    no require
 ├── go.work                   use . and ./tools/infer, from the infer task
 ├── CHANGELOG.md              the root's
+├── docs/                     the guide: concepts, quick-start, features, glossary
 ├── *.go                      package ai
 ├── protocol/
 ├── format/
@@ -826,7 +827,7 @@ go-ai/                        module github.com/standards-lab/go-ai
     ├── go.mod                go-ai v0.1.0, go-cli-sdk v0.4.0, go-core v0.12.0
     ├── CHANGELOG.md          infer's
     ├── README.md
-    ├── quickstart.md         a guided tour of each command and failure, with real output
+    ├── docs/quick-start.md   a guided tour of each command and the common failures, with real output
     ├── cmd/infer/
     ├── integration/          infer's integration tier, behind the integration build tag
     └── internal/
