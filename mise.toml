@@ -6,13 +6,21 @@ jq = "1.8.2"
 # Space-separated list of module directories. "." is the base module and
 # tools/infer the CLI's; each is added as the library and infer tasks build it.
 [env]
-GO_MODULES = ""
+GO_MODULES = "."
 
 [tasks.check]
 description = "Build, vet, format, fix, tidy, test, and lint every module; writes nothing"
 run = '''
 set -eu
 export GOWORK=off
+# The base module requires nothing: its line is the standard library alone, which depguard holds
+# each import to and this states of go.mod itself.
+cd "$MISE_PROJECT_ROOT"
+if ! go mod edit -json | jq -e '(.Require // []) | length == 0' >/dev/null; then
+  echo "go.mod: the base module requires nothing, but it has a require:"
+  go mod edit -json | jq -r '.Require[] | "  \(.Path) \(.Version)"'
+  exit 1
+fi
 for mod in $GO_MODULES; do
   echo "check: $mod"
   cd "$MISE_PROJECT_ROOT/$mod"
@@ -24,6 +32,7 @@ for mod in $GO_MODULES; do
   go mod tidy -diff
   go test -race ./...
   golangci-lint run ./...
+  golangci-lint run --build-tags integration ./...
 done
 '''
 
