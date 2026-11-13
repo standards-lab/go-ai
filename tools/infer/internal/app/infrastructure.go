@@ -271,11 +271,6 @@ var transcriptionModes = map[string]ai.TranscriptionMode{
 // transcription route, as go-ai's default is.
 const defaultTranscriptionMode = "route"
 
-// transcriptionModeVar is the variable --mode overrides. It is named for
-// the setting, not the flag, so it reads as transcription's beside the
-// other INFER_ variables.
-var transcriptionModeVar = config.EnvName(envPrefix, "transcription-mode")
-
 // newTranscriptionMode returns the transcription mode node's constructor:
 // the mode the setting names, as mode's [commandFlag.setting] resolves it,
 // from defaultTranscriptionMode, INFER_TRANSCRIPTION_MODE, and --mode. A
@@ -386,10 +381,12 @@ type commandFlags struct {
 	idleTimeout *commandFlag // chat's --idle-timeout
 }
 
-// newCommandFlags returns the commands' flags, unbound.
+// newCommandFlags returns the commands' flags, unbound. --mode's variable
+// is named for the setting, not the flag, so it reads as transcription's
+// beside the other INFER_ variables.
 func newCommandFlags() commandFlags {
 	return commandFlags{
-		mode:        &commandFlag{name: "mode", variable: transcriptionModeVar},
+		mode:        &commandFlag{name: "mode", variable: config.EnvName(envPrefix, "transcription-mode")},
 		idleTimeout: &commandFlag{name: "idle-timeout", variable: config.EnvName(envPrefix, "idle-timeout")},
 	}
 }
