@@ -10,7 +10,9 @@
 // a command that declares nodes fails before anything starts. [Env] clears
 // the INFER_ variables a test inherited and sets its own. [Serve] starts an
 // [Endpoint], an httptest server that records each [Request] it receives
-// before answering, such as with [Models] or [Embeddings].
+// before answering, such as with [Models] or [Embeddings], or with [Reply]
+// or [Stream], which answer a chat request with the wire text a test
+// gives, as JSON or as server-sent events.
 //
 // The package exports:
 //
@@ -25,4 +27,7 @@
 //     the [Request] values it received
 //   - [Models], a handler that answers the model list, and [Embeddings],
 //     one that answers an embeddings request
+//   - [Reply] and [Stream], handlers that answer a request to a route with
+//     a JSON body or with server-sent events, in the wire shape a test
+//     writes
 package apptest

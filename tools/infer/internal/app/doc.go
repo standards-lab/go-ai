@@ -12,8 +12,8 @@
 //     configuration, and the go-ai client of the one endpoint a run talks
 //     to; it is the one file that names a format package;
 //   - domain.go: defineDomain and mountDomain, infer's commands over the
-//     client, models and embed, and resolveModel, the one-model fallback
-//     each command that sends to a model resolves its model with;
+//     client, models, embed, and chat, and resolveModel, the one-model
+//     fallback each command that sends to a model resolves its model with;
 //   - version.go: the version command, which declares no nodes.
 //
 // Each run talks to one endpoint. The root flags --base-url, --format, and
@@ -32,6 +32,17 @@
 // inputs, each argument or else each line of stdin, as one batch, and
 // writes one JSON array of numbers per input, one per line, in input order,
 // and the token usage to stderr.
+//
+// chat sends one prompt, the arguments joined by spaces or else stdin,
+// with --instructions, --image (repeatable: a file inlined as a data URL,
+// or an http(s) URL as given), --reasoning, --max-tokens, and --native, a
+// JSON object merged into the request's top level. A request go-ai's
+// Validate or the format's encoding refuses is a usage error, exit 2,
+// before any request. It streams by default, writing each text delta as
+// it arrives; --stream=false sends one unstreamed request. Either way it
+// ends the text with a newline and writes the reply's status, token usage,
+// and reasoning item count to stderr; a reply that isn't completed exits 1
+// naming its status and reason, as in "incomplete: max_output_tokens".
 //
 // [Nodes] holds one handle per node: each define function fills its own
 // part of one Nodes value, and its constructors read the lower layers'

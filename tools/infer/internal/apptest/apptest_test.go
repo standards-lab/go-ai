@@ -189,3 +189,56 @@ func TestEmbeddings_Reply(t *testing.T) {
 		t.Errorf("GET /v1/embeddings status = %d, want %d", other.StatusCode, http.StatusNotFound)
 	}
 }
+
+// post POSTs an empty JSON object to url and returns the reply's status,
+// Content-Type, and body.
+func post(t *testing.T, url string) (status int, contentType, body string) {
+	t.Helper()
+	resp, err := http.Post(url, "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, resp.Header.Get("Content-Type"), string(b)
+}
+
+// Reply answers POST /v1/<route> with its body as JSON; any other request
+// is 404.
+func TestReply_AnswersItsRoute(t *testing.T) {
+	e := apptest.Serve(t, apptest.Reply("chat/completions", `{"id":"x"}`))
+
+	status, contentType, body := post(t, e.URL+"/chat/completions")
+	other, _, _ := post(t, e.URL+"/responses")
+	got, err := http.Get(e.URL + "/chat/completions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = got.Body.Close()
+
+	if status != http.StatusOK || contentType != "application/json" || body != `{"id":"x"}` {
+		t.Errorf("reply = %d %s %s, want 200 application/json {\"id\":\"x\"}", status, contentType, body)
+	}
+	if other != http.StatusNotFound || got.StatusCode != http.StatusNotFound {
+		t.Errorf("POST /v1/responses = %d and GET /v1/chat/completions = %d, want 404 each", other, got.StatusCode)
+	}
+}
+
+// Stream answers POST /v1/<route> with each frame as one event's data, in
+// order; any other request is 404.
+func TestStream_WritesEachFrame(t *testing.T) {
+	e := apptest.Serve(t, apptest.Stream("messages", `{"a":1}`, `[DONE]`))
+
+	status, contentType, body := post(t, e.URL+"/messages")
+	other, _, _ := post(t, e.URL+"/chat/completions")
+
+	if want := "data: {\"a\":1}\n\ndata: [DONE]\n\n"; status != http.StatusOK || contentType != "text/event-stream" || body != want {
+		t.Errorf("reply = %d %s %q, want 200 text/event-stream %q", status, contentType, body, want)
+	}
+	if other != http.StatusNotFound {
+		t.Errorf("POST /v1/chat/completions = %d, want 404", other)
+	}
+}

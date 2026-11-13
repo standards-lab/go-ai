@@ -210,3 +210,43 @@ func Embeddings(promptTokens, totalTokens int, vectors ...[]float32) http.Handle
 		_, _ = w.Write(body)
 	})
 }
+
+// Reply returns a handler that answers POST /v1/<route>, such as
+// /v1/chat/completions, with body as application/json, whatever the
+// request, and any other request with 404. A test writes body in the wire
+// shape of the format the run speaks.
+func Reply(route, body string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/"+route {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	})
+}
+
+// Stream returns a handler that answers POST /v1/<route> as
+// text/event-stream, whatever the request, writing each of frames, in
+// order, as one server-sent event's data and flushing it before the next,
+// and any other request with 404. A frame is the event's data alone, which
+// is all a go-ai format decodes, such as a Chat Completions chunk or its
+// closing [DONE]; a frame holds no newline.
+func Stream(route string, frames ...string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/"+route {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		rc := http.NewResponseController(w)
+		for _, f := range frames {
+			if _, err := io.WriteString(w, "data: "+f+"\n\n"); err != nil {
+				return
+			}
+			if err := rc.Flush(); err != nil {
+				return
+			}
+		}
+	})
+}
