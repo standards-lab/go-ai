@@ -17,7 +17,7 @@ import (
 func TestChat(t *testing.T) {
 	eachChat(t, func(t *testing.T, formatEnv, streamFlag string) {
 		res := runOn(t, agent, []string{formatEnv}, "chat", streamFlag,
-			"--instructions", "Answer in one word.", "--reasoning", "low", "--max-tokens", agentBound,
+			"--instructions", "Answer in one word.", "--reasoning", "low", "--max-tokens", answerBound,
 			"What is the capital of France?")
 
 		wantCode(t, res, process.ExitOK)
@@ -78,7 +78,7 @@ func TestChatReasoningEffort(t *testing.T) {
 		} {
 			t.Run(c.effort, func(t *testing.T) {
 				res := runOn(t, vision, []string{formatEnv}, "chat", streamFlag,
-					"--instructions", "Answer in one word.", "--reasoning", c.effort, "--max-tokens", agentBound,
+					"--instructions", "Answer in one word.", "--reasoning", c.effort, "--max-tokens", answerBound,
 					"What is the capital of France?")
 
 				wantCode(t, res, process.ExitOK)

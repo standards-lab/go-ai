@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -158,7 +159,7 @@ func TestChat_Prompt(t *testing.T) {
 		{"one argument", []string{"chat", "hello"}, "", "hello"},
 		{"stdin", []string{"chat"}, "first line\nsecond line\n", "first line\nsecond line"},
 		{"stdin with CRLF", []string{"chat"}, "first line\r\n", "first line"},
-		{"stdin without a final newline", []string{"chat"}, "first line\n\n", "first line\n"},
+		{"stdin ending in a blank line", []string{"chat"}, "first line\n\n", "first line\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := completedStream(t)
@@ -402,14 +403,13 @@ func TestChat_Streamed(t *testing.T) {
 	}
 }
 
-// liveOut is a stdout that reports each write as it happens and counts its
-// flushes, for a test that watches the text arrive while the stream is
-// open. It is safe for concurrent use.
+// liveOut is a stdout that reports each write as it happens, for a test
+// that watches the text arrive while the stream is open. It is safe for
+// concurrent use.
 type liveOut struct {
-	mu      sync.Mutex
-	buf     bytes.Buffer
-	flushes int
-	wrote   chan string // each write's text, as it is written
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	wrote chan string // each write's text, as it is written
 }
 
 func (o *liveOut) Write(p []byte) (int, error) {
@@ -420,15 +420,10 @@ func (o *liveOut) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (o *liveOut) Flush() error {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.flushes++
-	return nil
-}
-
-// Each delta reaches stdout, flushed, while the stream is still open: the
-// endpoint sends the next delta only once stdout has the one before it.
+// Each delta reaches stdout while the stream is still open: the endpoint
+// sends the next delta only once stdout has the one before it. stdout is a
+// buffering writer over liveOut, as a terminal's may be, so a delta that
+// isn't flushed never reaches liveOut and the endpoint gives up on it.
 func TestChat_StreamWritesAsItArrives(t *testing.T) {
 	deltas := []string{"one", " two", " three"}
 	frames := completionsChunks("", "stop", deltas...)
@@ -455,18 +450,17 @@ func TestChat_StreamWritesAsItArrives(t *testing.T) {
 		}
 	}))
 	apptest.Env(t, agent(e))
-	a := app.New(cli.Streams{Stdin: strings.NewReader(""), Stdout: out, Stderr: new(bytes.Buffer)})
+	a := app.New(cli.Streams{Stdin: strings.NewReader(""), Stdout: bufio.NewWriter(out), Stderr: new(bytes.Buffer)})
 
 	code := a.Run(context.Background(), []string{"chat", "count"})
 
 	if code != process.ExitOK {
 		t.Errorf("code = %d, want %d", code, process.ExitOK)
 	}
+	out.mu.Lock()
+	defer out.mu.Unlock()
 	if got, want := out.buf.String(), "one two three\n"; got != want {
-		t.Errorf("stdout = %q, want %q", got, want)
-	}
-	if out.flushes != len(deltas)+1 {
-		t.Errorf("stdout flushed %d times, want once per delta and once for the newline, %d", out.flushes, len(deltas)+1)
+		t.Errorf("stdout = %q, want %q, the closing newline flushed too", got, want)
 	}
 }
 
@@ -639,8 +633,8 @@ func TestChat_FallbackRefusal(t *testing.T) {
 	}
 }
 
-// chat's help names each of its flags, --native's in the brief's words,
-// and builds and sends nothing.
+// chat's help names each of its flags, and says what --native carries, and
+// builds and sends nothing.
 func TestChat_Help(t *testing.T) {
 	e := completedStream(t, "agent")
 

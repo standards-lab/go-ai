@@ -34,10 +34,10 @@ var roles = []role{agent, vision, audio, embedding, transcription}
 // format runs through.
 var formats = []string{"completions", "messages", "responses"}
 
-// agentBound is the --max-tokens of a chat that wants an answer: a
+// answerBound is the --max-tokens of a chat that wants an answer: a
 // reasoning model reasons ahead of it, within the same bound. Messages
 // requires one, so every chat scenario passes a bound.
-const agentBound = "1024"
+const answerBound = "1024"
 
 // runOn runs the built program once against r's endpoint, its API root
 // mapped onto INFER_BASE_URL, with env added and no model set, so infer
