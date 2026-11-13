@@ -204,15 +204,16 @@ func assertResponse(t *testing.T, got, want *protocol.Response) {
 
 // asStreamed returns reply, an unstreamed reply's body, with the ids body, a text/event-stream
 // reply to the same request, gave: the reply's, message_start's, and each tool_use block's, the
-// one the stream's block in its place began with. The recorded replies were each sent twice, and
-// the router makes new ids for each.
+// one the stream's block in its place began with; and each thinking block's signature, the one
+// the stream's thinking block in its place was given by its signature_delta. The recorded replies
+// were each sent twice, and the endpoint makes new ids for each, and vLLM a new signature.
 func asStreamed(t *testing.T, reply, body string) string {
 	t.Helper()
 	var r map[string]any
 	if err := json.Unmarshal([]byte(reply), &r); err != nil {
 		t.Fatal(err)
 	}
-	var callIDs []string
+	var callIDs, signatures []string
 	events := sse.NewDecoder(strings.NewReader(body))
 	for {
 		e, err := events.Next()
@@ -231,6 +232,10 @@ func asStreamed(t *testing.T, reply, body string) string {
 				Type string `json:"type"`
 				ID   string `json:"id"`
 			} `json:"content_block"`
+			Delta struct {
+				Type      string `json:"type"`
+				Signature string `json:"signature"`
+			} `json:"delta"`
 		}
 		if err := json.Unmarshal([]byte(e.Data), &event); err != nil {
 			t.Fatal(err)
@@ -240,18 +245,31 @@ func asStreamed(t *testing.T, reply, body string) string {
 			r["id"] = event.Message.ID
 		case event.Type == "content_block_start" && event.ContentBlock.Type == "tool_use":
 			callIDs = append(callIDs, event.ContentBlock.ID)
+		case event.Type == "content_block_start" && event.ContentBlock.Type == "thinking":
+			signatures = append(signatures, "")
+		case event.Type == "content_block_delta" && event.Delta.Type == "signature_delta" && len(signatures) > 0:
+			signatures[len(signatures)-1] += event.Delta.Signature
 		}
 	}
 	for _, b := range r["content"].([]any) {
-		if b := b.(map[string]any); b["type"] == "tool_use" {
+		switch b := b.(map[string]any); b["type"] {
+		case "tool_use":
 			if len(callIDs) == 0 {
 				t.Fatal("the reply has more tool_use blocks than the stream")
 			}
 			b["id"], callIDs = callIDs[0], callIDs[1:]
+		case "thinking":
+			if len(signatures) == 0 {
+				t.Fatal("the reply has more thinking blocks than the stream")
+			}
+			b["signature"], signatures = signatures[0], signatures[1:]
 		}
 	}
 	if len(callIDs) > 0 {
 		t.Fatalf("the stream has %d tool_use blocks more than the reply", len(callIDs))
+	}
+	if len(signatures) > 0 {
+		t.Fatalf("the stream has %d thinking blocks more than the reply", len(signatures))
 	}
 	b, err := json.Marshal(r)
 	if err != nil {
@@ -261,9 +279,9 @@ func asStreamed(t *testing.T, reply, body string) string {
 }
 
 // sameArguments sets each function call of want to the arguments of got's in its place, failing
-// t unless the two are the same JSON value: llama.cpp's router parses a call's arguments and
-// writes them back compact in an unstreamed reply's input, and streams the model's own text, its
-// spacing included, as the input_json deltas.
+// t unless the two are the same JSON value: llama.cpp's router and vLLM parse a call's arguments
+// and write them back compact in an unstreamed reply's input, and stream the model's own text,
+// its spacing included, as the input_json deltas.
 func sameArguments(t *testing.T, got, want *protocol.Response) {
 	t.Helper()
 	if len(got.Output) != len(want.Output) {

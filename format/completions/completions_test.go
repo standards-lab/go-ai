@@ -731,6 +731,43 @@ func TestDecode(t *testing.T) {
 			},
 		},
 		{
+			name: "vLLM reply with reasoning in place of reasoning_content",
+			reply: `{"id":"chatcmpl-1","choices":[{"finish_reason":"stop","message":{"role":"assistant",
+				"content":"Paris","refusal":null,"reasoning":"The user asks."}}]}`,
+			want: &protocol.Response{
+				Output: []protocol.Item{
+					protocol.Reasoning{
+						ID:               "chatcmpl-1/0",
+						Status:           protocol.StatusCompleted,
+						Content:          []protocol.ReasoningText{{Text: "The user asks."}},
+						EncryptedContent: envelopeUserAsks,
+					},
+					protocol.Message{
+						ID:      "chatcmpl-1/1",
+						Status:  protocol.StatusCompleted,
+						Role:    protocol.RoleAssistant,
+						Content: []protocol.ContentPart{protocol.OutputText{Text: "Paris"}},
+					},
+				},
+				Status: protocol.StatusCompleted,
+			},
+		},
+		{
+			// A server that sends both names sends one text under them, read once.
+			name: "reasoning_content and reasoning both, reasoning_content read",
+			reply: `{"id":"chatcmpl-1","choices":[{"finish_reason":"stop","message":{"role":"assistant",
+				"reasoning_content":"The user asks.","reasoning":"The user asks."}}]}`,
+			want: &protocol.Response{
+				Output: []protocol.Item{protocol.Reasoning{
+					ID:               "chatcmpl-1/0",
+					Status:           protocol.StatusCompleted,
+					Content:          []protocol.ReasoningText{{Text: "The user asks."}},
+					EncryptedContent: envelopeUserAsks,
+				}},
+				Status: protocol.StatusCompleted,
+			},
+		},
+		{
 			name: "reasoning first, then the message and the calls, each its id from the reply's",
 			reply: `{"id":"chatcmpl-2","choices":[{"finish_reason":"tool_calls","message":{"role":"assistant",
 				"content":"Checking.","reasoning_content":"Need the weather tool.",

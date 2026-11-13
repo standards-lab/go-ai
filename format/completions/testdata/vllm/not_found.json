@@ -1,0 +1,1 @@
+{"error":{"message":"The model `go-ai/no-such-model` does not exist. Valid aliases: openai/gpt-oss-120b.","type":"NotFoundError","param":"model","code":404}}

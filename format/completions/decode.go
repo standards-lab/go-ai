@@ -18,8 +18,8 @@ import (
 
 // DecodeResponse decodes a Chat Completions response body. Each output item gets the id itemID
 // derives from the reply's id and the item's place in the output, as Chat Completions supplies no
-// item ids. The first choice's message's reasoning_content, when it has one, becomes a reasoning
-// item ahead of the others: its content one reasoning_text part of the text, and its
+// item ids. The first choice's message's reasoning, when it has some, becomes a reasoning item
+// ahead of the others, read as reasoningText reads it, from reasoning_content or vLLM's reasoning: its content one reasoning_text part of the text, and its
 // encrypted_content the format's envelope holding it, which EncodeRequest reads back. The message
 // then becomes an assistant message item, its content an output_text part and its refusal a refusal
 // part; a message with neither gives no message item. Each of its tool_calls then becomes a
@@ -51,7 +51,7 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 	if resp.Status, resp.IncompleteDetails, ok = decodeFinish(choice.FinishReason); !ok {
 		return nil, fmt.Errorf("completions: response has unknown finish_reason %q", choice.FinishReason)
 	}
-	if r := choice.Message.ReasoningContent; r != "" {
+	if r := reasoningText(choice.Message.ReasoningContent, choice.Message.Reasoning); r != "" {
 		sealed, err := sealEnvelope(envelope{ReasoningContent: r})
 		if err != nil {
 			return nil, fmt.Errorf("completions: reasoning: %w", err)
@@ -94,6 +94,17 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 		resp.Output[last] = withStatus(resp.Output[last], resp.Status)
 	}
 	return resp, nil
+}
+
+// reasoningText returns the reasoning of a message or a delta: its reasoningContent, the
+// reasoning_content member llama.cpp and other OpenAI-compatible servers send, or, when that is
+// empty, its reasoning, the member vLLM sends in its place. A server that sends both sends one
+// text under the two names, so reasoning_content alone is read, never the two joined.
+func reasoningText(reasoningContent, reasoning string) string {
+	if reasoningContent != "" {
+		return reasoningContent
+	}
+	return reasoning
 }
 
 // withStatus returns it, an output item, with status.
@@ -175,7 +186,8 @@ func (*Format) DecodeError(body []byte) (message, typ, code string) {
 // ends the stream. Of each chunk it reads the id, the first choice, index 0, and the usage.
 //
 // The first event opens the stream with response.created, its response in_progress. The choice's
-// reasoning_content deltas make the reasoning item, first in the output, as DecodeResponse orders
+// reasoning deltas, each read as reasoningText reads it, from reasoning_content or vLLM's
+// reasoning, make the reasoning item, first in the output, as DecodeResponse orders
 // it: output_item.added, in progress and with no content, when the first of them arrives, then its
 // one reasoning_text part, with content_part.added, a reasoning.delta for each, and at its close
 // reasoning.done and content_part.done, and output_item.done carrying the whole item. The item
@@ -364,10 +376,11 @@ func (d *streamDecoder) decode(data []byte) error {
 			continue
 		}
 		delta := choice.Delta
-		if d.finished && (delta.ReasoningContent+delta.Content+delta.Refusal != "" || len(delta.ToolCalls) > 0) {
+		reasoning := reasoningText(delta.ReasoningContent, delta.Reasoning)
+		if d.finished && (reasoning+delta.Content+delta.Refusal != "" || len(delta.ToolCalls) > 0) {
 			return errors.New("delta after the finish_reason")
 		}
-		if err := d.reason(delta.ReasoningContent); err != nil {
+		if err := d.reason(reasoning); err != nil {
 			return err
 		}
 		if err := d.delta(partText, delta.Content); err != nil {

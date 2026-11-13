@@ -56,3 +56,5 @@ began, where Anthropic stops each before the next begins, and its error frame mi
 OpenAI-style `{"code","message","type"}` body. It passes a system message through where it
 stands, and makes an assistant message of a run of reasoning, which the reasoning alone leaves
 without content.
+
+The replies recorded from vLLM 0.33.0 are in `vllm/`, which has its own README.

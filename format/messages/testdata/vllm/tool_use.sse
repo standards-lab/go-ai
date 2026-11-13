@@ -1,0 +1,75 @@
+event: message_start
+data: {"type":"message_start","message":{"id":"chatcmpl-8cdbca64f10dece4","type":"message","role":"assistant","content":[],"model":"openai/gpt-oss-120b","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":134,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","content_block":{"type":"thinking","thinking":""},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"We"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":" need"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":" to"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":" call"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":" function"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":" get"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"_weather"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"."},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"signature_delta","signature":"e3214a8a621744b29af271b528b751f5"},"index":0}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","content_block":{"type":"tool_use","id":"chatcmpl-tool-8ddfdb7ce8e0931c","name":"get_weather","input":{}},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\n"},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":" "},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":" \""},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"city"},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"\":"},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":" \""},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"Paris"},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"\"\n"},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"}"},"index":1}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":134,"output_tokens":36}}
+
+event: message_stop
+data: {"type":"message_stop"}
+

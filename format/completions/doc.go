@@ -26,7 +26,8 @@
 //
 // It normalizes the reply to the spec's model: Chat Completions gives no item ids, so each
 // output item's id derives from the reply's id and its place in the output, alike streamed and
-// unstreamed; reasoning_content becomes a reasoning item ahead of the message; and the
+// unstreamed; the reasoning, which llama.cpp sends as reasoning_content and vLLM as reasoning,
+// becomes a reasoning item ahead of the message, read from either name; and the
 // finish_reason gives the status, only the last item taking an incomplete one. A stream's tool
 // call fragments, which may interleave, are assembled by index, and an error frame ends the
 // stream with the error event and response.failed.

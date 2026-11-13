@@ -1,0 +1,1 @@
+{"id":"chatcmpl-a27537d77e8fb570","type":"message","role":"assistant","content":[{"type":"thinking","thinking":"Need to output three French cities, comma-separated, nothing else.","signature":"cd03ad08121346fa9164bc3aabab3445"},{"type":"text","text":"Paris, Lyon, Marseille"}],"model":"openai/gpt-oss-120b","stop_reason":"end_turn","usage":{"input_tokens":78,"output_tokens":28}}

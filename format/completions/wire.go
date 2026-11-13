@@ -157,7 +157,9 @@ type refusalPart struct {
 }
 
 // response is the part of a Chat Completions response body the format reads. Members it
-// doesn't read, such as llama.cpp's timings, are ignored.
+// doesn't read, such as llama.cpp's timings, are ignored. A message's reasoning comes as
+// ReasoningContent, the name llama.cpp gives it, or as Reasoning, vLLM's; reasoningText reads
+// either.
 type response struct {
 	// ID is the reply's id, such as chatcmpl-abc, from which the format derives its items' ids.
 	ID      string `json:"id"`
@@ -165,6 +167,7 @@ type response struct {
 		Message struct {
 			Content          string     `json:"content"`
 			ReasoningContent string     `json:"reasoning_content"`
+			Reasoning        string     `json:"reasoning"`
 			Refusal          string     `json:"refusal"`
 			ToolCalls        []toolCall `json:"tool_calls"`
 		} `json:"message"`
@@ -187,7 +190,8 @@ type usage struct {
 // null finish_reason or delta member decodes as empty. Usage is set on the chunk that carries
 // it, with stream_options.include_usage the last, of no choices. Members it doesn't read, such
 // as llama.cpp's timings, are ignored. Error is set on an error frame, which carries no choices:
-// an OpenAI-style error body in place of a chunk.
+// an OpenAI-style error body in place of a chunk. A delta's reasoning comes as ReasoningContent
+// or as Reasoning, as a response's does.
 type chunk struct {
 	// ID is the reply's id, which every chunk of the stream repeats.
 	ID      string `json:"id"`
@@ -195,6 +199,7 @@ type chunk struct {
 		Index int `json:"index"`
 		Delta struct {
 			ReasoningContent string          `json:"reasoning_content"`
+			Reasoning        string          `json:"reasoning"`
 			Content          string          `json:"content"`
 			Refusal          string          `json:"refusal"`
 			ToolCalls        []toolCallDelta `json:"tool_calls"`
@@ -228,7 +233,7 @@ const envelopePrefix = "go-ai:completions/v1:"
 //
 // A change to the layout or the members' meaning is a new version, and a new prefix.
 type envelope struct {
-	// ReasoningContent is the reply's reasoning_content, which goes back as the assistant
-	// message's.
+	// ReasoningContent is the reply's reasoning, from its reasoning_content or its reasoning,
+	// which goes back as the assistant message's reasoning_content.
 	ReasoningContent string `json:"reasoning_content"`
 }

@@ -25,3 +25,5 @@ item ids derive from the reply's.
 Each streamed request sent `"stream":true,"stream_options":{"include_usage":true}`, as
 `EncodeStreamRequest` does, and each unstreamed one `"stream":false`, to
 `/v1/chat/completions?autoload=false`.
+
+The replies recorded from vLLM 0.33.0 are in `vllm/`, which has its own README.

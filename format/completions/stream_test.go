@@ -739,6 +739,32 @@ func TestStreamReasoning(t *testing.T) {
 				"usage":{"completion_tokens":5,"prompt_tokens":7,"total_tokens":12}}`,
 		},
 		{
+			// vLLM names the delta's reasoning reasoning; a server that sends both names sends
+			// one text, read once.
+			name: "vLLM's reasoning, then both names in one chunk",
+			chunks: []string{
+				delta(`{"reasoning":"The user"}`, ""),
+				delta(`{"reasoning_content":" asks.","reasoning":" asks."}`, ""),
+				delta(`{"content":"Paris"}`, "stop"),
+			},
+			trace: `
+				0 response.created in_progress
+				1 response.output_item.added 0 protocol.Reasoning{ID:"chatcmpl-1/0", Status:"in_progress", Content:[]protocol.ReasoningText(nil), Summary:[]protocol.SummaryText(nil), EncryptedContent:""}
+				2 response.content_part.added 0 0 chatcmpl-1/0 protocol.ReasoningText{Text:""}
+				3-4 response.reasoning.delta 0 0 chatcmpl-1/0, 2 deltas
+				5 response.reasoning.done 0 0 chatcmpl-1/0 "The user asks."
+				6 response.content_part.done 0 0 chatcmpl-1/0 protocol.ReasoningText{Text:"The user asks."}
+				7 response.output_item.done 0 protocol.Reasoning{ID:"chatcmpl-1/0", Status:"completed", Content:[]protocol.ReasoningText{protocol.ReasoningText{Text:"The user asks."}}, Summary:[]protocol.SummaryText(nil), EncryptedContent:"` + envelopeUserAsks + `"}
+				8 response.output_item.added 1 protocol.Message{ID:"chatcmpl-1/1", Status:"in_progress", Role:"assistant", Content:[]protocol.ContentPart(nil)}
+				9 response.content_part.added 1 0 chatcmpl-1/1 protocol.OutputText{Text:""}
+				10 response.output_text.delta 1 0 chatcmpl-1/1 "Paris"
+				11 response.output_text.done 1 0 chatcmpl-1/1 "Paris"
+				12 response.content_part.done 1 0 chatcmpl-1/1 protocol.OutputText{Text:"Paris"}
+				13 response.output_item.done 1 protocol.Message{ID:"chatcmpl-1/1", Status:"completed", Role:"assistant", Content:[]protocol.ContentPart{protocol.OutputText{Text:"Paris"}}}
+				14 response.completed 2 items`,
+			reply: `{"id":"chatcmpl-1","choices":[{"message":{"content":"Paris","reasoning":"The user asks."},"finish_reason":"stop"}]}`,
+		},
+		{
 			name: "reasoning, then a call",
 			chunks: []string{
 				delta(`{"reasoning_content":"Need the weather tool."}`, ""),

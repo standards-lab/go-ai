@@ -1,0 +1,84 @@
+event: response.created
+data: {"response":{"id":"resp_a16c2587aad31d97","created_at":1794532024,"incomplete_details":null,"instructions":null,"metadata":null,"model":"openai/gpt-oss-120b","object":"response","output":[],"parallel_tool_calls":true,"temperature":0.0,"tool_choice":"required","tools":[{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},"strict":false,"type":"function","allowed_callers":null,"async":null,"defer_loading":null,"description":"Get the current temperature in a city, in degrees Celsius.","output_schema":null}],"top_p":1.0,"background":false,"max_output_tokens":256,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"prompt_cache_options":null,"prompt_cache_key":null,"prompt_cache_retention":null,"reasoning":{"context":null,"effort":"low","generate_summary":null,"mode":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","text":null,"top_logprobs":null,"truncation":"disabled","usage":null,"user":null,"presence_penalty":0.0,"frequency_penalty":0.0,"kv_transfer_params":null,"ec_transfer_params":null,"input_messages":null,"output_messages":null},"sequence_number":0,"type":"response.created"}
+
+event: response.in_progress
+data: {"response":{"id":"resp_a16c2587aad31d97","created_at":1794532024,"incomplete_details":null,"instructions":null,"metadata":null,"model":"openai/gpt-oss-120b","object":"response","output":[],"parallel_tool_calls":true,"temperature":0.0,"tool_choice":"required","tools":[{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},"strict":false,"type":"function","allowed_callers":null,"async":null,"defer_loading":null,"description":"Get the current temperature in a city, in degrees Celsius.","output_schema":null}],"top_p":1.0,"background":false,"max_output_tokens":256,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"prompt_cache_options":null,"prompt_cache_key":null,"prompt_cache_retention":null,"reasoning":{"context":null,"effort":"low","generate_summary":null,"mode":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","text":null,"top_logprobs":null,"truncation":"disabled","usage":null,"user":null,"presence_penalty":0.0,"frequency_penalty":0.0,"kv_transfer_params":null,"ec_transfer_params":null,"input_messages":null,"output_messages":null},"sequence_number":1,"type":"response.in_progress"}
+
+event: response.output_item.added
+data: {"item":{"id":"rs_afc5b8225f423707","summary":[],"type":"reasoning","content":null,"encrypted_content":null,"status":"in_progress"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+event: response.content_part.added
+data: {"content_index":0,"item_id":"rs_afc5b8225f423707","output_index":0,"part":{"text":"","type":"reasoning_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"We","item_id":"rs_afc5b8225f423707","output_index":0,"sequence_number":4,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" need","item_id":"rs_afc5b8225f423707","output_index":0,"sequence_number":5,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" to","item_id":"rs_afc5b8225f423707","output_index":0,"sequence_number":6,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" call","item_id":"rs_afc5b8225f423707","output_index":0,"sequence_number":7,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" function","item_id":"rs_afc5b8225f423707","output_index":0,"sequence_number":8,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" get","item_id":"rs_afc5b8225f423707","output_index":0,"sequence_number":9,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"_weather","item_id":"rs_afc5b8225f423707","output_index":0,"sequence_number":10,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":".","item_id":"rs_afc5b8225f423707","output_index":0,"sequence_number":11,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.done
+data: {"content_index":0,"item_id":"rs_afc5b8225f423707","output_index":0,"sequence_number":12,"text":"We need to call function get_weather.","type":"response.reasoning_text.done"}
+
+event: response.content_part.done
+data: {"content_index":0,"item_id":"rs_afc5b8225f423707","output_index":0,"part":{"text":"We need to call function get_weather.","type":"reasoning_text"},"sequence_number":13,"type":"response.content_part.done"}
+
+event: response.output_item.done
+data: {"item":{"id":"rs_afc5b8225f423707","summary":[],"type":"reasoning","content":[{"text":"We need to call function get_weather.","type":"reasoning_text"}],"encrypted_content":null,"status":"completed"},"output_index":0,"sequence_number":14,"type":"response.output_item.done"}
+
+event: response.output_item.added
+data: {"item":{"arguments":"","call_id":"call_b684c33821a61b15","name":"get_weather","type":"function_call","id":"fc_86855dc58a39af2f","async":null,"caller":null,"namespace":null,"status":"in_progress"},"output_index":1,"sequence_number":15,"type":"response.output_item.added"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"{\n","item_id":"fc_86855dc58a39af2f","output_index":1,"sequence_number":16,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":" ","item_id":"fc_86855dc58a39af2f","output_index":1,"sequence_number":17,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":" \"","item_id":"fc_86855dc58a39af2f","output_index":1,"sequence_number":18,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"city","item_id":"fc_86855dc58a39af2f","output_index":1,"sequence_number":19,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"\":","item_id":"fc_86855dc58a39af2f","output_index":1,"sequence_number":20,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":" \"","item_id":"fc_86855dc58a39af2f","output_index":1,"sequence_number":21,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"Paris","item_id":"fc_86855dc58a39af2f","output_index":1,"sequence_number":22,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"\"\n","item_id":"fc_86855dc58a39af2f","output_index":1,"sequence_number":23,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"}","item_id":"fc_86855dc58a39af2f","output_index":1,"sequence_number":24,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.done
+data: {"arguments":"{\n  \"city\": \"Paris\"\n}","item_id":"fc_86855dc58a39af2f","output_index":1,"sequence_number":25,"type":"response.function_call_arguments.done","name":"get_weather"}
+
+event: response.output_item.done
+data: {"item":{"arguments":"{\n  \"city\": \"Paris\"\n}","call_id":"call_b684c33821a61b15","name":"get_weather","type":"function_call","id":"fc_86855dc58a39af2f","async":null,"caller":null,"namespace":null,"status":"completed","output_index":1,"sequence_number":-1},"output_index":1,"sequence_number":26,"type":"response.output_item.done"}
+
+event: response.completed
+data: {"response":{"id":"resp_a16c2587aad31d97","created_at":1794532024,"incomplete_details":null,"instructions":null,"metadata":null,"model":"openai/gpt-oss-120b","object":"response","output":[{"id":"rs_afc5b8225f423707","summary":[],"type":"reasoning","content":[{"text":"We need to call function get_weather.","type":"reasoning_text"}],"encrypted_content":null,"status":null},{"arguments":"{\n  \"city\": \"Paris\"\n}","call_id":"call_b684c33821a61b15","name":"get_weather","type":"function_call","id":"fc_86855dc58a39af2f","async":null,"caller":null,"namespace":null,"status":"completed"}],"parallel_tool_calls":true,"temperature":0.0,"tool_choice":"required","tools":[{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},"strict":false,"type":"function","allowed_callers":null,"async":null,"defer_loading":null,"description":"Get the current temperature in a city, in degrees Celsius.","output_schema":null}],"top_p":1.0,"background":false,"max_output_tokens":256,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"prompt_cache_options":null,"prompt_cache_key":null,"prompt_cache_retention":null,"reasoning":{"context":null,"effort":"low","generate_summary":null,"mode":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"completed","text":null,"top_logprobs":null,"truncation":"disabled","usage":{"input_tokens":134,"input_tokens_details":{"cached_tokens":128,"cache_write_tokens":0,"input_tokens_per_turn":[134],"cached_tokens_per_turn":[128]},"output_tokens":36,"output_tokens_details":{"reasoning_tokens":17,"tool_output_tokens":0,"output_tokens_per_turn":[36],"tool_output_tokens_per_turn":[0]},"total_tokens":170},"user":null,"presence_penalty":0.0,"frequency_penalty":0.0,"kv_transfer_params":null,"ec_transfer_params":null,"input_messages":null,"output_messages":null},"sequence_number":27,"type":"response.completed"}
+

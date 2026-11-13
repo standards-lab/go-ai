@@ -68,3 +68,5 @@ reasoning item's part events, `response.reasoning.done`, and
 `response.function_call_arguments.done`; it opens every item before it closes any; and it gives
 a reasoning item no status at its output_item.done or in the terminal response. Its error frame
 mid-stream is `{"error":{...}}`, of no type.
+
+The replies recorded from vLLM 0.33.0 are in `vllm/`, which has its own README.
