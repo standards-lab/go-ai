@@ -10,8 +10,8 @@ capability of go-ai:
 - embeds passages and transcribes an audio clip
 
 Each step writes one file in full and runs it. Every block comes from a program that compiles,
-and every output is from a real run. The chat outputs are from Gemma 4 26B
-(`nvidia/Gemma-4-26B-A4B-NVFP4`), served by vLLM. Outputs vary by model. The addresses, such as
+and every output is from a real run. The chat outputs are from gpt-oss-120b, a
+reasoning model served by vLLM under the name `agent`. Outputs vary by model. The addresses, such as
 `http://localhost:8000/v1`, stand in for your own. The [concepts](concepts.md) document explains
 the model the program uses, and the [features](features.md) document states each rule.
 
@@ -128,13 +128,13 @@ func models(ctx context.Context, client *ai.Client) error {
 
 ```text
 $ go run . models
-nvidia/Gemma-4-26B-A4B-NVFP4
+agent
 ```
 
 go-ai has no default model, so set the one the endpoint lists:
 
 ```sh
-export ASK_MODEL=nvidia/Gemma-4-26B-A4B-NVFP4
+export ASK_MODEL=agent
 ```
 
 ## 3. Ask a question
@@ -202,8 +202,8 @@ Add the step to `main.go`:
 
 ```text
 $ go run . generate
-A wire format is the specific sequence of bits and bytes used to encode data for transmission over a network or storage on a device.
-status: completed, 57 tokens
+A wire format is the standardized, byte-level representation of data as it is transmitted over a network or stored in a communication channel, defining exactly how fields, types, and structures are encoded for interoperability between systems.
+status: completed, 168 tokens
 ```
 
 ## 4. Read a failure
@@ -213,8 +213,8 @@ and any Retry-After the reply asked for. Match it with `errors.As`. A model the 
 serve is one such refusal:
 
 ```text
-$ ASK_MODEL=gemma go run . generate
-ai: generate: 404 Not Found: The model `gemma` does not exist. Valid aliases: nvidia/Gemma-4-26B-A4B-NVFP4. (NotFoundError, 404)
+$ ASK_MODEL=gpt-4o go run . generate
+ai: generate: 404 Not Found: The model `gpt-4o` does not exist. Valid aliases: agent. (NotFoundError, 404)
 exit status 1
 ```
 
@@ -283,8 +283,8 @@ func stream(ctx context.Context, client *ai.Client, model string) error {
 $ go run . stream
 Nile
 Amazon
-Mississippi
-status: completed, 7 output tokens (0 reasoning)
+Danube
+status: completed, 45 output tokens (28 reasoning)
 ```
 
 Cancelling the context closes the connection. After a break or an error, `acc.Response()` holds
@@ -357,7 +357,7 @@ func tools(ctx context.Context, client *ai.Client, model string) error {
 ```text
 $ go run . tools
 call: get_weather({"city": "Paris"})
-The current temperature in Paris is 17°C.
+The current temperature in Paris is **17 °C**.
 ```
 
 go-ai is stateless: every request carries the whole conversation, so a follow-up appends to
@@ -425,7 +425,7 @@ func structured(ctx context.Context, client *ai.Client, model string) error {
 
 ```text
 $ go run . structured
-{Name:Nile Continent:Africa LengthKM:6650}
+{Name:Nile River Continent:Africa LengthKM:6650}
 ```
 
 The schema controls the shape of the answer, not whether it is right. The descriptions help the
@@ -478,8 +478,8 @@ func newClient() (*ai.Client, error) {
 
 ```text
 $ go run . generate
-A wire format is a standardized way of encoding data into a sequence of bytes so that it can be transmitted over a network or stored in a file.
-status: completed, 61 tokens
+A wire format is a standardized, byte‑level encoding of data designed for transmission over a network or communication channel, ensuring that disparate systems can correctly serialize, send, receive, and deserialize the same information.
+status: completed, 152 tokens
 ```
 
 ## 9. Switch the wire format
@@ -497,8 +497,8 @@ change the import and the constructor in `client.go`:
 
 ```text
 $ go run . generate
-A wire format is a standardized way of encoding data into a binary or text-based stream so that it can be transmitted across a network or stored in a file.
-status: completed, 64 tokens
+A wire format is the standardized, serialized representation of data that defines how it is encoded, transmitted, and parsed across a network or between software components.
+status: completed, 154 tokens
 ```
 
 `messages.New()` sends Anthropic Messages the same way. Messages requires `MaxOutputTokens`, so
