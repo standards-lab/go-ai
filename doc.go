@@ -18,7 +18,11 @@
 // routes, embeddings, models, and audio/transcriptions, on a Client of any format: llama.cpp's
 // router serves all three beside every format's route, and an endpoint without the route
 // answers with an *APIError. Transcribe's chat mode instead sends the clip as a chat request in
-// the Client's format, which must carry audio, as Chat Completions does.
+// the Client's format, which must carry audio, as Chat Completions does, for an endpoint whose
+// audio model has no transcription route.
+//
+// go-ai's README (https://github.com/standards-lab/go-ai#readme) states the module's place in Go
+// Elemental, its dependency line, and its API by example.
 //
 // Its exported identifiers:
 //
@@ -43,4 +47,5 @@
 //   - [TranscriptionInstruction] is the instruction chat mode gives the model when the request
 //     has no Prompt.
 //   - [APIError] is a non-2xx reply, matched with errors.As, carrying the reply's Retry-After.
+//   - [APIError.Error] reports the reply's status and the endpoint's message.
 package ai
