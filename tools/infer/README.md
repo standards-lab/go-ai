@@ -4,6 +4,9 @@
 embeds, chats, and transcribes through go-ai's base module, in any of its three wire formats,
 Chat Completions, Anthropic Messages, and Open Responses, without a Go program of your own.
 
+New to `infer`? [quickstart.md](quickstart.md) walks through setup and each command with real
+output, then through the ways a command fails. This README is the reference.
+
 `github.com/standards-lab/go-ai/tools/infer` is a module of its own, nested in go-ai's
 repository and released on `tools/infer/v<semver>` tags, with its changes in
 [CHANGELOG.md](CHANGELOG.md). Importing go-ai never fetches what `infer` requires.

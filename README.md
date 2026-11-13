@@ -221,6 +221,8 @@ infer chat --reasoning low "Is 1009 prime?"   # the reply streamed, its summary 
 infer transcribe --mode chat clip.wav         # the transcript, sent over chat
 ```
 
+[tools/infer/quickstart.md](tools/infer/quickstart.md) walks through setup, each command, and
+the ways a command fails, with real output.
 [tools/infer/README.md](tools/infer/README.md) documents every flag, variable, and exit code.
 
 ## Development
