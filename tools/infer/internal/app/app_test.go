@@ -110,7 +110,7 @@ func TestRun_RootHelp(t *testing.T) {
 
 			wantCode(t, r, process.ExitUsage)
 			for _, want := range []string{"version", "models", "embed", "chat", "transcribe", "--base-url", "INFER_BASE_URL", "--format", "INFER_FORMAT", "--model", "INFER_MODEL",
-				"--retries", "INFER_RETRIES", "the first included", "--retry-base-delay", "INFER_RETRY_BASE_DELAY", "--retry-max-delay", "INFER_RETRY_MAX_DELAY",
+				"--retries", "INFER_RETRIES", "counts the first", "--retry-base-delay", "INFER_RETRY_BASE_DELAY", "--retry-max-delay", "INFER_RETRY_MAX_DELAY",
 				// Each retry flag shows the type its node parses it as,
 				// not the string the flag holds.
 				"--retries int", "--retry-base-delay duration", "--retry-max-delay duration",

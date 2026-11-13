@@ -45,7 +45,7 @@ Flags:
   --base-url string             the endpoint's API root, such as http://localhost:8000/v1 (env INFER_BASE_URL)
   --format string               the wire format: completions, messages, or responses (env INFER_FORMAT) (default "completions")
   --model string                the model the request names (env INFER_MODEL)
-  --retries int                 the most attempts of each request, the first included, as an int, so 3 retries twice, when the endpoint answers 408, 429, 502, 503, or 504 or the connection fails; 0 or 1 retries nothing (env INFER_RETRIES)
+  --retries int                 the most attempts of each request, an int that counts the first, so 3 retries twice, when the endpoint answers 408, 429, 502, 503, or 504 or the connection fails; 0 or 1 retries nothing (env INFER_RETRIES)
   --retry-base-delay duration   the longest wait before the first retry, a duration such as 500ms, doubling for each retry after it; at most --retry-max-delay (env INFER_RETRY_BASE_DELAY)
   --retry-max-delay duration    the longest wait between attempts, a duration such as 30s, and the longest Retry-After waited for; a longer Retry-After ends the retries (env INFER_RETRY_MAX_DELAY)
   --help                        Show help for infer

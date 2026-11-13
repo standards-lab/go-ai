@@ -452,7 +452,7 @@ func bindRootFlags(fs *flag.FlagSet) *rootFlags {
 	fs.String("base-url", "", "the endpoint's API root, such as http://localhost:8000/v1"+env("base-url"))
 	fs.String("format", defaultFormat, "the wire format: completions, messages, or responses"+env("format"))
 	fs.String("model", "", "the model the request names"+env("model"))
-	fs.String("retries", "", "the most attempts of each request, the first included, as an `int`, so 3 retries twice, "+
+	fs.String("retries", "", "the most attempts of each request, an `int` that counts the first, so 3 retries twice, "+
 		"when the endpoint answers 408, 429, 502, 503, or 504 or the connection fails; 0 or 1 retries nothing"+env("retries"))
 	fs.String("retry-base-delay", "", "the longest wait before the first retry, a `duration` such as 500ms, doubling for each retry after it; "+
 		"at most --retry-max-delay"+env("retry-base-delay"))
