@@ -29,9 +29,10 @@ import (
 func defineDomain(g *graph.Graph, n *Nodes) {}
 
 // mountDomain mounts infer's commands at root, each declaring with Use the
-// nodes it reads, so a run builds only what its command needs.
-func mountDomain(root *cli.Command, n *Nodes) {
-	root.Add(modelsCommand(n), embedCommand(n), chatCommand(n))
+// nodes it reads, so a run builds only what its command needs. mode is
+// transcribe's --mode, which the transcription mode node reads.
+func mountDomain(root *cli.Command, n *Nodes, mode *modeFlag) {
+	root.Add(modelsCommand(n), embedCommand(n), chatCommand(n), transcribeCommand(n, mode))
 }
 
 // modelsCommand returns the models command, which writes the ID of each
@@ -470,4 +471,61 @@ func replyError(resp *protocol.Response) error {
 		}
 	}
 	return fmt.Errorf("reply ended %s", resp.Status)
+}
+
+// transcribeCommand returns the transcribe command, which sends one audio
+// file, its one positional argument, to the model through the transcriber,
+// in the transcription mode --mode or INFER_TRANSCRIPTION_MODE sets, and
+// writes the transcript to stdout, ending it with a newline, and then the
+// token usage to stderr, so stdout holds the transcript alone.
+//
+// The file is opened only by go-ai's Transcribe, through the request's
+// Open, once per attempt, so each attempt a retry makes sends the whole
+// clip again; the file's base name names it, its extension giving a chat
+// mode clip's encoding. infer neither reads nor checks the file itself, so
+// a missing one is go-ai's error, exit 1. In chat mode, go-ai refuses a
+// format that can't carry audio, such as messages, before the file is
+// opened or anything is sent; the refusal is exit 1, not a usage error, as
+// it is the endpoint's format and the mode together, not either value,
+// that can't transcribe. It follows the model's resolution, as go-ai
+// refuses in Transcribe, so with no model set the models are listed first.
+// A chat-mode reply that isn't completed is go-ai's
+// *ai.IncompleteTranscriptError, exit 1, naming its status and reason, and
+// writes no transcript, as it holds part of one at most.
+func transcribeCommand(n *Nodes, mode *modeFlag) *cli.Command {
+	cmd := &cli.Command{
+		Name:     "transcribe",
+		Summary:  "Transcribe an audio file, writing its transcript",
+		Synopsis: "<file>",
+		Args:     cli.ExactArgs(1),
+		Validate: mode.record,
+		Run: func(ctx context.Context, inv *cli.Invocation) error {
+			file := inv.Args[0]
+			client := inv.Get(n.Transcriber)
+			model, err := resolveModel(ctx, client, inv.Get(n.Model))
+			if err != nil {
+				return err
+			}
+			t, err := client.Transcribe(ctx, &ai.TranscriptionRequest{
+				Model:    model,
+				Open:     func(context.Context) (io.ReadCloser, error) { return os.Open(file) },
+				FileName: filepath.Base(file),
+			})
+			if err != nil {
+				return err
+			}
+			out := &textOut{w: inv.Stdout}
+			if err := out.write(t.Text); err != nil {
+				return err
+			}
+			if err := out.end(); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(inv.Stderr, "usage: %d input tokens, %d output tokens, %d total tokens\n",
+				t.Usage.InputTokens, t.Usage.OutputTokens, t.Usage.TotalTokens)
+			return err
+		},
+	}
+	mode.bind(cmd.Flags())
+	return cmd.Use(n.Transcriber, n.Model)
 }

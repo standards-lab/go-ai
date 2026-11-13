@@ -10,10 +10,13 @@
 //   - infrastructure.go: defineInfrastructure, the root flags and the
 //     configuration, read from INFER_ variables, the lifecycle
 //     configuration, and the go-ai client of the one endpoint a run talks
-//     to; it is the one file that names a format package;
+//     to, and transcribe's --mode and the transcriber, a client of the
+//     same endpoint in the transcription mode; it is the one file that
+//     names a format package;
 //   - domain.go: defineDomain and mountDomain, infer's commands over the
-//     client, models, embed, and chat, and resolveModel, the one-model
-//     fallback each command that sends to a model resolves its model with;
+//     client, models, embed, chat, and transcribe, and resolveModel, the
+//     one-model fallback each command that sends to a model resolves its
+//     model with;
 //   - version.go: the version command, which declares no nodes.
 //
 // Each run talks to one endpoint. The root flags --base-url, --format, and
@@ -43,6 +46,17 @@
 // ends the text with a newline and writes the reply's status, token usage,
 // and reasoning item count to stderr; a reply that isn't completed exits 1
 // naming its status and reason, as in "incomplete: max_output_tokens".
+//
+// transcribe sends one audio file, its one argument, which go-ai opens
+// again for each attempt, and writes the transcript, ending it with a
+// newline, and the token usage to stderr. --mode, set from
+// INFER_TRANSCRIPTION_MODE, is route, the endpoint's transcription route,
+// when neither is given, or chat, a chat request in the format; an unknown
+// mode is a usage error naming both. The mode reaches only the
+// transcriber, so no other command reads it. Chat mode through a format
+// that can't carry audio, such as messages, is go-ai's refusal, exit 1,
+// before the file is opened; an incomplete chat-mode reply exits 1 naming
+// its status and reason.
 //
 // [Nodes] holds one handle per node: each define function fills its own
 // part of one Nodes value, and its constructors read the lower layers'

@@ -37,10 +37,11 @@ func New(streams cli.Streams) *App {
 	}
 	flags := bindRootFlags(a.root.Flags())
 	a.root.PreRun = flags.preRun
-	defineInfrastructure(a.graph, &a.nodes, flags)
+	mode := new(modeFlag)
+	defineInfrastructure(a.graph, &a.nodes, flags, mode)
 	defineDomain(a.graph, &a.nodes)
 	a.root.Add(versionCommand())
-	mountDomain(a.root, &a.nodes)
+	mountDomain(a.root, &a.nodes, mode)
 	return a
 }
 
@@ -71,6 +72,13 @@ type Nodes struct {
 	Format          *graph.Node[format.Format] // the wire format the client speaks
 	Model           *graph.Node[string]        // the model a request names; empty when not given
 	Client          *graph.Node[*ai.Client]    // the client of the endpoint, in the format, with the token
+	// TranscriptionMode is how transcribe sends a clip: to the endpoint's
+	// transcription route, or as a chat request in the format.
+	TranscriptionMode *graph.Node[ai.TranscriptionMode]
+	// Transcriber is the client transcribe sends through: Client's
+	// endpoint, format, and token, transcribing in the transcription mode.
+	// Only transcribe declares it, so no other command reads the mode.
+	Transcriber *graph.Node[*ai.Client]
 }
 
 // Graph returns the graph a's commands are built from, as [New] described

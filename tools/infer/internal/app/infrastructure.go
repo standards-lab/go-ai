@@ -39,17 +39,27 @@ var formats = map[string]func() format.Format{
 
 // defineInfrastructure defines the infrastructure nodes on g into n: the
 // lifecycle configuration; the endpoint settings, each read from its
-// INFER_ variable and its root flag; and the client of the endpoint, built
-// from them and INFER_TOKEN. It constructs nothing: each value is read in
-// its node's constructor, which runs only when a Build reaches the node, so
-// configuration is read only for a command that declares a node, never in
-// [New] and never for a run that builds nothing.
-func defineInfrastructure(g *graph.Graph, n *Nodes, flags *rootFlags) {
+// INFER_ variable and its root flag; the client of the endpoint, built
+// from them and INFER_TOKEN; and the transcription mode, read from
+// INFER_TRANSCRIPTION_MODE and mode, transcribe's --mode, and the
+// transcriber, the client built with it. It constructs nothing: each value
+// is read in its node's constructor, which runs only when a Build reaches
+// the node, so configuration is read only for a command that declares a
+// node, never in [New] and never for a run that builds nothing.
+//
+// The mode is a setting of the client, ai.Options.TranscriptionMode, but
+// only transcribe reads it, so it reaches a client of its own rather than
+// the one the other commands share: building it into that one would read
+// INFER_TRANSCRIPTION_MODE for every command, and an unknown mode would
+// refuse a chat that never transcribes.
+func defineInfrastructure(g *graph.Graph, n *Nodes, flags *rootFlags, mode *modeFlag) {
 	n.LifecycleConfig = g.Define("lifecycle config", newLifecycleConfig)
 	n.BaseURL = g.Define("base url", newSetting(flags, "base-url", ""))
 	n.Format = g.Define("format", newFormat(flags))
 	n.Model = g.Define("model", newSetting(flags, "model", ""))
 	n.Client = g.Define("client", newClient(n.BaseURL, n.Format))
+	n.TranscriptionMode = g.Define("transcription mode", newTranscriptionMode(mode))
+	n.Transcriber = g.Define("transcriber", newTranscriber(n.BaseURL, n.Format, n.TranscriptionMode))
 }
 
 // newLifecycleConfig reads the lifecycle configuration, the shutdown
@@ -108,29 +118,86 @@ func newFormat(flags *rootFlags) func(*graph.Scope) (format.Format, error) {
 }
 
 // newClient returns the client node's constructor: the go-ai client of the
-// endpoint the base url node names, in the format node's format, sending
-// INFER_TOKEN as its bearer token, read once here; an empty token sends no
-// Authorization header, as go-ai's TokenSource documents. A missing base
-// URL, or one ai.New refuses, is a usage error naming --base-url and
-// INFER_BASE_URL. The client sets no timeout: a long stream is bounded by
-// the run's context alone. It makes no request.
+// endpoint the base url node names, in the format node's format, as
+// [buildClient] builds it, transcribing through the route, go-ai's default,
+// as no command that declares it transcribes.
 func newClient(baseURL *graph.Node[string], wireFormat *graph.Node[format.Format]) func(*graph.Scope) (*ai.Client, error) {
 	return func(s *graph.Scope) (*ai.Client, error) {
-		base := s.Use(baseURL)
-		if base == "" {
-			return nil, cli.Usagef("no base URL: set %s", flagOrVar("base-url"))
+		return buildClient(s.Use(baseURL), s.Use(wireFormat), ai.Options{})
+	}
+}
+
+// newTranscriber returns the transcriber node's constructor: the client
+// [newClient] builds, of the same endpoint and format, transcribing in the
+// transcription mode node's mode.
+func newTranscriber(baseURL *graph.Node[string], wireFormat *graph.Node[format.Format], mode *graph.Node[ai.TranscriptionMode]) func(*graph.Scope) (*ai.Client, error) {
+	return func(s *graph.Scope) (*ai.Client, error) {
+		return buildClient(s.Use(baseURL), s.Use(wireFormat), ai.Options{TranscriptionMode: s.Use(mode)})
+	}
+}
+
+// buildClient returns the go-ai client of the endpoint at base, in
+// wireFormat, with opts, sending INFER_TOKEN as its bearer token, read once
+// here; an empty token sends no Authorization header, as go-ai's
+// TokenSource documents. A missing base URL, or one ai.New refuses, is a
+// usage error naming --base-url and INFER_BASE_URL. The client sets no
+// timeout: a long stream is bounded by the run's context alone. It makes no
+// request.
+func buildClient(base string, wireFormat format.Format, opts ai.Options) (*ai.Client, error) {
+	if base == "" {
+		return nil, cli.Usagef("no base URL: set %s", flagOrVar("base-url"))
+	}
+	token := os.Getenv(config.EnvName(envPrefix, "token"))
+	opts.Token = func(context.Context) (string, error) { return token, nil }
+	client, err := ai.New(base, &http.Client{}, wireFormat, opts)
+	if err != nil {
+		// Every Options field infer sets is valid as set, the transcription
+		// mode one [newTranscriptionMode] parsed, so a refusal is the base
+		// URL's.
+		return nil, cli.Usagef("%s: %w", flagAndVar("base-url"), err)
+	}
+	return client, nil
+}
+
+// transcriptionModes maps each transcription mode setting to go-ai's mode.
+var transcriptionModes = map[string]ai.TranscriptionMode{
+	"route": ai.TranscribeRoute,
+	"chat":  ai.TranscribeChat,
+}
+
+// defaultTranscriptionMode is the transcription mode setting when neither
+// INFER_TRANSCRIPTION_MODE nor --mode is given: the endpoint's
+// transcription route, as go-ai's default is.
+const defaultTranscriptionMode = "route"
+
+// transcriptionModeVar is the variable --mode overrides. It is named for
+// the setting, not the flag, so it reads as transcription's beside the
+// other INFER_ variables.
+var transcriptionModeVar = config.EnvName(envPrefix, "transcription-mode")
+
+// newTranscriptionMode returns the transcription mode node's constructor:
+// the mode the setting names, starting from defaultTranscriptionMode,
+// replaced by INFER_TRANSCRIPTION_MODE when that is set and non-empty, and
+// by mode's value when the dispatch set --mode. A name transcriptionModes
+// doesn't hold is a usage error naming the flag and its variable.
+func newTranscriptionMode(mode *modeFlag) func(*graph.Scope) (ai.TranscriptionMode, error) {
+	return func(*graph.Scope) (ai.TranscriptionMode, error) {
+		name := defaultTranscriptionMode
+		var fromEnv *string
+		if err := config.SetFromEnv(&fromEnv, transcriptionModeVar, parseString); err != nil {
+			return 0, err
 		}
-		token := os.Getenv(config.EnvName(envPrefix, "token"))
-		opts := ai.Options{
-			Token: func(context.Context) (string, error) { return token, nil },
+		if fromEnv != nil {
+			name = *fromEnv
 		}
-		client, err := ai.New(base, &http.Client{}, s.Use(wireFormat), opts)
-		if err != nil {
-			// Every Options field infer sets is valid as set, so a refusal
-			// is the base URL's.
-			return nil, cli.Usagef("%s: %w", flagAndVar("base-url"), err)
+		if mode.given {
+			name = mode.value
 		}
-		return client, nil
+		m, ok := transcriptionModes[name]
+		if !ok {
+			return 0, cli.Usagef("unknown transcription mode %q: --%s (%s) is route or chat", name, modeFlagName, transcriptionModeVar)
+		}
+		return m, nil
 	}
 }
 
@@ -183,4 +250,32 @@ func (f *rootFlags) value(name string) (string, bool) {
 		return "", false
 	}
 	return f.fs.Lookup(name).Value.String(), true
+}
+
+// modeFlagName is transcribe's flag that overrides INFER_TRANSCRIPTION_MODE.
+const modeFlagName = "mode"
+
+// modeFlag is transcribe's --mode, which the transcription mode node reads.
+// It is transcribe's own flag, not a root flag, as no other command
+// transcribes; transcribe binds it with [modeFlag.bind] and records, in its
+// Validate, whether the dispatch set it, as the root's PreRun does for the
+// root flags.
+type modeFlag struct {
+	value string
+	given bool // whether the current dispatch set --mode, from record
+}
+
+// bind defines --mode on fs, transcribe's flag set, naming the variable it
+// overrides.
+func (m *modeFlag) bind(fs *flag.FlagSet) {
+	fs.StringVar(&m.value, modeFlagName, defaultTranscriptionMode,
+		"how to transcribe: route, the endpoint's transcription route, or chat, a chat request in the format (env "+transcriptionModeVar+")")
+}
+
+// record is transcribe's Validate: it records whether the dispatch set
+// --mode, even to its default, before the Build reads it. It refuses
+// nothing; the mode's value is checked with its variable's, in the node.
+func (m *modeFlag) record(inv *cli.Invocation) error {
+	m.given = inv.Changed(modeFlagName)
+	return nil
 }
