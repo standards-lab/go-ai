@@ -16,7 +16,7 @@ type request struct {
 	ResponseFormat *responseFormat `json:"response_format,omitzero"`
 	// Verbosity carries text.verbosity.
 	Verbosity string `json:"verbosity,omitzero"`
-	// MaxCompletionTokens carries max_output_tokens. llama.cpp b11669 reads it and max_tokens
+	// MaxCompletionTokens carries max_output_tokens. llama.cpp reads it and max_tokens
 	// alike, as aliases of n_predict; max_completion_tokens is the name OpenAI keeps, having
 	// deprecated max_tokens.
 	MaxCompletionTokens int `json:"max_completion_tokens,omitzero"`

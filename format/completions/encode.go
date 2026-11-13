@@ -36,7 +36,7 @@ import (
 // dropped: it is never sent, and it is never an error, so a conversation can carry another
 // format's reasoning through this one. So is one whose envelope holds no reasoning, and a run of
 // reasoning that no assistant message or function_call follows, since an assistant message
-// needs content or tool_calls, as llama.cpp b11669 requires.
+// needs content or tool_calls, as llama.cpp requires.
 //
 // A message's content, and a tool message's, is a plain string when it is a single input_text
 // or output_text part and an array of parts otherwise: text, refusal, image_url for an
