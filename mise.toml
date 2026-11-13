@@ -6,7 +6,7 @@ jq = "1.8.2"
 # Space-separated list of module directories. "." is the base module and
 # tools/infer the CLI's; each is added as the library and infer tasks build it.
 [env]
-GO_MODULES = "."
+GO_MODULES = ". tools/infer"
 
 [tasks.check]
 description = "Build, vet, format, fix, tidy, test, and lint every module; writes nothing"

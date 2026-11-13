@@ -39,3 +39,24 @@ linters:
             - $gostd
             - github.com/standards-lab/go-ai$
             - github.com/standards-lab/go-ai/
+        # infer, the nested module at tools/infer, builds on go-ai's released, public surface
+        # alone: the standard library, go-ai's public packages, go-cli-sdk, go-core, and infer's
+        # own packages. The rule covers every Go file under tools/infer, tests and the
+        # integration tier included. go-ai's own allow entry would admit its internal packages
+        # too, so they are denied by name: depguard takes the longer of an allow and a deny
+        # match, and the deny is the longer.
+        infer:
+          list-mode: strict
+          files:
+            - "**/tools/infer/**"
+          allow:
+            - $gostd
+            - github.com/standards-lab/go-ai$
+            - github.com/standards-lab/go-ai/
+            - github.com/standards-lab/go-cli-sdk$
+            - github.com/standards-lab/go-cli-sdk/
+            - github.com/standards-lab/go-core$
+            - github.com/standards-lab/go-core/
+          deny:
+            - pkg: github.com/standards-lab/go-ai/internal
+              desc: infer builds on go-ai's public packages only; its tests use infer's own apptest
