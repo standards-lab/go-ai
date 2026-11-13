@@ -37,9 +37,8 @@
 //   - embed on the embedding endpoint, wanting one vector per input, the
 //     alike inputs closer than the unrelated one.
 //
-// `mise run integration` runs
-// the suite; no CI job does, as the endpoints are the organization's own
-// machines.
+// `mise run integration` runs the suite; no CI job does, as the endpoints
+// are the organization's own machines.
 //
 // The harness is untagged, so the unit tier type-checks it on every pull
 // request; the suite files carry the integration tag.

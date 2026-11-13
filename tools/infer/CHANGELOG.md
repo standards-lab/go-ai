@@ -7,7 +7,7 @@ only; go-ai's base module keeps its own, in the repository's root `CHANGELOG.md`
 
 ## [Unreleased]
 
-## [v0.1.0]
+## [v0.1.0] - 2026-11-13
 
 The first release of `infer`, go-ai's command-line client of one model endpoint: a Go Elemental
 CLI laid out from go-cli-sdk-template, over go-ai v0.1.0's released surface alone. It requires

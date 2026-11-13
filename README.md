@@ -204,11 +204,11 @@ if errors.As(err, &incomplete) {
 
 ## infer
 
-`infer` is go-ai's command-line client of one model endpoint, the nested module `tools/infer`,
-over the base module's released surface alone. Each run talks to the endpoint `--base-url` or
-`INFER_BASE_URL` names, in the format `--format` or `INFER_FORMAT` names, `completions` by
-default, with the bearer token from `INFER_TOKEN`. With no `--model` set, it sends to the one
-model the endpoint lists.
+`infer` is go-ai's command-line client, in the nested module `tools/infer`, built on the base
+module's released surface alone. Each run talks to the endpoint `--base-url` or `INFER_BASE_URL`
+names, in the format `--format` or `INFER_FORMAT` names, `completions` by default, with the
+bearer token from `INFER_TOKEN`. With no `--model` set, it sends to the one model the endpoint
+lists.
 
 ```sh
 go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.1.0
@@ -217,11 +217,10 @@ export INFER_BASE_URL=http://localhost:8000/v1
 infer models                                  # each model ID, one per line
 infer embed "first passage" "second passage"  # one JSON vector per input, one per line
 infer chat --reasoning low "Is 1009 prime?"   # the reply streamed, its summary on stderr
-infer transcribe --mode chat clip.wav         # the transcript, over chat or the route
+infer transcribe --mode chat clip.wav         # the transcript, sent over chat
 ```
 
-[tools/infer/README.md](tools/infer/README.md) covers its configuration, the retry and idle
-flags, every chat flag, and its exit codes.
+[tools/infer/README.md](tools/infer/README.md) documents every flag, variable, and exit code.
 
 ## Development
 
@@ -251,8 +250,8 @@ a variable holding the endpoint's API root, including `/v1`, with no default:
   `Transcribe`.
 
 `mise run integration` runs the tier verbose, and then infer's, which runs the built `infer`
-against the same variables. A scenario whose variable is unset skips, naming
-it, so with none set the run skips whole. Each scenario sends to the one model its endpoint's
+against the same variables. A scenario whose variable is unset skips, naming it, so with none
+set the run skips whole. Each scenario sends to the one model its endpoint's
 `/models` lists. The check builds, vets, and lints the tier under its tag but never runs it, and
 no CI job runs it, as the models are on the organization's own machines.
 

@@ -40,10 +40,9 @@
 // several named in the endpoint's order, as in "several models: agent,
 // vision; pass --model". A set model lists nothing first. models writes
 // each model ID the endpoint lists, one per line, in the endpoint's order,
-// and needs no model. embed sends its
-// inputs, each argument or else each line of stdin, as one batch, and
-// writes one JSON array of numbers per input, one per line, in input order,
-// and the token usage to stderr.
+// and needs no model. embed sends its inputs, each argument or else each
+// line of stdin, as one batch, and writes one JSON array of numbers per
+// input, one per line, in input order, and the token usage to stderr.
 //
 // chat sends one prompt, the arguments joined by spaces or else stdin,
 // with --instructions, --image (repeatable: a file inlined as a data URL,

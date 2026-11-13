@@ -15,10 +15,9 @@ repository and released on `tools/infer/v<semver>` tags, with its changes in
 the minimal-dependency Go standard, laid out from
 [go-cli-sdk-template](https://github.com/standards-lab/go-cli-sdk-template). This README and
 each package's `doc.go` document it. Its module requires go-ai v0.1.0, go-cli-sdk v0.4.0, and
-go-core v0.12.0, each at its pinned release, and nothing else: a depguard rule holds every file,
-tests and the integration tier included, to the standard library, go-ai's public packages,
-go-cli-sdk, go-core, and infer's own packages. It uses go-ai's released surface alone, never its
-internal packages.
+go-core v0.12.0, and nothing else: a depguard rule holds every file, tests and the integration
+tier included, to the standard library, go-ai's public packages, go-cli-sdk, go-core, and infer's
+own packages.
 
 ## Install
 
@@ -77,9 +76,9 @@ Help and `version` read no configuration, so they run with none set.
 
 ### Retries
 
-Retry is off until `--retries` is above 1, and its delays need care. go-ai waits a full-jitter
-backoff before each retry, at most `--retry-base-delay`, doubling for each retry after it, and at
-most `--retry-max-delay`; a reply's Retry-After replaces the backoff, and one longer than
+Retry is off until `--retries` is above 1. Before each retry, go-ai waits a full-jitter backoff
+of at most `--retry-base-delay`, doubling for each retry after it, and never above
+`--retry-max-delay`. A reply's Retry-After replaces the backoff, and one longer than
 `--retry-max-delay` ends the retries, returning the last error at once. So:
 
 - With `--retry-max-delay` unset, `0`, any Retry-After above 0 ends the retries at once, and
@@ -92,7 +91,7 @@ A working policy sets all three:
 infer --retries 3 --retry-base-delay 500ms --retry-max-delay 10s chat "Say hello."
 ```
 
-### The model
+### The model a command sends to
 
 With no model set, `embed`, `chat`, and `transcribe` list the endpoint's models first and send to
 the one listed. A purpose base URL, one that serves a single model, such as a gateway's

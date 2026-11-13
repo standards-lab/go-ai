@@ -874,7 +874,8 @@ or several, exits 1, naming each in the endpoint's order, as in `several models:
 pass --model`: the command line is sound, and the endpoint's answer leaves the model open. A set
 model lists nothing first.
 
-Its four subcommands, bare words at the root, each go through the base module's surface alone:
+Its four commands that send, bare words at the root, each go through the base module's surface
+alone:
 
 - **`models`** writes each model ID `Client.Models` returns, one per line, in the endpoint's
   order.
@@ -909,10 +910,10 @@ and `INFER_RETRY_MAX_DELAY`, set `ai.RetryPolicy` for every command; unset, the 
 zero value and retries nothing (finding 7). `chat`'s `--idle-timeout`, over `INFER_IDLE_TIMEOUT`,
 sets `Options.StreamIdleTimeout` (the surface section, decision 7). A negative, inverted, or
 unparsable value is a usage error, exit 2, naming the flag and its variable; `ai.New` is the
-authority on what it refuses. The transcription mode and the idle bound are each one command's, so each reaches a
-client node of its own, the transcriber and the chat client, built by the same constructor as
-the client the other commands share: no other command reads their variables, and an unknown mode
-never refuses a chat. With `--retry-max-delay` unset, a Retry-After above zero ends the retries
+authority on what it refuses. The transcription mode and the idle bound each belong to one
+command, so each reaches a client node of its own, the transcriber and the chat client, built by
+the same constructor as the client the other commands share: no other command reads their
+variables, and an unknown mode never refuses a chat. With `--retry-max-delay` unset, a Retry-After above zero ends the retries
 at once, as `MaxDelay` caps every wait (finding 13), so a working policy sets all three.
 
 **Two test tiers.** The unit tier runs the App in-process against loopback `httptest` endpoints,
@@ -1102,8 +1103,10 @@ package's other declarations port as the spike has them.
 - `router_test.go`'s `hinted` and `record` give way to assertions of what the format sent or what
   the endpoint does with it, and a check that can't fail is deleted (finding 42).
 
-**`tools/infer`, new** (infer): the nested module, laid out from go-cli-sdk-template, with its four
-subcommands over the base module's surface (modules, "infer's module").
+**`tools/infer`, new** (infer): the nested module, laid out from go-cli-sdk-template, with the
+commands models, embed, chat, transcribe, and version over the base module's surface, the root
+endpoint and retry flags over `INFER_` variables, the one-model fallback, and its unit and
+integration tiers (modules, "infer's module").
 
 ### The repository
 
