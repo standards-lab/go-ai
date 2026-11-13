@@ -767,8 +767,10 @@ infer task `tools/infer`.
 4. **One `.golangci.yml` at the root serves both modules, with a depguard rule per module.**
    golangci-lint reads the nearest configuration above the directory it runs in, so `infer`'s run
    reads the root's. The base rule's files exclude `tools/infer`; the infer task adds a second
-   rule over `tools/infer`'s files that allows the standard library, go-ai, go-cli-sdk, and
-   go-core, as go-cli-sdk's rule holds it to the standard library and go-core (`dependencies.md`).
+   rule over `tools/infer`'s files, tests and the integration tier included, that allows the
+   standard library, go-ai's public packages, go-cli-sdk, go-core, and infer's own packages, and
+   denies `go-ai/internal` by name, as go-cli-sdk's rule holds it to the standard library and
+   go-core (`dependencies.md`).
    Both rules sit in one file, so the line of each module is read in one place.
 5. **`go.work` is committed, from the infer task on, and `infer` requires a released go-ai.** A
    workspace of one module resolves nothing, so the infer task adds `go.work`, using `.` and
@@ -821,9 +823,11 @@ go-ai/                        module github.com/standards-lab/go-ai
 │   ├── native/
 │   └── sse/
 └── tools/infer/              module github.com/standards-lab/go-ai/tools/infer
-    ├── go.mod
+    ├── go.mod                go-ai v0.1.0, go-cli-sdk v0.4.0, go-core v0.12.0
     ├── CHANGELOG.md          infer's
+    ├── README.md
     ├── cmd/infer/
+    ├── integration/          infer's integration tier, behind the integration build tag
     └── internal/
         ├── app/
         └── apptest/
@@ -841,28 +845,84 @@ name (finding 41). No CI job runs it.
 `infer` is the convenience CLI over the base module's surface, a Go Elemental CLI laid out from
 go-cli-sdk-template (`cli-applications.md`): `cmd/infer` derives go-core's signal context and
 calls the composition root, and `internal/app` holds `app.go`, `infrastructure.go`, `domain.go`,
-and `version.go`, with its fixtures in `internal/apptest`. The client is a node of
-`infrastructure.go`, built from configuration under the tool's environment prefix only when a
-command declares it; that file is the only one in the composition root that names a format, as it
-is the only one that names a provider.
+and `version.go`, with its fixtures in `internal/apptest`. The clients are nodes of
+`infrastructure.go`, built from configuration under the tool's environment prefix, `INFER_`,
+only when a command declares them; that file is the only one in the composition root that names
+a format, as it is the only one that names a provider.
 
 Its module requires go-ai, go-cli-sdk, and go-core, each at a pinned release, and nothing else:
-go-ai at the root's first release, `v0.1.0`; go-cli-sdk and go-core at their latest releases when
-the infer task builds. A further requirement enters only under `dependencies.md`,
-"Sourcing", and the infer task's brief states it.
+go-ai at the root's first release, `v0.1.0`; go-cli-sdk at `v0.4.0` and go-core at `v0.12.0`,
+their latest releases when the infer task built. A further requirement enters only under
+`dependencies.md`, "Sourcing", and a task's brief states it.
+
+**Each run talks to one endpoint.** The root flags `--base-url`, `--format`, and `--model`,
+accepted at any depth, each override a variable, `INFER_BASE_URL`, `INFER_FORMAT`, and
+`INFER_MODEL`, when given. `--format` is `completions`, `messages`, or `responses`, and
+`completions` when neither is given; the format package's typed constructor is chosen in
+`infrastructure.go` alone, the caller's composition root (finding 3). The bearer token is
+`INFER_TOKEN`'s alone, never a flag's, so it never enters a command line, and an empty one sends
+none. A missing base URL, an unknown
+format, or a value `ai.New` refuses is a usage error, exit 2, naming the flag and its variable,
+before any request. An endpoint and model per capability, as docinfer configures them, is
+docinfer's need, not a one-shot client's: a run that wants another endpoint is another run.
+
+**The one-model fallback.** With no model set, a command that sends to a model lists the
+endpoint's models through `Client.Models` first and sends to the one listed. A purpose base URL
+lists one model, such as a gateway's per-purpose `/<alias>/v1` or one vLLM instance, so it needs
+no `--model`, and the gateway needs no code of its own in `infer`. An endpoint that lists none,
+or several, exits 1, naming each in the endpoint's order, as in `several models: agent, vision;
+pass --model`: the command line is sound, and the endpoint's answer leaves the model open. A set
+model lists nothing first.
 
 Its four subcommands, bare words at the root, each go through the base module's surface alone:
 
-- **`chat`** sends a prompt as a `protocol.Request` through `Client.GenerateStream`, writing each
-  `OutputTextDelta` as it arrives, or through `Client.Generate`, writing the response's output.
-- **`embed`** sends its inputs as one `EmbeddingRequest` batch through `Client.Embed` and writes
-  the vectors and usage.
-- **`transcribe`** sends an audio file through `Client.Transcribe`, its `Open` opening the file
-  again for each attempt, and writes the text.
-- **`models`** lists the endpoint's models through `Client.Models`.
+- **`models`** writes each model ID `Client.Models` returns, one per line, in the endpoint's
+  order.
+- **`embed`** sends its inputs, each argument or else each line of stdin, as one
+  `EmbeddingRequest` batch through `Client.Embed`, and writes one JSON array of numbers per input,
+  one per line, in input order, with the usage on stderr.
+- **`chat`** sends one prompt, its arguments or else stdin, as a `protocol.Request`, with
+  `--instructions`, `--image` (repeatable: a file inlined through `protocol.DataURL`, or an
+  http(s) URL as given), `--reasoning`, `--max-tokens`, and `--native`, raw JSON merged into the
+  request's top level through `Native`, the native tier (finding 25). It checks the request with
+  `protocol.Request.Validate` and the format's own encoding before anything is sent, so a refusal
+  is a usage error, exit 2. It streams through `Client.GenerateStream` by default, writing each
+  `OutputTextDelta` as it arrives and folding the events with `protocol.Accumulator`;
+  `--stream=false` sends one request through `Client.Generate`. Either way it writes the reply's
+  status, its usage, reasoning tokens included, and its count of reasoning items to stderr; a
+  reply that isn't completed keeps the text written and exits 1 naming its status and reason, as
+  in `incomplete: max_output_tokens`.
+- **`transcribe`** sends one audio file through `Client.Transcribe`, its `Open` opening the file
+  again for each attempt, and writes the transcript, with the usage on stderr. `--mode`, over
+  `INFER_TRANSCRIPTION_MODE`, sets `Options.TranscriptionMode`: `route`, the default, or `chat`,
+  for an endpoint whose audio model has no transcription route (the surface section, decision 9).
+  Chat mode through a format that can't carry audio is go-ai's refusal, exit 1, before the file
+  is opened; an `*ai.IncompleteTranscriptError` exits 1 naming its status and reason.
 
-The template's version command stands beside them. Each subcommand's flags and output are the
-infer task's.
+The template's version command stands beside them. Help and a usage error exit 2, any other
+failure exits 1, reported once on stderr; help and version read no configuration and send
+nothing.
+
+**Retry and the idle bound are flags over variables too.** The root flags `--retries`,
+`--retry-base-delay`, and `--retry-max-delay`, over `INFER_RETRIES`, `INFER_RETRY_BASE_DELAY`,
+and `INFER_RETRY_MAX_DELAY`, set `ai.RetryPolicy` for every command; unset, the policy is go-ai's
+zero value and retries nothing (finding 7). `chat`'s `--idle-timeout`, over `INFER_IDLE_TIMEOUT`,
+sets `Options.StreamIdleTimeout` (the surface section, decision 7). A negative, inverted, or
+unparsable value is a usage error, exit 2, naming the flag and its variable; `ai.New` is the
+authority on what it refuses. The transcription mode and the idle bound are each one command's, so each reaches a
+client node of its own, the transcriber and the chat client, built by the same constructor as
+the client the other commands share: no other command reads their variables, and an unknown mode
+never refuses a chat. With `--retry-max-delay` unset, a Retry-After above zero ends the retries
+at once, as `MaxDelay` caps every wait (finding 13), so a working policy sets all three.
+
+**Two test tiers.** The unit tier runs the App in-process against loopback `httptest` endpoints,
+with `infer`'s own fixtures in `internal/apptest`, never go-ai's internal helpers, and asserts
+what each command sends and writes. The integration tier, `tools/infer/integration` behind the
+integration build tag, builds `cmd/infer` and runs it one shot at a time on go-core's
+`processtest`, mapping each `AI_<ROLE>_BASE_URL` the base module's tier reads (finding 41) onto
+`INFER_BASE_URL` after clearing every `INFER_` variable, with no model set, so each role's
+endpoint must list one; a scenario whose variable is unset skips. `mise run integration` runs it
+after the base module's tier; no CI job runs either.
 
 ### What each task adds
 

@@ -38,7 +38,9 @@
 // With no model set, a command that sends to a model lists the endpoint's
 // models first and sends to the one listed; none, or several, exits 1,
 // several named in the endpoint's order, as in "several models: agent,
-// vision; pass --model". A set model lists nothing first. embed sends its
+// vision; pass --model". A set model lists nothing first. models writes
+// each model ID the endpoint lists, one per line, in the endpoint's order,
+// and needs no model. embed sends its
 // inputs, each argument or else each line of stdin, as one batch, and
 // writes one JSON array of numbers per input, one per line, in input order,
 // and the token usage to stderr.
@@ -86,4 +88,13 @@
 // command tree. The program itself never calls them; they are for a caller
 // that observes what a run builds, Replaces a node's constructor with a
 // substitute, or adds a command over the nodes, before the App runs.
+//
+// The package exports:
+//
+//   - [App], the program, and [New], which describes it cold
+//   - [App.Run], which dispatches the program arguments and returns the
+//     exit code
+//   - [Nodes], one handle per node of the graph
+//   - [App.Graph], [App.Nodes], and [App.Root], the composition the App
+//     publishes
 package app

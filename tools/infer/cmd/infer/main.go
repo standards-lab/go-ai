@@ -1,6 +1,3 @@
-// Command infer is go-ai's command-line client of one model endpoint. Its
-// main derives the signal context and makes one call into the composition
-// root, internal/app.
 package main
 
 import (

@@ -23,7 +23,21 @@
 // each an API root including /v1. A scenario maps its role's variable onto
 // INFER_BASE_URL, and its format onto INFER_FORMAT, sets no model, so infer
 // sends to the one model the endpoint lists, and skips when the variable is
-// unset; with none set, only the baseline runs. `mise run integration` runs
+// unset; with none set, only the baseline runs. The scenarios are:
+//
+//   - models on every role, wanting exactly one model ID;
+//   - chat on the agent, in each format, streamed and unstreamed, wanting
+//     a completed answer, and an incomplete one at --max-tokens 16, exit 1
+//     with reason max_output_tokens;
+//   - chat on vision at --reasoning none and low, in each format, streamed
+//     and unstreamed, wanting no reasoning item at none and some at low, and
+//     an --image chat in each format naming the image's shapes;
+//   - transcribe --mode chat on audio through Chat Completions, and route
+//     mode on the transcription endpoint, each wanting the clip's words;
+//   - embed on the embedding endpoint, wanting one vector per input, the
+//     alike inputs closer than the unrelated one.
+//
+// `mise run integration` runs
 // the suite; no CI job does, as the endpoints are the organization's own
 // machines.
 //
