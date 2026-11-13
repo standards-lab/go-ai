@@ -49,7 +49,9 @@ one.
   route without holding it whole. In `TranscribeChat`, for an endpoint whose audio model has no
   transcription route, it sends the clip as input audio beside an instruction, the request's
   `Prompt` or `TranscriptionInstruction`'s, in one request through the Client's format, which
-  must carry audio, as Chat Completions does.
+  must carry audio, as Chat Completions does. Like the route, it returns a whole transcript or an
+  error: a reply that isn't completed, such as one stopped at the engine's output token bound, is
+  an `IncompleteTranscriptError`, not retried.
 - Retry, opt-in through `Options.Retry`: Generate, a stream before it starts, Embed, Models, and
   Transcribe are sent again on a 408, 429, 502, 503, or 504 reply or a connection failure before
   any reply, after a full-jitter backoff that a Retry-After replaces. A wait past `MaxDelay` or

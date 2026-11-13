@@ -228,7 +228,8 @@ of layers' surface to go-ai's.
     `audio/transcriptions` only for a model that implements its transcription interface, and
     Gemma 4, an audio model used for more than speech to text, doesn't. `Options.TranscriptionMode`
     adds chat mode, which sends the clip to the model through the Client's own format, and the
-    route stays the zero value (decision 9).
+    route stays the zero value (decision 9). Chat mode returns a whole transcript or an error, as
+    the route does: a reply that isn't completed is an `*IncompleteTranscriptError`.
 38. **The client has no `/models` listing, and builds only POSTs** (`client.go`, `request`). Against
     ai-strategy, "Repositories and placement" (the client gains a `/models` listing). **changed**:
     the listing is added, as a GET through the same token and retry path.
@@ -396,7 +397,11 @@ The nine items the evaluation left open, each decided with its reason:
    part, its format from `FileName`'s extension (.wav or .mp3), then the instruction as an
    `InputText` part: `Prompt`, or else `TranscriptionInstruction(Language)`, modeled on Gemma 4's
    model card, naming the language when set. `Text` joins the reply's output text, and `Usage` is
-   the reply's usage. Chat mode needs a format that carries audio, Chat Completions today; a
+   the reply's usage. Chat mode returns a whole transcript or an error, as the route does: a reply
+   whose status isn't completed, most often one incomplete because the model stopped at the
+   engine's output token bound, which a chat-mode request can't raise, returns an
+   `*IncompleteTranscriptError` naming the status, the reason, its cause, and what to do, and no
+   `Transcription`. It is not retried, as the same clip meets the same bound again. Chat mode needs a format that carries audio, Chat Completions today; a
    format that refuses audio, such as Messages, any `Native` form field, and an extension other
    than .wav or .mp3 are refused before the clip is opened or anything is sent. `New` refuses any
    other mode. The mode is the caller's, set once per client: probing the route and falling back
@@ -506,6 +511,12 @@ func (c *Client) Transcribe(ctx context.Context, req *TranscriptionRequest) (*Tr
 // TranscriptionInstruction is chat mode's instruction for a request with no Prompt, naming
 // language when it isn't empty.
 func TranscriptionInstruction(language string) string
+// IncompleteTranscriptError is chat mode's reply that isn't completed, such as one stopped at the
+// engine's output token bound; Transcribe returns it wrapped, with no Transcription, unretried.
+type IncompleteTranscriptError struct {
+    Status protocol.Status
+    Reason protocol.IncompleteReason // empty when the reply gave none
+}
 
 // Model is one entry of the endpoint's model list.
 type Model struct{ ID string }
@@ -986,6 +997,8 @@ package's other declarations port as the spike has them.
 - `Options.TranscriptionMode` is added, with `TranscriptionMode`, `TranscribeRoute`, the zero
   value, and `TranscribeChat`, and `TranscriptionInstruction`, chat mode's default instruction;
   `New` refuses an unknown mode (finding 37; decision 9).
+- `IncompleteTranscriptError` is added: a chat-mode reply that isn't completed returns it, with
+  no `Transcription` and no retry (finding 37; decision 9).
 - `Model` and `Client.Models` are added, with a GET beside the POSTs `request` builds (finding 38;
   decision 6).
 - `doc.go` points to go-ai's README, names no caller, and documents `Embed`, `Transcribe`, and

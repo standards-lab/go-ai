@@ -39,7 +39,8 @@ const (
 	// sends. It needs a format that carries audio, which today is Chat Completions; Messages
 	// refuses audio, and Transcribe refuses the request before anything is sent. It reads the
 	// clip whole, as the request's body holds it. Prompt is the instruction, in place of
-	// TranscriptionInstruction's.
+	// TranscriptionInstruction's. As the route does, it returns a whole transcript or an error: a
+	// reply the model didn't complete is an *IncompleteTranscriptError.
 	TranscribeChat
 )
 
@@ -69,7 +70,7 @@ func TranscriptionInstruction(language string) string {
 // answering with an *APIError, or to the model as a chat request in the Client's format.
 //
 // The transcription route's other form fields are not typed. response_format is always json,
-// the one llama.cpp b11669 answers (it refuses text, srt, verbose_json, and vtt), so the reply
+// the one llama.cpp answers (it refuses text, srt, verbose_json, and vtt), so the reply
 // carries no timestamps, and timestamp_granularities, which only verbose_json honors, has
 // nothing to shape. temperature and max_tokens, which llama.cpp passes to its chat completion,
 // and stream, which changes the reply's shape, are left to Native.
@@ -87,15 +88,15 @@ type TranscriptionRequest struct {
 	// its extension, in any case, gives the clip's protocol.AudioFormat: .wav or .mp3.
 	FileName string
 	// Language is the clip's language, when the caller knows it; empty sends none. In
-	// TranscribeRoute it is the route's language field, such as "en", which llama.cpp b11669
-	// adds to its transcription instruction as a hint. In TranscribeChat,
-	// TranscriptionInstruction names it, as given, in the instruction when Prompt is empty, so
-	// a name such as "English" reads as the instruction means it where a code such as "en"
-	// doesn't, and it has no effect when Prompt is set.
+	// TranscribeRoute it is the route's language field, such as "en", which llama.cpp adds to
+	// its transcription instruction as a hint. In TranscribeChat, TranscriptionInstruction names
+	// it, as given, in the instruction when Prompt is empty, so a name such as "English" reads as
+	// the instruction means it where a code such as "en" doesn't, and it has no effect when
+	// Prompt is set.
 	Language string
 	// Prompt guides the transcription; empty sends none. In TranscribeRoute it is the route's
 	// prompt field, a decoding hint whose effect is the endpoint's: OpenAI reads it as preceding
-	// context, while llama.cpp b11669 sends it to the model in place of its own transcription
+	// context, while llama.cpp sends it to the model in place of its own transcription
 	// instruction. In TranscribeChat it is the instruction the model is given beside the clip,
 	// in place of TranscriptionInstruction's.
 	Prompt string
@@ -159,7 +160,10 @@ type TranscriptionUsage struct {
 // a FileName whose extension isn't .wav or .mp3, any Native field, and a format that refuses
 // audio, such as Messages, before the clip is opened, the token source is called, or anything
 // is sent; an empty clip, which protocol.Request.Validate refuses, is refused once it is read,
-// before it is sent. Text is the reply's output text, and Usage is the reply's usage.
+// before it is sent. Text is the reply's output text, and Usage is the reply's usage. As the
+// route returns a whole transcript or an error, so does chat mode: a reply whose status isn't
+// completed, such as one the model stopped at the engine's output token bound, returns an
+// *IncompleteTranscriptError and no Transcription, and is not sent again.
 func (c *Client) Transcribe(ctx context.Context, req *TranscriptionRequest) (*Transcription, error) {
 	if req == nil {
 		return nil, errors.New("ai: transcribe: no request")
@@ -274,6 +278,16 @@ func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) 
 	if err != nil {
 		return nil, err
 	}
+	// A reply the model didn't finish holds part of a transcript at most, which reads as a whole
+	// one. It is refused after the retry loop, not inside it: sending the same clip again meets
+	// the same bound or filter.
+	if resp.Status != protocol.StatusCompleted {
+		e := &IncompleteTranscriptError{Status: resp.Status}
+		if resp.IncompleteDetails != nil {
+			e.Reason = resp.IncompleteDetails.Reason
+		}
+		return nil, e
+	}
 	return &Transcription{
 		Text: outputText(resp),
 		Usage: TranscriptionUsage{
@@ -282,6 +296,55 @@ func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) 
 			TotalTokens:  resp.Usage.TotalTokens,
 		},
 	}, nil
+}
+
+// IncompleteTranscriptError is a chat-mode Transcribe's reply that isn't completed, so it holds
+// part of a transcript at most: most often one incomplete because the model stopped at the
+// engine's output token bound, which a chat-mode request can't raise, as it takes no Native
+// field. Transcribe returns it wrapped, with no Transcription, so callers reach it with
+// errors.As. It is not retried: the same clip meets the same bound or filter again.
+type IncompleteTranscriptError struct {
+	// Status is the reply's status: protocol.StatusIncomplete, or any other but
+	// protocol.StatusCompleted.
+	Status protocol.Status
+	// Reason is why the reply is incomplete, from its IncompleteDetails, or empty when it gave
+	// none.
+	Reason protocol.IncompleteReason
+}
+
+// Error reports the status and the reason, when the reply gave one, then what they mean and what
+// the caller can do about it, such as:
+//
+//	transcript incomplete (status incomplete, reason max_output_tokens): the reply stopped at
+//	the engine's output token bound before the transcript ended; send a shorter clip or raise
+//	the engine's default bound
+func (e *IncompleteTranscriptError) Error() string {
+	status := string(e.Status)
+	if status == "" {
+		status = "none"
+	}
+	s := "transcript incomplete (status " + status
+	if e.Reason != "" {
+		s += ", reason " + string(e.Reason)
+	}
+	return s + "): " + e.cause()
+}
+
+// cause says what e's status and reason mean, and what the caller can do about them.
+func (e *IncompleteTranscriptError) cause() string {
+	switch {
+	case e.Status == protocol.StatusIncomplete && e.Reason == protocol.ReasonMaxOutputTokens:
+		return "the reply stopped at the engine's output token bound before the transcript ended; " +
+			"send a shorter clip or raise the engine's default bound"
+	case e.Status == protocol.StatusIncomplete && e.Reason == protocol.ReasonContentFilter:
+		return "the endpoint's content filter stopped the reply before the transcript ended; " +
+			"the clip can't be transcribed whole through this endpoint's filter"
+	case e.Status == protocol.StatusIncomplete:
+		return "the model stopped before the transcript ended"
+	case e.Status == protocol.StatusFailed:
+		return "the endpoint reported that the reply failed; send the request again or check the endpoint"
+	}
+	return "the reply isn't completed, so its text can't be taken as the whole transcript"
 }
 
 // audioFormats maps a clip's file name extension, in lower case, to the protocol's encoding of
@@ -440,7 +503,7 @@ func decodeTranscription(body []byte) (*Transcription, error) {
 }
 
 // transcriptionReply is the OpenAI-compatible transcription reply body under response_format
-// json. llama.cpp b11669 also sends type transcript.text.done, a usage type of tokens, and
+// json. llama.cpp also sends type transcript.text.done, a usage type of tokens, and
 // usage.input_tokens_details.cached_tokens, which the client doesn't keep.
 type transcriptionReply struct {
 	Text  string `json:"text"`

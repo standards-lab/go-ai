@@ -46,6 +46,11 @@
 //     transcription route, or [TranscribeChat], a chat request in the Client's format.
 //   - [TranscriptionInstruction] is the instruction chat mode gives the model when the request
 //     has no Prompt.
+//   - [IncompleteTranscriptError] is a chat-mode Transcribe's reply that isn't completed, such
+//     as one stopped at the engine's output token bound, matched with errors.As, carrying the
+//     reply's status and reason.
+//   - [IncompleteTranscriptError.Error] reports the status and reason, what they mean, and
+//     what the caller can do.
 //   - [APIError] is a non-2xx reply, matched with errors.As, carrying the reply's Retry-After.
 //   - [APIError.Error] reports the reply's status and the endpoint's message.
 package ai

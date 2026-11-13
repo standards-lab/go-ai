@@ -21,6 +21,7 @@ import (
 	"github.com/standards-lab/go-ai/format/completions"
 	"github.com/standards-lab/go-ai/format/messages"
 	"github.com/standards-lab/go-ai/internal/aitest"
+	"github.com/standards-lab/go-ai/protocol"
 )
 
 // audioReply is vLLM 0.33.0's Chat Completions reply to Gemma 4 E4B given tone.wav as an
@@ -195,6 +196,87 @@ func TestTranscribeChatReply(t *testing.T) {
 	}
 	if *got != want {
 		t.Errorf("Transcribe = %+v, want %+v", *got, want)
+	}
+}
+
+// TestTranscribeChatIncomplete has vLLM's recorded reply answered under each finish_reason, and
+// wants a completed one transcribed and any other refused with an *IncompleteTranscriptError
+// naming the status, the reason, and its cause, no Transcription, and the request sent once
+// under a retry policy.
+func TestTranscribeChatIncomplete(t *testing.T) {
+	cases := []struct {
+		finish string
+		status protocol.Status
+		reason protocol.IncompleteReason
+		want   string
+	}{
+		{"stop", protocol.StatusCompleted, "", ""},
+		{"length", protocol.StatusIncomplete, protocol.ReasonMaxOutputTokens,
+			"ai: transcribe: transcript incomplete (status incomplete, reason max_output_tokens): the reply " +
+				"stopped at the engine's output token bound before the transcript ended; send a shorter clip " +
+				"or raise the engine's default bound"},
+		{"content_filter", protocol.StatusIncomplete, protocol.ReasonContentFilter,
+			"ai: transcribe: transcript incomplete (status incomplete, reason content_filter): the endpoint's " +
+				"content filter stopped the reply before the transcript ended; the clip can't be transcribed " +
+				"whole through this endpoint's filter"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.finish, func(t *testing.T) {
+			reply := strings.Replace(audioReply, `"finish_reason":"stop"`, `"finish_reason":"`+tc.finish+`"`, 1)
+			srv := aitest.NewServer(t, http.StatusOK, reply)
+			c := chatClient(t, srv.URL, ai.Options{Retry: ai.RetryPolicy{MaxAttempts: 3}})
+			got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{Model: "m", Open: reopen(tone(t)), FileName: "tone.wav"})
+			if n := len(srv.Requests()); n != 1 {
+				t.Errorf("server received %d requests, want 1", n)
+			}
+			if tc.status == protocol.StatusCompleted {
+				if err != nil || got.Text != "It sounds like a gentle, rhythmic tapping." {
+					t.Errorf("Transcribe = %+v, %v; want the reply's text", got, err)
+				}
+				return
+			}
+			if got != nil {
+				t.Errorf("Transcribe = %+v, want no Transcription", got)
+			}
+			e, ok := errors.AsType[*ai.IncompleteTranscriptError](err)
+			if !ok {
+				t.Fatalf("Transcribe error = %v, want an *IncompleteTranscriptError", err)
+			}
+			if e.Status != tc.status || e.Reason != tc.reason {
+				t.Errorf("IncompleteTranscriptError = %+v, want status %s, reason %s", *e, tc.status, tc.reason)
+			}
+			if err.Error() != tc.want {
+				t.Errorf("Transcribe error = %q, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestIncompleteTranscriptErrorText covers the text of the statuses and reasons a reply can carry
+// beyond those TestTranscribeChatIncomplete has Chat Completions decode.
+func TestIncompleteTranscriptErrorText(t *testing.T) {
+	cases := []struct {
+		err  ai.IncompleteTranscriptError
+		want string
+	}{
+		{ai.IncompleteTranscriptError{Status: protocol.StatusIncomplete},
+			"transcript incomplete (status incomplete): the model stopped before the transcript ended"},
+		{ai.IncompleteTranscriptError{Status: protocol.StatusIncomplete, Reason: "tool_budget"},
+			"transcript incomplete (status incomplete, reason tool_budget): the model stopped before the transcript ended"},
+		{ai.IncompleteTranscriptError{Status: protocol.StatusFailed},
+			"transcript incomplete (status failed): the endpoint reported that the reply failed; send the request again " +
+				"or check the endpoint"},
+		{ai.IncompleteTranscriptError{Status: protocol.StatusInProgress},
+			"transcript incomplete (status in_progress): the reply isn't completed, so its text can't be taken as the " +
+				"whole transcript"},
+		{ai.IncompleteTranscriptError{},
+			"transcript incomplete (status none): the reply isn't completed, so its text can't be taken as the whole " +
+				"transcript"},
+	}
+	for _, tc := range cases {
+		if got := tc.err.Error(); got != tc.want {
+			t.Errorf("%+v.Error() = %q, want %q", tc.err, got, tc.want)
+		}
 	}
 }
 
