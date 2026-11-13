@@ -19,21 +19,15 @@ import (
 // which the tagged scenarios use through newClient, is checked hermetically on every pull
 // request.
 
-// credentialVariables returns the names of the variables that hold the credentials of the role
-// whose API root variable is baseVariable: AI_AGENT_BASE_URL's are AI_AGENT_TOKEN and
-// AI_AGENT_HEADER.
-func credentialVariables(baseVariable string) (token, header string) {
-	prefix := strings.TrimSuffix(baseVariable, "_BASE_URL")
-	return prefix + "_TOKEN", prefix + "_HEADER"
-}
-
 // withCredentials returns opts with the credentials of the role whose API root variable is
-// baseVariable, read through getenv: AI_<ROLE>_TOKEN, when set and non-empty, as Options.Token,
-// and the headers AI_<ROLE>_HEADER holds, as parseHeader reads them, as Options.Header. With
-// both unset it returns opts as given, so the role's endpoint is sent what it was before either
-// existed. Its error names the variable and the line, never a value, as a value is a secret.
+// baseVariable, such as AI_AGENT_BASE_URL, read through getenv: AI_<ROLE>_TOKEN, such as
+// AI_AGENT_TOKEN, when set and non-empty, as Options.Token, and the headers AI_<ROLE>_HEADER
+// holds, as parseHeader reads them, as Options.Header. With both unset it returns opts as given,
+// so the role's endpoint is sent what it was before either existed. Its error names the variable
+// and the line, never a value, as a value is a secret.
 func withCredentials(opts ai.Options, baseVariable string, getenv func(string) string) (ai.Options, error) {
-	tokenVariable, headerVariable := credentialVariables(baseVariable)
+	role := strings.TrimSuffix(baseVariable, "_BASE_URL")
+	tokenVariable, headerVariable := role+"_TOKEN", role+"_HEADER"
 	if token := getenv(tokenVariable); token != "" {
 		opts.Token = func(context.Context) (string, error) { return token, nil }
 	}
@@ -94,14 +88,6 @@ func newClient(baseVariable, base string, f format.Format, opts ai.Options, gete
 // env is a getenv over the variables it holds, any other unset.
 func env(vars map[string]string) func(string) string {
 	return func(name string) string { return vars[name] }
-}
-
-// The credential variables are the role's, named from its API root variable.
-func TestCredentialVariables(t *testing.T) {
-	token, header := credentialVariables("AI_EMBEDDING_BASE_URL")
-	if token != "AI_EMBEDDING_TOKEN" || header != "AI_EMBEDDING_HEADER" {
-		t.Errorf("credentialVariables = %s, %s, want AI_EMBEDDING_TOKEN, AI_EMBEDDING_HEADER", token, header)
-	}
 }
 
 // AI_<ROLE>_HEADER's lines each become a header: one line or several, each trimmed of
