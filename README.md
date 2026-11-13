@@ -249,6 +249,18 @@ a variable holding the endpoint's API root, including `/v1`, with no default:
 - `AI_TRANSCRIPTION_BASE_URL`: an endpoint that serves the transcription route, for route-mode
   `Transcribe`.
 
+An endpoint that requires credentials, such as a gateway or a cloud endpoint, takes them from
+two optional variables per role, `AI_<ROLE>_TOKEN`, sent as the bearer token through
+`Options.Token`, and `AI_<ROLE>_HEADER`, one or more `Name: value` lines separated by newlines,
+sent through `Options.Header`:
+
+```
+AI_AGENT_BASE_URL=https://gateway.example/agent/v1 AI_AGENT_HEADER='api-key: …' mise run integration
+```
+
+With neither set, a role's requests carry no credential, and no failing scenario prints a token
+or a header value.
+
 `mise run integration` runs the tier verbose, and then infer's, which runs the built `infer`
 against the same variables. A scenario whose variable is unset skips, naming it, so with none
 set the run skips whole. Each scenario sends to the one model its endpoint's
