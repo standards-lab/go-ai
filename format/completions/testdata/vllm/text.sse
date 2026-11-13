@@ -1,0 +1,18 @@
+data: {"id":"chatcmpl-b53470cd1b35b45d","object":"chat.completion.chunk","created":1794531963,"model":"nvidia/Gemma-4-26B-A4B-NVFP4","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"prompt_token_ids":null,"prompt_text":null}
+
+data: {"id":"chatcmpl-b53470cd1b35b45d","object":"chat.completion.chunk","created":1794531963,"model":"nvidia/Gemma-4-26B-A4B-NVFP4","choices":[{"index":0,"delta":{"content":"Paris"},"logprobs":null,"finish_reason":null,"token_ids":null}],"kv_transfer_params":null}
+
+data: {"id":"chatcmpl-b53470cd1b35b45d","object":"chat.completion.chunk","created":1794531963,"model":"nvidia/Gemma-4-26B-A4B-NVFP4","choices":[{"index":0,"delta":{"content":","},"logprobs":null,"finish_reason":null,"token_ids":null}],"kv_transfer_params":null}
+
+data: {"id":"chatcmpl-b53470cd1b35b45d","object":"chat.completion.chunk","created":1794531963,"model":"nvidia/Gemma-4-26B-A4B-NVFP4","choices":[{"index":0,"delta":{"content":" Lyon"},"logprobs":null,"finish_reason":null,"token_ids":null}],"kv_transfer_params":null}
+
+data: {"id":"chatcmpl-b53470cd1b35b45d","object":"chat.completion.chunk","created":1794531963,"model":"nvidia/Gemma-4-26B-A4B-NVFP4","choices":[{"index":0,"delta":{"content":","},"logprobs":null,"finish_reason":null,"token_ids":null}],"kv_transfer_params":null}
+
+data: {"id":"chatcmpl-b53470cd1b35b45d","object":"chat.completion.chunk","created":1794531963,"model":"nvidia/Gemma-4-26B-A4B-NVFP4","choices":[{"index":0,"delta":{"content":" Marseille"},"logprobs":null,"finish_reason":null,"token_ids":null}],"kv_transfer_params":null}
+
+data: {"id":"chatcmpl-b53470cd1b35b45d","object":"chat.completion.chunk","created":1794531963,"model":"nvidia/Gemma-4-26B-A4B-NVFP4","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop","stop_reason":106,"token_ids":null,"weight_versions":null}],"kv_transfer_params":null}
+
+data: {"id":"chatcmpl-b53470cd1b35b45d","object":"chat.completion.chunk","created":1794531963,"model":"nvidia/Gemma-4-26B-A4B-NVFP4","choices":[],"usage":{"prompt_tokens":25,"total_tokens":31,"completion_tokens":6,"completion_tokens_details":{"reasoning_tokens":0}},"system_fingerprint":"vllm-0.33.0-12f4a7b7"}
+
+data: [DONE]
+

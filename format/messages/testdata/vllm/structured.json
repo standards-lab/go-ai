@@ -1,0 +1,1 @@
+{"id":"chatcmpl-aab14de85610a507","type":"message","role":"assistant","content":[{"type":"thinking","thinking":"Simple.","signature":"0f788c623ffd4ec5a59e0eb5000b5bd3"},{"type":"text","text":"{\n  \"name\": \"Paris\"\n}"}],"model":"openai/gpt-oss-120b","stop_reason":"end_turn","usage":{"input_tokens":73,"output_tokens":24}}

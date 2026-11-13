@@ -1,0 +1,41 @@
+# golangci-lint v2 configuration, run per module by `mise run check`. golangci-lint reads the
+# nearest configuration above the directory it runs in, so this one file serves every module.
+version: "2"
+
+run:
+  # Test files are linted with the code they test, so the depguard rule holds them too. The
+  # check runs golangci-lint a second time under the integration build tag, so the integration
+  # tier is linted as well.
+  tests: true
+
+linters:
+  # The standard set (errcheck, govet, ineffassign, staticcheck, unused), plus depguard, which
+  # holds each module to its allowed imports, and testpackage, which keeps tests black-box. Its
+  # skip regexp is narrowed to export_test.go: tests live in <pkg>_test and drive the exported
+  # API, and the one white-box file allowed is export_test.go. allow-packages is narrowed from
+  # its default, main, so a command's tests are black-box too, in main_test. It names only the
+  # empty package name, which no package has: an empty list leaves the default, main, in force.
+  default: standard
+  enable:
+    - depguard
+    - testpackage
+  settings:
+    testpackage:
+      skip-regexp: export_test\.go
+      allow-packages: [""]
+    depguard:
+      rules:
+        # The base module depends on nothing but the standard library. The rule covers every
+        # Go file outside tools/infer, tests and the integration tier included: they drive the
+        # API with the same imports plus the module itself. Allow entries match by prefix unless
+        # they end in `$`, so the module's entries are anchored: the module as itself or a
+        # package under it, not a sibling such as go-ai-extra.
+        base:
+          list-mode: strict
+          files:
+            - "**/*.go"
+            - "!**/tools/infer/**"
+          allow:
+            - $gostd
+            - github.com/standards-lab/go-ai$
+            - github.com/standards-lab/go-ai/

@@ -6,27 +6,80 @@ jq = "1.8.2"
 # Space-separated list of module directories. "." is the base module and
 # tools/infer the CLI's; each is added as the library and infer tasks build it.
 [env]
-GO_MODULES = ""
+GO_MODULES = "."
 
 [tasks.check]
 description = "Build, vet, format, fix, tidy, test, and lint every module; writes nothing"
 run = '''
 set -eu
 export GOWORK=off
+# The base module requires nothing: its line is the standard library alone, which depguard holds
+# each import to and this states of go.mod itself.
+cd "$MISE_PROJECT_ROOT"
+if ! go mod edit -json | jq -e '(.Require // []) | length == 0' >/dev/null; then
+  echo "go.mod: the base module requires nothing, but it has a require:"
+  go mod edit -json | jq -r '.Require[] | "  \(.Path) \(.Version)"'
+  exit 1
+fi
 for mod in $GO_MODULES; do
   echo "check: $mod"
   cd "$MISE_PROJECT_ROOT/$mod"
   go build ./...
   go vet ./...
+  go vet -tags integration ./...
   unformatted=$(gofmt -l .)
   if [ -n "$unformatted" ]; then echo "gofmt: unformatted files:"; echo "$unformatted"; exit 1; fi
   go fix -diff ./...
+  go fix -tags integration -diff ./...
   go mod tidy -diff
   go test -race ./...
   golangci-lint run ./...
+  golangci-lint run --build-tags integration ./...
+done
+'''
+
+# The integration tier runs the integration-tagged tests against the endpoints the AI_*_BASE_URL
+# variables name, which pass through from the caller's environment: AI_AGENT_BASE_URL,
+# AI_VISION_BASE_URL, AI_AUDIO_BASE_URL, AI_EMBEDDING_BASE_URL, and AI_TRANSCRIPTION_BASE_URL,
+# each an API root including /v1. A scenario whose variable is unset skips, so with none set the
+# run skips whole and passes. It runs verbose, so the log lists each scenario passed or skipped,
+# with the variable a skip wants. It never starts a server, and no CI job runs it.
+[tasks.integration]
+description = "Run the integration tier against the endpoints the AI_*_BASE_URL variables name"
+run = '''
+set -eu
+export GOWORK=off
+for mod in $GO_MODULES; do
+  cd "$MISE_PROJECT_ROOT/$mod"
+  # Only a module with an integration tier has the package to run.
+  [ -d integration ] || continue
+  echo "integration: $mod"
+  go test -race -tags integration -count=1 -v ./integration/...
 done
 '''
 
 [tasks.currency]
 description = "Report every requirement, Go version, tool, and action pin behind its latest; writes nothing"
 run = "scripts/currency.sh"
+
+[tasks.upgrade]
+description = "Upgrade every module's go directive and direct requirements and the local mise tools to their latest, rewriting go.mod and mise.toml"
+run = '''
+set -eu
+export GOWORK=off
+# The go directive follows the current Go minor, with no toolchain line.
+go_minor=$(mise latest go | cut -d. -f1,2)
+for mod in $GO_MODULES; do
+  echo "upgrade: $mod"
+  cd "$MISE_PROJECT_ROOT/$mod"
+  go mod edit -go="$go_minor" -toolchain=none
+  # A module with no direct requirement, as the base module is, gets nothing.
+  direct=$(go mod edit -json | jq -r '.Require[]? | select(.Indirect | not) | .Path')
+  [ -z "$direct" ] || go get $(printf '%s@latest ' $direct)
+  go mod tidy
+done
+cd "$MISE_PROJECT_ROOT"
+# --no-global writes this mise.toml alone, never the global config; it is what go-storage's
+# --local, now a deprecated alias, means.
+mise upgrade --bump --no-global
+'''
