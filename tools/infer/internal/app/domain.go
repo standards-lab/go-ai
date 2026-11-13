@@ -29,10 +29,12 @@ import (
 func defineDomain(g *graph.Graph, n *Nodes) {}
 
 // mountDomain mounts infer's commands at root, each declaring with Use the
-// nodes it reads, so a run builds only what its command needs. mode is
+// nodes it reads, so a run builds only what its command needs. cmdFlags
+// are the commands' own flags over a variable, each bound by its command:
+// chat's --idle-timeout, which the idle timeout node reads, and
 // transcribe's --mode, which the transcription mode node reads.
-func mountDomain(root *cli.Command, n *Nodes, mode *modeFlag) {
-	root.Add(modelsCommand(n), embedCommand(n), chatCommand(n), transcribeCommand(n, mode))
+func mountDomain(root *cli.Command, n *Nodes, cmdFlags commandFlags) {
+	root.Add(modelsCommand(n), embedCommand(n), chatCommand(n, cmdFlags.idleTimeout), transcribeCommand(n, cmdFlags.mode))
 }
 
 // modelsCommand returns the models command, which writes the ID of each
@@ -194,12 +196,18 @@ type chatFlags struct {
 // summary, and exits 1 naming its status, with the reason an incomplete
 // reply gives, as in "incomplete: max_output_tokens", or the error a failed
 // one gives.
-func chatCommand(n *Nodes) *cli.Command {
+//
+// chat sends through the chat client, whose streams idle, chat's
+// --idle-timeout, set from INFER_IDLE_TIMEOUT, bounds: a stream that sends
+// no bytes for that long ends with go-ai's error, exit 1, the text already
+// written kept. An unstreamed reply isn't bounded by it.
+func chatCommand(n *Nodes, idle *commandFlag) *cli.Command {
 	var f chatFlags
 	cmd := &cli.Command{
 		Name:     "chat",
 		Summary:  "Send a prompt, from the arguments or stdin, and write the model's reply",
 		Synopsis: "[<prompt> ...]",
+		Validate: idle.record,
 		Run: func(ctx context.Context, inv *cli.Invocation) error {
 			return chat(ctx, inv, n, &f)
 		},
@@ -211,7 +219,8 @@ func chatCommand(n *Nodes) *cli.Command {
 	fs.IntVar(&f.maxTokens, "max-tokens", 0, "the most tokens the model generates, reasoning included; 16 or more")
 	fs.StringVar(&f.native, "native", "", "JSON object merged into the request's top level, for parameters the typed flags don't cover")
 	fs.BoolVar(&f.stream, "stream", true, "stream the reply, writing its text as it arrives")
-	return cmd.Use(n.Client, n.Model, n.Format)
+	idle.bind(fs, "", "end a streamed reply that sends nothing for this long, such as 30s; 0 sets no bound")
+	return cmd.Use(n.ChatClient, n.Model, n.Format)
 }
 
 // chat is the chat command's Run, over the flags f holds.
@@ -230,7 +239,7 @@ func chat(ctx context.Context, inv *cli.Invocation, n *Nodes, f *chatFlags) erro
 	if err := checkRequest(req, inv.Get(n.Format), f.stream); err != nil {
 		return cli.Usagef("%w", err)
 	}
-	client := inv.Get(n.Client)
+	client := inv.Get(n.ChatClient)
 	if req.Model, err = resolveModel(ctx, client, req.Model); err != nil {
 		return err
 	}
@@ -492,7 +501,7 @@ func replyError(resp *protocol.Response) error {
 // A chat-mode reply that isn't completed is go-ai's
 // *ai.IncompleteTranscriptError, exit 1, naming its status and reason, and
 // writes no transcript, as it holds part of one at most.
-func transcribeCommand(n *Nodes, mode *modeFlag) *cli.Command {
+func transcribeCommand(n *Nodes, mode *commandFlag) *cli.Command {
 	cmd := &cli.Command{
 		Name:     "transcribe",
 		Summary:  "Transcribe an audio file, writing its transcript",
@@ -526,6 +535,7 @@ func transcribeCommand(n *Nodes, mode *modeFlag) *cli.Command {
 			return err
 		},
 	}
-	mode.bind(cmd.Flags())
+	mode.bind(cmd.Flags(), defaultTranscriptionMode,
+		"how to transcribe: route, the endpoint's transcription route, or chat, a chat request in the format")
 	return cmd.Use(n.Transcriber, n.Model)
 }

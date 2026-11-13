@@ -105,7 +105,8 @@ func TestRun_RootHelp(t *testing.T) {
 			r := runApp(t, unreadable(e.URL), args...)
 
 			wantCode(t, r, process.ExitUsage)
-			for _, want := range []string{"version", "models", "embed", "chat", "transcribe", "--base-url", "INFER_BASE_URL", "--format", "INFER_FORMAT", "--model", "INFER_MODEL"} {
+			for _, want := range []string{"version", "models", "embed", "chat", "transcribe", "--base-url", "INFER_BASE_URL", "--format", "INFER_FORMAT", "--model", "INFER_MODEL",
+				"--retries", "INFER_RETRIES", "the first included", "--retry-base-delay", "INFER_RETRY_BASE_DELAY", "--retry-max-delay", "INFER_RETRY_MAX_DELAY"} {
 				if !strings.Contains(r.stdout, want) {
 					t.Errorf("stdout = %q, want the root help naming %s", r.stdout, want)
 				}

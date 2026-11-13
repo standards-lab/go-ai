@@ -4,8 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/standards-lab/go-cli-sdk"
 	"github.com/standards-lab/go-core/config"
@@ -38,28 +42,39 @@ var formats = map[string]func() format.Format{
 }
 
 // defineInfrastructure defines the infrastructure nodes on g into n: the
-// lifecycle configuration; the endpoint settings, each read from its
-// INFER_ variable and its root flag; the client of the endpoint, built
-// from them and INFER_TOKEN; and the transcription mode, read from
-// INFER_TRANSCRIPTION_MODE and mode, transcribe's --mode, and the
-// transcriber, the client built with it. It constructs nothing: each value
-// is read in its node's constructor, which runs only when a Build reaches
-// the node, so configuration is read only for a command that declares a
-// node, never in [New] and never for a run that builds nothing.
+// lifecycle configuration; the endpoint settings and the retry policy, each
+// read from its INFER_ variables and its root flags; the client of the
+// endpoint, built from them and INFER_TOKEN; and two clients of the same
+// endpoint for one command each: the transcriber, in the transcription mode
+// read from INFER_TRANSCRIPTION_MODE and transcribe's --mode, and the chat
+// client, bounded by the idle timeout read from INFER_IDLE_TIMEOUT and
+// chat's --idle-timeout. It constructs nothing: each value is read in its
+// node's constructor, which runs only when a Build reaches the node, so
+// configuration is read only for a command that declares a node, never in
+// [New] and never for a run that builds nothing.
 //
-// The mode is a setting of the client, ai.Options.TranscriptionMode, but
-// only transcribe reads it, so it reaches a client of its own rather than
-// the one the other commands share: building it into that one would read
-// INFER_TRANSCRIPTION_MODE for every command, and an unknown mode would
-// refuse a chat that never transcribes.
-func defineInfrastructure(g *graph.Graph, n *Nodes, flags *rootFlags, mode *modeFlag) {
+// The mode and the idle timeout are settings of the client,
+// ai.Options.TranscriptionMode and StreamIdleTimeout, but each is one
+// command's, so each reaches a client of its own rather than the one the
+// other commands share: building them into that one would read both
+// variables for every command, and an unknown mode would refuse a chat that
+// never transcribes. All three clients are [newClient]'s, so the endpoint,
+// the format, the token, and the retry policy reach each alike.
+func defineInfrastructure(g *graph.Graph, n *Nodes, flags *rootFlags, cmd commandFlags) {
 	n.LifecycleConfig = g.Define("lifecycle config", newLifecycleConfig)
 	n.BaseURL = g.Define("base url", newSetting(flags, "base-url", ""))
 	n.Format = g.Define("format", newFormat(flags))
 	n.Model = g.Define("model", newSetting(flags, "model", ""))
-	n.Client = g.Define("client", newClient(n.BaseURL, n.Format))
-	n.TranscriptionMode = g.Define("transcription mode", newTranscriptionMode(mode))
-	n.Transcriber = g.Define("transcriber", newTranscriber(n.BaseURL, n.Format, n.TranscriptionMode))
+	n.RetryPolicy = g.Define("retry policy", newRetryPolicy(flags))
+	n.Client = g.Define("client", newClient(n, func(*graph.Scope) ai.Options { return ai.Options{} }))
+	n.TranscriptionMode = g.Define("transcription mode", newTranscriptionMode(cmd.mode))
+	n.Transcriber = g.Define("transcriber", newClient(n, func(s *graph.Scope) ai.Options {
+		return ai.Options{TranscriptionMode: s.Use(n.TranscriptionMode)}
+	}))
+	n.IdleTimeout = g.Define("idle timeout", newIdleTimeout(cmd.idleTimeout))
+	n.ChatClient = g.Define("chat client", newClient(n, func(s *graph.Scope) ai.Options {
+		return ai.Options{StreamIdleTimeout: s.Use(n.IdleTimeout)}
+	}))
 }
 
 // newLifecycleConfig reads the lifecycle configuration, the shutdown
@@ -73,26 +88,32 @@ func newLifecycleConfig(*graph.Scope) (lifecycle.Config, error) {
 }
 
 // newSetting returns the constructor of the string setting the root flag
-// name overrides: it starts from def, replaces it with the variable
+// name overrides, as [resolveSetting] resolves it from def, the variable
 // composed from envPrefix and name, such as INFER_BASE_URL for "base-url",
-// when that is set and non-empty, and replaces that with the flag's value
-// when the dispatch set the flag, even to an empty value. It reads only
-// when a Build reaches the node.
+// and the flag. It reads only when a Build reaches the node.
 func newSetting(flags *rootFlags, name, def string) func(*graph.Scope) (string, error) {
 	return func(*graph.Scope) (string, error) {
-		v := def
-		var fromEnv *string
-		if err := config.SetFromEnv(&fromEnv, config.EnvName(envPrefix, name), parseString); err != nil {
-			return "", err
-		}
-		if fromEnv != nil {
-			v = *fromEnv
-		}
-		if given, ok := flags.value(name); ok {
-			v = given
-		}
-		return v, nil
+		given, ok := flags.value(name)
+		return resolveSetting(def, config.EnvName(envPrefix, name), given, ok)
 	}
+}
+
+// resolveSetting returns a string setting: def, replaced by variable's
+// value when that is set and non-empty, replaced in turn by flagValue when
+// flagGiven says the dispatch set the flag, even to an empty value.
+func resolveSetting(def, variable, flagValue string, flagGiven bool) (string, error) {
+	v := def
+	var fromEnv *string
+	if err := config.SetFromEnv(&fromEnv, variable, parseString); err != nil {
+		return "", err
+	}
+	if fromEnv != nil {
+		v = *fromEnv
+	}
+	if flagGiven {
+		v = flagValue
+	}
+	return v, nil
 }
 
 // parseString is a string setting's parse: any value is the setting.
@@ -117,32 +138,29 @@ func newFormat(flags *rootFlags) func(*graph.Scope) (format.Format, error) {
 	}
 }
 
-// newClient returns the client node's constructor: the go-ai client of the
-// endpoint the base url node names, in the format node's format, as
-// [buildClient] builds it, transcribing through the route, go-ai's default,
-// as no command that declares it transcribes.
-func newClient(baseURL *graph.Node[string], wireFormat *graph.Node[format.Format]) func(*graph.Scope) (*ai.Client, error) {
+// newClient returns the constructor of a client node: the go-ai client of
+// the endpoint the base url node names, in the format node's format, with
+// the retry policy node's policy and the options opts returns, which reads
+// the nodes of the one command the client is for, as [buildClient] builds
+// it. The client node's opts returns none, so it transcribes through the
+// route, go-ai's default, and bounds no stream, as no command that declares
+// it transcribes or streams.
+func newClient(n *Nodes, opts func(*graph.Scope) ai.Options) func(*graph.Scope) (*ai.Client, error) {
 	return func(s *graph.Scope) (*ai.Client, error) {
-		return buildClient(s.Use(baseURL), s.Use(wireFormat), ai.Options{})
-	}
-}
-
-// newTranscriber returns the transcriber node's constructor: the client
-// [newClient] builds, of the same endpoint and format, transcribing in the
-// transcription mode node's mode.
-func newTranscriber(baseURL *graph.Node[string], wireFormat *graph.Node[format.Format], mode *graph.Node[ai.TranscriptionMode]) func(*graph.Scope) (*ai.Client, error) {
-	return func(s *graph.Scope) (*ai.Client, error) {
-		return buildClient(s.Use(baseURL), s.Use(wireFormat), ai.Options{TranscriptionMode: s.Use(mode)})
+		o := opts(s)
+		o.Retry = s.Use(n.RetryPolicy)
+		return buildClient(s.Use(n.BaseURL), s.Use(n.Format), o)
 	}
 }
 
 // buildClient returns the go-ai client of the endpoint at base, in
 // wireFormat, with opts, sending INFER_TOKEN as its bearer token, read once
 // here; an empty token sends no Authorization header, as go-ai's
-// TokenSource documents. A missing base URL, or one ai.New refuses, is a
-// usage error naming --base-url and INFER_BASE_URL. The client sets no
-// timeout: a long stream is bounded by the run's context alone. It makes no
-// request.
+// TokenSource documents. A missing base URL is a usage error naming
+// --base-url and INFER_BASE_URL; so is anything ai.New refuses, with its
+// refusal, naming the flags and variables of the settings [refusedSettings]
+// finds it refused. The client sets no timeout: a long stream is bounded by
+// the run's context and the idle timeout alone. It makes no request.
 func buildClient(base string, wireFormat format.Format, opts ai.Options) (*ai.Client, error) {
 	if base == "" {
 		return nil, cli.Usagef("no base URL: set %s", flagOrVar("base-url"))
@@ -151,12 +169,95 @@ func buildClient(base string, wireFormat format.Format, opts ai.Options) (*ai.Cl
 	opts.Token = func(context.Context) (string, error) { return token, nil }
 	client, err := ai.New(base, &http.Client{}, wireFormat, opts)
 	if err != nil {
-		// Every Options field infer sets is valid as set, the transcription
-		// mode one [newTranscriptionMode] parsed, so a refusal is the base
-		// URL's.
-		return nil, cli.Usagef("%s: %w", flagAndVar("base-url"), err)
+		if names := refusedSettings(base, wireFormat, opts); names != "" {
+			return nil, cli.Usagef("%s: %w", names, err)
+		}
+		return nil, cli.Usagef("%w", err)
 	}
 	return client, nil
+}
+
+// refusedSettings names the settings ai.New refuses in base and opts, as
+// "--base-url (INFER_BASE_URL)", or empty when it accepts each alone. go-ai
+// is the authority on what it refuses, and its errors carry no field, so
+// each setting is put to ai.New again on its own, beside values it never
+// refuses: the base URL with no options; the attempt count alone; the most
+// delay alone; and the base delay under the longest most delay. A base
+// delay above the most delay is refused in neither of the last two alone,
+// only together, so a policy refused when no field is names both delays.
+// Only a refused New calls it, so the probes cost nothing in a run that
+// builds.
+func refusedSettings(base string, wireFormat format.Format, opts ai.Options) string {
+	refuses := func(base string, o ai.Options) bool {
+		_, err := ai.New(base, &http.Client{}, wireFormat, o)
+		return err != nil
+	}
+	if refuses(base, ai.Options{}) {
+		return flagAndVar("base-url")
+	}
+	p := opts.Retry
+	var names []string
+	if refuses(base, ai.Options{Retry: ai.RetryPolicy{MaxAttempts: p.MaxAttempts}}) {
+		names = append(names, flagAndVar("retries"))
+	}
+	if refuses(base, ai.Options{Retry: ai.RetryPolicy{BaseDelay: p.BaseDelay, MaxDelay: math.MaxInt64}}) {
+		names = append(names, flagAndVar("retry-base-delay"))
+	}
+	if refuses(base, ai.Options{Retry: ai.RetryPolicy{MaxDelay: p.MaxDelay}}) {
+		names = append(names, flagAndVar("retry-max-delay"))
+	}
+	if len(names) == 0 && refuses(base, ai.Options{Retry: p}) {
+		names = append(names, flagAndVar("retry-base-delay"), flagAndVar("retry-max-delay"))
+	}
+	return strings.Join(names, " and ")
+}
+
+// newRetryPolicy returns the retry policy node's constructor: the policy
+// --retries, --retry-base-delay, and --retry-max-delay set, each over its
+// variable as [newSetting] resolves it, and each zero when neither is
+// given, go-ai's default, which retries nothing. A value that doesn't
+// parse, a count as a whole number and each delay as a Go duration, is a
+// usage error naming the flag and its variable. The node checks nothing
+// else: ai.New refuses a negative or inverted policy, in [buildClient].
+func newRetryPolicy(flags *rootFlags) func(*graph.Scope) (ai.RetryPolicy, error) {
+	return func(s *graph.Scope) (ai.RetryPolicy, error) {
+		var p ai.RetryPolicy
+		var err error
+		if p.MaxAttempts, err = parseRootSetting(s, flags, "retries", parseCount); err != nil {
+			return p, err
+		}
+		if p.BaseDelay, err = parseRootSetting(s, flags, "retry-base-delay", time.ParseDuration); err != nil {
+			return p, err
+		}
+		p.MaxDelay, err = parseRootSetting(s, flags, "retry-max-delay", time.ParseDuration)
+		return p, err
+	}
+}
+
+// parseRootSetting returns the root flag name's setting, resolved by
+// [newSetting] with no default, parsed by parse; an empty setting is T's
+// zero value, and one parse refuses is a usage error naming the flag and
+// its variable.
+func parseRootSetting[T any](s *graph.Scope, flags *rootFlags, name string, parse func(string) (T, error)) (T, error) {
+	var zero T
+	v, err := newSetting(flags, name, "")(s)
+	if err != nil || v == "" {
+		return zero, err
+	}
+	t, err := parse(v)
+	if err != nil {
+		return zero, cli.Usagef("%s: %w", flagAndVar(name), err)
+	}
+	return t, nil
+}
+
+// parseCount parses a whole number, such as a count of attempts.
+func parseCount(s string) (int, error) {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("%q isn't a whole number", s)
+	}
+	return n, nil
 }
 
 // transcriptionModes maps each transcription mode setting to go-ai's mode.
@@ -176,28 +277,45 @@ const defaultTranscriptionMode = "route"
 var transcriptionModeVar = config.EnvName(envPrefix, "transcription-mode")
 
 // newTranscriptionMode returns the transcription mode node's constructor:
-// the mode the setting names, starting from defaultTranscriptionMode,
-// replaced by INFER_TRANSCRIPTION_MODE when that is set and non-empty, and
-// by mode's value when the dispatch set --mode. A name transcriptionModes
-// doesn't hold is a usage error naming the flag and its variable.
-func newTranscriptionMode(mode *modeFlag) func(*graph.Scope) (ai.TranscriptionMode, error) {
+// the mode the setting names, as mode's [commandFlag.setting] resolves it,
+// from defaultTranscriptionMode, INFER_TRANSCRIPTION_MODE, and --mode. A
+// name transcriptionModes doesn't hold is a usage error naming the flag
+// and its variable.
+func newTranscriptionMode(mode *commandFlag) func(*graph.Scope) (ai.TranscriptionMode, error) {
 	return func(*graph.Scope) (ai.TranscriptionMode, error) {
-		name := defaultTranscriptionMode
-		var fromEnv *string
-		if err := config.SetFromEnv(&fromEnv, transcriptionModeVar, parseString); err != nil {
+		name, err := mode.setting(defaultTranscriptionMode)
+		if err != nil {
 			return 0, err
-		}
-		if fromEnv != nil {
-			name = *fromEnv
-		}
-		if mode.given {
-			name = mode.value
 		}
 		m, ok := transcriptionModes[name]
 		if !ok {
-			return 0, cli.Usagef("unknown transcription mode %q: --%s (%s) is route or chat", name, modeFlagName, transcriptionModeVar)
+			return 0, cli.Usagef("unknown transcription mode %q: %s is route or chat", name, mode)
 		}
 		return m, nil
+	}
+}
+
+// newIdleTimeout returns the idle timeout node's constructor: the
+// duration idle's [commandFlag.setting] resolves from INFER_IDLE_TIMEOUT
+// and --idle-timeout, zero, no bound, when neither is given. A value that
+// isn't a Go duration, or is negative, is a usage error naming the flag
+// and its variable. go-ai sets no bound for a negative StreamIdleTimeout
+// rather than refusing one, so the refusal is infer's: a negative bound is
+// a mistake, not a request for none.
+func newIdleTimeout(idle *commandFlag) func(*graph.Scope) (time.Duration, error) {
+	return func(*graph.Scope) (time.Duration, error) {
+		v, err := idle.setting("")
+		if err != nil || v == "" {
+			return 0, err
+		}
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return 0, cli.Usagef("%s: %w", idle, err)
+		}
+		if d < 0 {
+			return 0, cli.Usagef("%s: negative duration %s; 0 sets no bound", idle, d)
+		}
+		return d, nil
 	}
 }
 
@@ -222,12 +340,20 @@ type rootFlags struct {
 }
 
 // bindRootFlags defines the root flags on fs, the root command's flag set,
-// each naming the variable it overrides.
+// each naming the variable it overrides. The retry flags are strings, not
+// an int and durations, so a value that doesn't parse is refused with its
+// variable's, naming both, rather than by the flag package alone.
 func bindRootFlags(fs *flag.FlagSet) *rootFlags {
 	env := func(name string) string { return " (env " + config.EnvName(envPrefix, name) + ")" }
 	fs.String("base-url", "", "the endpoint's API root, such as http://localhost:8080/v1"+env("base-url"))
 	fs.String("format", defaultFormat, "the wire format: completions, messages, or responses"+env("format"))
 	fs.String("model", "", "the model the request names"+env("model"))
+	fs.String("retries", "", "the most attempts of each request, the first included, so 3 retries twice, "+
+		"when the endpoint answers 408, 429, 502, 503, or 504 or the connection fails; 0 or 1 retries nothing"+env("retries"))
+	fs.String("retry-base-delay", "", "the longest wait before the first retry, such as 500ms, doubling for each retry after it; "+
+		"at most --retry-max-delay"+env("retry-base-delay"))
+	fs.String("retry-max-delay", "", "the longest wait between attempts, such as 30s, and the longest Retry-After waited for; "+
+		"a longer Retry-After ends the retries"+env("retry-max-delay"))
 	return &rootFlags{fs: fs}
 }
 
@@ -252,30 +378,55 @@ func (f *rootFlags) value(name string) (string, bool) {
 	return f.fs.Lookup(name).Value.String(), true
 }
 
-// modeFlagName is transcribe's flag that overrides INFER_TRANSCRIPTION_MODE.
-const modeFlagName = "mode"
-
-// modeFlag is transcribe's --mode, which the transcription mode node reads.
-// It is transcribe's own flag, not a root flag, as no other command
-// transcribes; transcribe binds it with [modeFlag.bind] and records, in its
-// Validate, whether the dispatch set it, as the root's PreRun does for the
-// root flags.
-type modeFlag struct {
-	value string
-	given bool // whether the current dispatch set --mode, from record
+// commandFlags are the commands' own flags that override a variable, each
+// one command's: the setting it overrides is that command's alone, so no
+// other command accepts the flag or reads the variable.
+type commandFlags struct {
+	mode        *commandFlag // transcribe's --mode
+	idleTimeout *commandFlag // chat's --idle-timeout
 }
 
-// bind defines --mode on fs, transcribe's flag set, naming the variable it
-// overrides.
-func (m *modeFlag) bind(fs *flag.FlagSet) {
-	fs.StringVar(&m.value, modeFlagName, defaultTranscriptionMode,
-		"how to transcribe: route, the endpoint's transcription route, or chat, a chat request in the format (env "+transcriptionModeVar+")")
+// newCommandFlags returns the commands' flags, unbound.
+func newCommandFlags() commandFlags {
+	return commandFlags{
+		mode:        &commandFlag{name: "mode", variable: transcriptionModeVar},
+		idleTimeout: &commandFlag{name: "idle-timeout", variable: config.EnvName(envPrefix, "idle-timeout")},
+	}
 }
 
-// record is transcribe's Validate: it records whether the dispatch set
-// --mode, even to its default, before the Build reads it. It refuses
-// nothing; the mode's value is checked with its variable's, in the node.
-func (m *modeFlag) record(inv *cli.Invocation) error {
-	m.given = inv.Changed(modeFlagName)
+// commandFlag is one command's string flag over a variable, which a node
+// of that command reads: the command binds it with [commandFlag.bind] and
+// records, in its Validate, whether the dispatch set it, as the root's
+// PreRun does for the root flags.
+type commandFlag struct {
+	name     string // the flag's name, such as "mode"
+	variable string // the variable it overrides, such as INFER_TRANSCRIPTION_MODE
+	value    string
+	given    bool // whether the current dispatch set the flag, from record
+}
+
+// bind defines the flag on fs, its command's flag set, with def as its
+// default and usage naming the variable it overrides.
+func (f *commandFlag) bind(fs *flag.FlagSet, def, usage string) {
+	fs.StringVar(&f.value, f.name, def, usage+" (env "+f.variable+")")
+}
+
+// record is the command's Validate: it records whether the dispatch set
+// the flag, even to its default, before the Build reads it. It refuses
+// nothing; the flag's value is checked with its variable's, in the node.
+func (f *commandFlag) record(inv *cli.Invocation) error {
+	f.given = inv.Changed(f.name)
 	return nil
+}
+
+// setting returns the flag's setting, as [resolveSetting] resolves it
+// from def, the variable, and the flag.
+func (f *commandFlag) setting(def string) (string, error) {
+	return resolveSetting(def, f.variable, f.value, f.given)
+}
+
+// String names the flag and its variable, as in
+// "--mode (INFER_TRANSCRIPTION_MODE)".
+func (f *commandFlag) String() string {
+	return fmt.Sprintf("--%s (%s)", f.name, f.variable)
 }

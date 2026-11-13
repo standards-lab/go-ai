@@ -13,11 +13,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/standards-lab/go-core/graph"
 	"github.com/standards-lab/go-core/process"
 
 	"github.com/standards-lab/go-ai"
-	"github.com/standards-lab/go-ai/format/completions"
 	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
 )
 
@@ -207,10 +205,9 @@ func TestTranscribe_Chat(t *testing.T) {
 }
 
 // Each attempt opens the file again, so an attempt a retry makes sends the
-// whole clip, not what a first attempt left of a reader. Retries have no
-// flag yet, so the transcriber is replaced by one with a retry policy; the
-// run's own request, its Open included, is infer's. The endpoint answers
-// the first upload 503 with Retry-After 0, then the route's reply.
+// whole clip, not what a first attempt left of a reader: --retries reaches
+// the transcriber. The endpoint answers the first upload 503 with
+// Retry-After 0, then the route's reply.
 func TestTranscribe_ReopensEachAttempt(t *testing.T) {
 	var attempts atomic.Int32
 	mux := http.NewServeMux()
@@ -224,12 +221,8 @@ func TestTranscribe_ReopensEachAttempt(t *testing.T) {
 		route.ServeHTTP(w, r)
 	}))
 	e := apptest.Serve(t, mux)
-	h := newHarness(t, whisper(e))
-	h.app.Graph().Replace(h.app.Nodes().Transcriber, func(*graph.Scope) (*ai.Client, error) {
-		return ai.New(e.URL, &http.Client{}, completions.New(), ai.Options{Retry: ai.RetryPolicy{MaxAttempts: 2}})
-	})
 
-	r := h.run("transcribe", writeClip(t, "clip.wav"))
+	r := runApp(t, whisper(e), "transcribe", "--retries", "2", writeClip(t, "clip.wav"))
 
 	wantCode(t, r, process.ExitOK)
 	forms := uploads(t, e)

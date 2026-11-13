@@ -647,7 +647,7 @@ func TestChat_Help(t *testing.T) {
 	r := runApp(t, unreadable(e.URL), "chat", "--help")
 
 	wantCode(t, r, process.ExitUsage)
-	for _, want := range []string{"--instructions", "--image", "--reasoning", "--max-tokens", "--stream",
+	for _, want := range []string{"--instructions", "--image", "--reasoning", "--max-tokens", "--stream", "--idle-timeout", "INFER_IDLE_TIMEOUT",
 		"JSON object merged into the request's top level, for parameters the typed flags don't cover"} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("stdout = %q, want chat's help naming %s", r.stdout, want)

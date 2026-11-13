@@ -9,10 +9,12 @@
 //     define and mount functions in layer order, lowest first;
 //   - infrastructure.go: defineInfrastructure, the root flags and the
 //     configuration, read from INFER_ variables, the lifecycle
-//     configuration, and the go-ai client of the one endpoint a run talks
-//     to, and transcribe's --mode and the transcriber, a client of the
-//     same endpoint in the transcription mode; it is the one file that
-//     names a format package;
+//     configuration, the retry policy, and the go-ai client of the one
+//     endpoint a run talks to; the commands' own flags over a variable,
+//     transcribe's --mode and chat's --idle-timeout; and the transcriber
+//     and the chat client, clients of the same endpoint in the
+//     transcription mode and bounded by the idle timeout; it is the one
+//     file that names a format package;
 //   - domain.go: defineDomain and mountDomain, infer's commands over the
 //     client, models, embed, chat, and transcribe, and resolveModel, the
 //     one-model fallback each command that sends to a model resolves its
@@ -24,7 +26,12 @@
 // INFER_FORMAT, and INFER_MODEL, when given; --format is completions,
 // messages, or responses, and completions when neither is given. The
 // bearer token is INFER_TOKEN's, never a flag's, and an empty one sends
-// none. A missing base URL, an unknown format, or a base URL go-ai's New
+// none. The root flags --retries, --retry-base-delay, and
+// --retry-max-delay, over INFER_RETRIES, INFER_RETRY_BASE_DELAY, and
+// INFER_RETRY_MAX_DELAY, set go-ai's retry policy for every command:
+// --retries is the most attempts of a request, the first included, and
+// unset retries nothing. A missing base URL, an unknown format, a retry
+// setting that doesn't parse, or a base URL or retry policy go-ai's New
 // refuses is a usage error, exit 2, naming the flag and its variable,
 // before any request.
 //
@@ -46,6 +53,10 @@
 // ends the text with a newline and writes the reply's status, token usage,
 // and reasoning item count to stderr; a reply that isn't completed exits 1
 // naming its status and reason, as in "incomplete: max_output_tokens".
+// chat's --idle-timeout, set from INFER_IDLE_TIMEOUT, ends a stream that
+// sends nothing for that long, exit 1; it reaches only the chat client, so
+// no other command reads it, and a negative or unparsable one is a usage
+// error naming both.
 //
 // transcribe sends one audio file, its one argument, which go-ai opens
 // again for each attempt, and writes the transcript, ending it with a

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/standards-lab/go-cli-sdk"
 	"github.com/standards-lab/go-core/graph"
@@ -37,11 +38,11 @@ func New(streams cli.Streams) *App {
 	}
 	flags := bindRootFlags(a.root.Flags())
 	a.root.PreRun = flags.preRun
-	mode := new(modeFlag)
-	defineInfrastructure(a.graph, &a.nodes, flags, mode)
+	cmdFlags := newCommandFlags()
+	defineInfrastructure(a.graph, &a.nodes, flags, cmdFlags)
 	defineDomain(a.graph, &a.nodes)
 	a.root.Add(versionCommand())
-	mountDomain(a.root, &a.nodes, mode)
+	mountDomain(a.root, &a.nodes, cmdFlags)
 	return a
 }
 
@@ -71,7 +72,10 @@ type Nodes struct {
 	BaseURL         *graph.Node[string]        // the endpoint's API root, such as http://localhost:8080/v1
 	Format          *graph.Node[format.Format] // the wire format the client speaks
 	Model           *graph.Node[string]        // the model a request names; empty when not given
-	Client          *graph.Node[*ai.Client]    // the client of the endpoint, in the format, with the token
+	// RetryPolicy is when and how long every client waits to send a
+	// request again; its zero value retries nothing.
+	RetryPolicy *graph.Node[ai.RetryPolicy]
+	Client      *graph.Node[*ai.Client] // the client of the endpoint, in the format, with the token and the retry policy
 	// TranscriptionMode is how transcribe sends a clip: to the endpoint's
 	// transcription route, or as a chat request in the format.
 	TranscriptionMode *graph.Node[ai.TranscriptionMode]
@@ -79,6 +83,14 @@ type Nodes struct {
 	// endpoint, format, and token, transcribing in the transcription mode.
 	// Only transcribe declares it, so no other command reads the mode.
 	Transcriber *graph.Node[*ai.Client]
+	// IdleTimeout bounds each read of a streamed chat reply; zero sets no
+	// bound.
+	IdleTimeout *graph.Node[time.Duration]
+	// ChatClient is the client chat sends through: Client's endpoint,
+	// format, token, and retry policy, bounding a stream by the idle
+	// timeout. Only chat declares it, so no other command reads the idle
+	// timeout.
+	ChatClient *graph.Node[*ai.Client]
 }
 
 // Graph returns the graph a's commands are built from, as [New] described
