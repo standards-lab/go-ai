@@ -89,8 +89,9 @@ type TranscriptionRequest struct {
 	// Language is the clip's language, when the caller knows it; empty sends none. In
 	// TranscribeRoute it is the route's language field, such as "en", which llama.cpp b11669
 	// adds to its transcription instruction as a hint. In TranscribeChat,
-	// TranscriptionInstruction names it, as given, in the instruction when Prompt is empty, and
-	// it has no effect when Prompt is set.
+	// TranscriptionInstruction names it, as given, in the instruction when Prompt is empty, so
+	// a name such as "English" reads as the instruction means it where a code such as "en"
+	// doesn't, and it has no effect when Prompt is set.
 	Language string
 	// Prompt guides the transcription; empty sends none. In TranscribeRoute it is the route's
 	// prompt field, a decoding hint whose effect is the endpoint's: OpenAI reads it as preceding

@@ -223,11 +223,10 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 			r.Native = url.Values{"temperature": {"0"}}
 			return r
 		}, "takes no native fields"},
-		// Messages refuses the request on its missing max_tokens before it reaches the audio,
-		// which it would refuse too: either way, the format's refusal comes before anything is
-		// opened or sent.
+		// Messages refuses the audio, ahead of the max_tokens the request has none of, which
+		// the caller can't set.
 		{"a format that refuses audio", true, func(r *ai.TranscriptionRequest) *ai.TranscriptionRequest { return r },
-			"messages: "},
+			"messages: input 0: content 0: part protocol.InputAudio has no Messages form"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

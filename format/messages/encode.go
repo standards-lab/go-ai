@@ -104,19 +104,22 @@ func encode(req *protocol.Request, stream bool, header http.Header) ([]byte, err
 
 // encodeRequest encodes req as EncodeRequest describes, streamed when stream is set.
 func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
+	// The input is encoded first, so a request whose content Messages has no form for is
+	// refused for that content, whatever else it lacks.
+	messages, err := encodeInput(req.Input)
+	if err != nil {
+		return nil, err
+	}
 	if req.MaxOutputTokens == 0 {
 		return nil, errors.New("request has no max output tokens, which Messages requires as max_tokens")
 	}
-	var err error
 	body := request{
 		Model:     req.Model,
 		MaxTokens: req.MaxOutputTokens,
 		System:    req.Instructions,
 		Stream:    stream,
 		Native:    req.Native,
-	}
-	if body.Messages, err = encodeInput(req.Input); err != nil {
-		return nil, err
+		Messages:  messages,
 	}
 	if body.Tools, body.ToolChoice, err = encodeTools(req.Tools, req.ToolChoice); err != nil {
 		return nil, err
