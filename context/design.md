@@ -861,10 +861,10 @@ accepted at any depth, each override a variable, `INFER_BASE_URL`, `INFER_FORMAT
 `completions` when neither is given; the format package's typed constructor is chosen in
 `infrastructure.go` alone, the caller's composition root (finding 3). The bearer token is
 `INFER_TOKEN`'s alone, never a flag's, so it never enters a command line, and an empty one sends
-none. A missing base URL, an unknown
-format, or a value `ai.New` refuses is a usage error, exit 2, naming the flag and its variable,
-before any request. An endpoint and model per capability, as docinfer configures them, is
-docinfer's need, not a one-shot client's: a run that wants another endpoint is another run.
+none. A missing base URL, an unknown format, or a value `ai.New` refuses is a usage error, exit
+2, naming the flag and its variable, before any request. An endpoint and model per capability is
+a long-running program's need, not a one-shot client's: a run that wants another endpoint is
+another run.
 
 **The one-model fallback.** With no model set, a command that sends to a model lists the
 endpoint's models through `Client.Models` first and sends to the one listed. A purpose base URL
