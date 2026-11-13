@@ -71,8 +71,8 @@ func (c *Client) stream(ctx context.Context, req *protocol.Request, yield func(p
 	// the caller's cancel below: the request's being done may be the bound's doing.
 	reqCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	resp, err := c.send(reqCtx, c.format.Route(), header, body, "application/json", "text/event-stream",
-		c.format.DecodeError)
+	resp, err := c.send(reqCtx, http.MethodPost, c.format.Route(), fixedBody(header, body), "application/json",
+		"text/event-stream", c.format.DecodeError)
 	if err != nil {
 		return err
 	}

@@ -14,12 +14,18 @@
 // the idle bound on a started stream. The Client logs nothing; instrumentation is a
 // RoundTripper on the caller's http.Client.
 //
+// Embed, Models, and, in its default mode, Transcribe go to the base URL's OpenAI-compatible
+// routes, embeddings, models, and audio/transcriptions, on a Client of any format: llama.cpp's
+// router serves all three beside every format's route, and an endpoint without the route
+// answers with an *APIError. Transcribe's chat mode instead sends the clip as a chat request in
+// the Client's format, which must carry audio, as Chat Completions does.
+//
 // Its exported identifiers:
 //
 //   - [New] returns a Client of an endpoint's base URL, sending with an http.Client in a wire
 //     format, adjusted by Options.
 //   - [Options] are New's optional inputs: query, token source, fixed headers, retry policy,
-//     and the stream idle bound.
+//     the stream idle bound, and the transcription mode.
 //   - [TokenSource] returns the bearer token for one attempt.
 //   - [RetryPolicy] is the caller's opt-in policy for sending a request again: its most
 //     attempts and the backoff's base and most delays.
@@ -27,5 +33,14 @@
 //   - [Client.Generate] sends a Request and returns its Response.
 //   - [Client.GenerateStream] sends a Request when ranged and yields its response's streaming
 //     events.
+//   - [Client.Embed] sends an [EmbeddingRequest]'s batch as one request and returns its
+//     [Embeddings], each vector placed by its reply index, counted by [EmbeddingUsage].
+//   - [Client.Models] lists the endpoint's models, each a [Model].
+//   - [Client.Transcribe] sends a [TranscriptionRequest]'s clip and returns its
+//     [Transcription], counted by [TranscriptionUsage].
+//   - [TranscriptionMode] is how Transcribe transcribes: [TranscribeRoute], the endpoint's
+//     transcription route, or [TranscribeChat], a chat request in the Client's format.
+//   - [TranscriptionInstruction] is the instruction chat mode gives the model when the request
+//     has no Prompt.
 //   - [APIError] is a non-2xx reply, matched with errors.As, carrying the reply's Retry-After.
 package ai

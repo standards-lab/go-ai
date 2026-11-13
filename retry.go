@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -29,12 +28,14 @@ import (
 // once its 2xx reply has arrived.
 //
 // A connection that fails before the reply may fail after the endpoint has read the request,
-// and the requests the Client sends are POSTs, which nothing marks as safe to repeat: a retried
-// generation may run twice on the endpoint, and be counted twice. The Client sends no
+// and the requests the Client sends, but for Models' GET, are POSTs, which nothing marks as safe
+// to repeat: a retried generation, embedding, or transcription may run twice on the endpoint,
+// and be counted twice. Models' GET is safe to repeat, so its retry runs nothing twice. The Client sends no
 // idempotency key, which would be one endpoint's native header, not the standard's. The caller
 // who sets a policy accepts that.
 //
-// Each attempt calls the token source again and sends the same encoded body. Between attempts
+// Each attempt calls the token source again and sends the same body: the same encoded bytes,
+// or for Transcribe, the clip opened again. Between attempts
 // the Client waits an exponential backoff with full jitter: before attempt n+1, a random wait of
 // up to BaseDelay doubled n-1 times, capped at MaxDelay. A reply's Retry-After, in seconds or as
 // an HTTP date, replaces the backoff; one that can't be read, or is negative, is ignored. When
@@ -93,25 +94,34 @@ func fullJitter(d time.Duration) time.Duration {
 	return rand.N(d + 1)
 }
 
-// send sends body as a POST of contentType to route, accepting accept, with header, and returns
-// a 2xx reply, its body unread, for the caller to read and close. Each attempt is request's and
-// do's, sending the same body; with the Client's retry policy, an attempt that fails in do as
+// send sends a request of method to route, accepting accept, with the body makeBody makes for
+// each attempt, of contentType, or none when makeBody is nil, and returns a 2xx reply, its body
+// unread, for the caller to read and close; closing it ends the attempt's request body. Each
+// attempt is request's and do's; with the Client's retry policy, an attempt that fails in do as
 // RetryPolicy describes is made again after the wait it describes. An attempt that fails in
-// request, before anything is sent, such as on the token source's error, is returned at once,
-// whatever its error wraps. Every operation whose body is held whole sends through here, so this
-// is the one retry loop: Generate, and GenerateStream, whose stream starts only once send
-// returns.
-func (c *Client) send(ctx context.Context, route string, header http.Header, body []byte, contentType, accept string,
+// request, before anything is sent, such as on the token source's error or a clip that won't
+// open, is returned at once, whatever its error wraps, and so is one whose request body failed
+// on its own, such as a clip's read, which a later attempt doesn't mend. Every operation sends
+// through here, so this is the one retry loop: Generate, GenerateStream, whose stream starts
+// only once send returns, Embed, Transcribe, and Models.
+func (c *Client) send(ctx context.Context, method, route string, makeBody body, contentType, accept string,
 	decodeError func(body []byte) (message, typ, code string)) (*http.Response, error) {
 	attempts := max(c.retry.MaxAttempts, 1)
 	for n := 1; ; n++ {
-		req, err := c.request(ctx, route, header, bytes.NewReader(body), contentType, accept)
+		req, end, err := c.request(ctx, method, route, makeBody, contentType, accept)
 		if err != nil {
 			return nil, err
 		}
 		resp, wait, ok, err := c.do(req, decodeError)
-		if err == nil || n == attempts || !retryable(ctx, err) {
-			return resp, err
+		if err == nil {
+			resp.Body = &endedBody{ReadCloser: resp.Body, end: end}
+			return resp, nil
+		}
+		if bodyErr := end(); bodyErr != nil {
+			return nil, bodyErr
+		}
+		if n == attempts || !retryable(ctx, err) {
+			return nil, err
 		}
 		if !ok {
 			wait = c.jitter(c.retry.backoff(n))

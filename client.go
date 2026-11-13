@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -20,8 +21,8 @@ import (
 type TokenSource func(ctx context.Context) (string, error)
 
 // Options are New's optional inputs. The zero value selects every default: no query, no token,
-// no header, no retry, and no idle bound. New copies Query, Header, and Retry, so changing them
-// after New doesn't change the Client.
+// no header, no retry, no idle bound, and transcription through the endpoint's route. New
+// copies Query, Header, and Retry, so changing them after New doesn't change the Client.
 type Options struct {
 	// Query is added to every request's URL.
 	Query url.Values
@@ -41,6 +42,11 @@ type Options struct {
 	// and the clock runs only while a read waits, so a caller slow to range the stream isn't
 	// timed. Zero sets none.
 	StreamIdleTimeout time.Duration
+	// TranscriptionMode is how Transcribe transcribes: TranscribeRoute, the zero value, through
+	// the endpoint's transcription route, or TranscribeChat, as a chat request in the Client's
+	// format, which needs a format that carries audio, today Chat Completions. New refuses any
+	// other value.
+	TranscriptionMode TranscriptionMode
 }
 
 // Client makes requests of one endpoint in one wire format. It is safe for concurrent use when
@@ -56,6 +62,8 @@ type Client struct {
 	retry RetryPolicy
 	// idle is the Options' StreamIdleTimeout, 0 for none.
 	idle time.Duration
+	// transcription is the Options' TranscriptionMode.
+	transcription TranscriptionMode
 	// jitter is the backoff's jitter source, fullJitter outside the tests.
 	jitter func(time.Duration) time.Duration
 }
@@ -79,8 +87,8 @@ var clientHeaders = []string{"Content-Type", "Accept", "Authorization"}
 //
 // A nil httpClient or wireFormat panics by name, as a wiring defect. A baseURL that isn't an
 // absolute http or https URL without query or fragment, a negative attempt count or delay, a
-// BaseDelay above MaxDelay, or a Header naming Content-Type, Accept, or Authorization is an
-// error.
+// BaseDelay above MaxDelay, a Header naming Content-Type, Accept, or Authorization, or an
+// unknown TranscriptionMode is an error.
 func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts Options) (*Client, error) {
 	if httpClient == nil {
 		panic("ai: New: httpClient is nil; pass the *http.Client that sends the requests")
@@ -112,18 +120,22 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
 	if err != nil {
 		return nil, err
 	}
+	if opts.TranscriptionMode != TranscribeRoute && opts.TranscriptionMode != TranscribeChat {
+		return nil, fmt.Errorf("ai: unknown transcription mode %d", opts.TranscriptionMode)
+	}
 	// The query is encoded once, here, so a caller changing its url.Values after New can't
 	// change the requests.
 	return &Client{
-		base:   *u,
-		query:  opts.Query.Encode(),
-		token:  opts.Token,
-		header: header,
-		http:   httpClient,
-		format: wireFormat,
-		retry:  opts.Retry,
-		idle:   opts.StreamIdleTimeout,
-		jitter: fullJitter,
+		base:          *u,
+		query:         opts.Query.Encode(),
+		token:         opts.Token,
+		header:        header,
+		http:          httpClient,
+		format:        wireFormat,
+		retry:         opts.Retry,
+		idle:          opts.StreamIdleTimeout,
+		jitter:        fullJitter,
+		transcription: opts.TranscriptionMode,
 	}, nil
 }
 
@@ -156,7 +168,8 @@ func (c *Client) Generate(ctx context.Context, req *protocol.Request) (*protocol
 	if err != nil {
 		return nil, fmt.Errorf("ai: generate: %w", err)
 	}
-	reply, err := c.post(ctx, c.format.Route(), header, body, c.format.DecodeError)
+	reply, err := c.fetch(ctx, http.MethodPost, c.format.Route(), fixedBody(header, body), "application/json",
+		c.format.DecodeError)
 	if err != nil {
 		return nil, fmt.Errorf("ai: generate: %w", err)
 	}
@@ -175,62 +188,114 @@ func (c *Client) endpoint(route string) string {
 	return u.String()
 }
 
-// post sends body as a JSON POST to route, with header and the bearer token, and returns the
-// reply's body, as send describes: retried as the Client's policy has it.
-func (c *Client) post(ctx context.Context, route string, header http.Header, body []byte,
+// body makes one attempt's request body. It is called once per attempt, after the token
+// source, and may add headers to header, such as a format's version header. It returns the
+// body, and end, which the attempt calls once it is done with the body: on its failure, or as
+// its 2xx reply's body is closed. end reports the body's own failure, such as a clip whose read
+// failed part way, which is the attempt's cause whatever the transport made of it; a nil end
+// has nothing to report. An error from body itself is a failure before anything is sent.
+type body func(ctx context.Context, header http.Header) (r io.Reader, end func() error, err error)
+
+// fixedBody is a body of b, the same for every attempt, with the format's header.
+func fixedBody(header http.Header, b []byte) body {
+	return func(_ context.Context, h http.Header) (io.Reader, func() error, error) {
+		maps.Copy(h, header)
+		return bytes.NewReader(b), nil, nil
+	}
+}
+
+// fetch sends a request of method to route, with the body makeBody makes for each attempt, of
+// contentType, or none when makeBody is nil, and returns the reply's body, as send describes:
+// retried as the Client's policy has it.
+func (c *Client) fetch(ctx context.Context, method, route string, makeBody body, contentType string,
 	decodeError func(body []byte) (message, typ, code string)) ([]byte, error) {
-	resp, err := c.send(ctx, route, header, body, "application/json", "application/json", decodeError)
+	resp, err := c.send(ctx, method, route, makeBody, contentType, "application/json", decodeError)
 	if err != nil {
 		return nil, err
 	}
 	return readReply(resp)
 }
 
-// readReply reads and closes the body of a 2xx reply.
+// readReply reads and closes the body of a 2xx reply. The close ends the request's body, and
+// its failure, such as a clip's read, is returned in place of the reply.
 func readReply(resp *http.Response) ([]byte, error) {
-	defer func() { _ = resp.Body.Close() }()
 	reply, err := io.ReadAll(resp.Body)
+	if cerr := resp.Body.Close(); cerr != nil {
+		return nil, cerr
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	return reply, nil
 }
 
-// request builds one attempt's POST of body, of contentType, to route, accepting accept, with
-// the Options' fixed headers, then header, the format's, replacing any of the same name, then
-// the bearer token. The token source is called here, before the request exists, so a source
-// error sends nothing. A body of unknown length, such as a pipe, goes chunked. Its errors are
-// every way an attempt fails before anything is sent, which is why it is apart from do: send
-// returns them at once, never classifying them for a retry, so a token source that fails on its
-// own network call isn't mistaken for the endpoint's connection failing.
-func (c *Client) request(ctx context.Context, route string, header http.Header, body io.Reader, contentType, accept string) (*http.Request, error) {
+// endedBody is a 2xx reply's body whose Close also ends the request's body. Close returns the
+// request body's failure alone: the reply's own close failure, after its read, reports nothing
+// the caller acts on.
+type endedBody struct {
+	io.ReadCloser
+	end func() error
+}
+
+func (b *endedBody) Close() error {
+	_ = b.ReadCloser.Close()
+	return b.end()
+}
+
+// request builds one attempt's request of method to route, accepting accept, with the body
+// makeBody makes, of contentType, or none when makeBody is nil. Its header is the Options'
+// fixed headers, then the body's, such as the format's, replacing any of the same name, then
+// the bearer token. The token source is called first, before the body is made, so a source
+// error opens nothing and sends nothing. A body of unknown length, such as a pipe, goes
+// chunked. It returns the request and the body's end, never nil, which the caller calls once
+// the attempt is done with the body. Its errors are every way an attempt fails before anything
+// is sent, which is why it is apart from do: send returns them at once, never classifying them
+// for a retry, so a token source that fails on its own network call isn't mistaken for the
+// endpoint's connection failing.
+func (c *Client) request(ctx context.Context, method, route string, makeBody body, contentType, accept string) (*http.Request, func() error, error) {
 	token := ""
 	if c.token != nil {
 		t, err := c.token(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("token: %w", err)
+			return nil, nil, fmt.Errorf("token: %w", err)
 		}
 		token = t
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint(route), body)
-	if err != nil {
-		return nil, err
+	header := make(http.Header)
+	var r io.Reader
+	end := func() error { return nil }
+	if makeBody != nil {
+		b, e, err := makeBody(ctx, header)
+		if err != nil {
+			return nil, nil, err
+		}
+		r = b
+		if e != nil {
+			end = e
+		}
 	}
-	// Both are copied by canonical name, the fixed headers by New and the format's by
-	// header.Set, so the format's replace the fixed ones by key. Each value slice is cloned, so
-	// a transport that changes the request's header changes neither.
+	req, err := http.NewRequestWithContext(ctx, method, c.endpoint(route), r)
+	if err != nil {
+		_ = end()
+		return nil, nil, err
+	}
+	// Both are copied by canonical name, the fixed headers by New and the body's by
+	// header.Set, so the body's replace the fixed ones by key. Each value slice is cloned, so a
+	// transport that changes the request's header changes neither.
 	for k, v := range c.header {
 		req.Header[k] = slices.Clone(v)
 	}
 	for k, v := range header {
 		req.Header[k] = slices.Clone(v)
 	}
-	req.Header.Set("Content-Type", contentType)
+	if r != nil {
+		req.Header.Set("Content-Type", contentType)
+	}
 	req.Header.Set("Accept", accept)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	return req, nil
+	return req, end, nil
 }
 
 // do sends req and returns a 2xx reply, its body unread, for the caller to read and close. A

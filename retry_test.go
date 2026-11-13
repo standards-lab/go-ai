@@ -47,9 +47,13 @@ type script struct {
 }
 
 func (s *script) RoundTrip(r *http.Request) (*http.Response, error) {
-	b, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
+	// A GET has no body, which a client's request holds as nil.
+	var b []byte
+	if r.Body != nil {
+		var err error
+		if b, err = io.ReadAll(r.Body); err != nil {
+			return nil, err
+		}
 	}
 	s.sent = append(s.sent, sent{body: string(b), auth: r.Header.Get("Authorization"), at: time.Now()})
 	st := s.steps[min(len(s.sent), len(s.steps))-1]
@@ -67,10 +71,18 @@ func (s *script) RoundTrip(r *http.Request) (*http.Response, error) {
 // call, and its jitter source jitter, or the Client's own when nil.
 func retrying(t *testing.T, policy ai.RetryPolicy, jitter func(time.Duration) time.Duration, steps ...step) (*ai.Client, *script) {
 	t.Helper()
+	return retryingIn(t, ai.TranscribeRoute, policy, jitter, steps...)
+}
+
+// retryingIn is retrying, its Client transcribing in mode.
+func retryingIn(t *testing.T, mode ai.TranscriptionMode, policy ai.RetryPolicy, jitter func(time.Duration) time.Duration,
+	steps ...step) (*ai.Client, *script) {
+	t.Helper()
 	s := &script{steps: steps}
 	var tokens int
 	c := newClientWith(t, "http://router/v1", &http.Client{Transport: s}, ai.Options{
-		Retry: policy,
+		TranscriptionMode: mode,
+		Retry:             policy,
 		Token: func(context.Context) (string, error) {
 			tokens++
 			return fmt.Sprintf("t%d", tokens), nil
@@ -91,17 +103,21 @@ var policy = ai.RetryPolicy{MaxAttempts: 3, BaseDelay: time.Second, MaxDelay: 10
 // operation is one of the retried operations, run on c, reporting its error.
 type operation struct {
 	name string
+	// mode is the transcription mode of the Client it runs on.
+	mode ai.TranscriptionMode
+	// bodyless is set for an operation that sends no body: Models' GET.
+	bodyless bool
 	// ok is the 2xx reply that ends it.
 	ok  string
 	run func(ctx context.Context, c *ai.Client) error
 }
 
 var operations = []operation{
-	{"Generate", okReply, func(ctx context.Context, c *ai.Client) error {
+	{name: "Generate", ok: okReply, run: func(ctx context.Context, c *ai.Client) error {
 		_, err := c.Generate(ctx, hello())
 		return err
 	}},
-	{"GenerateStream", eventStream(streamed...), func(ctx context.Context, c *ai.Client) error {
+	{name: "GenerateStream", ok: eventStream(streamed...), run: func(ctx context.Context, c *ai.Client) error {
 		var errs []error
 		for _, err := range c.GenerateStream(ctx, hello()) {
 			if err != nil {
@@ -109,6 +125,22 @@ var operations = []operation{
 			}
 		}
 		return errors.Join(errs...)
+	}},
+	{name: "Embed", ok: embedReply, run: func(ctx context.Context, c *ai.Client) error {
+		_, err := c.Embed(ctx, two())
+		return err
+	}},
+	{name: "Models", bodyless: true, ok: modelsReply, run: func(ctx context.Context, c *ai.Client) error {
+		_, err := c.Models(ctx)
+		return err
+	}},
+	{name: "TranscribeRoute", ok: transcribeReply, run: func(ctx context.Context, c *ai.Client) error {
+		_, err := c.Transcribe(ctx, &ai.TranscriptionRequest{Model: "m", Open: reopen(clip(64 << 10)), FileName: "clip.wav"})
+		return err
+	}},
+	{name: "TranscribeChat", mode: ai.TranscribeChat, ok: audioReply, run: func(ctx context.Context, c *ai.Client) error {
+		_, err := c.Transcribe(ctx, &ai.TranscriptionRequest{Model: "m", Open: reopen(clip(64 << 10)), FileName: "clip.wav"})
+		return err
 	}},
 }
 
@@ -166,7 +198,8 @@ func TestNewCopiesRetry(t *testing.T) {
 
 // TestRetryStatuses has each operation answered first by a status the policy retries, and then
 // by its 2xx reply, and wants it to succeed on the second attempt, which called the token source
-// again and sent the same body.
+// again and sent the same body: for Transcribe, the clip opened again, and in the route's form,
+// the same boundary.
 func TestRetryStatuses(t *testing.T) {
 	statuses := []int{http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusBadGateway,
 		http.StatusServiceUnavailable, http.StatusGatewayTimeout}
@@ -174,14 +207,14 @@ func TestRetryStatuses(t *testing.T) {
 		for _, status := range statuses {
 			t.Run(fmt.Sprintf("%s/%d", op.name, status), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					c, s := retrying(t, policy, nil, step{status: status}, step{status: http.StatusOK, body: op.ok})
+					c, s := retryingIn(t, op.mode, policy, nil, step{status: status}, step{status: http.StatusOK, body: op.ok})
 					if err := op.run(t.Context(), c); err != nil {
 						t.Fatalf("%s: %v", op.name, err)
 					}
 					if len(s.sent) != 2 {
 						t.Fatalf("%d requests sent, want 2", len(s.sent))
 					}
-					if s.sent[0].body != s.sent[1].body || s.sent[0].body == "" {
+					if s.sent[0].body != s.sent[1].body || (s.sent[0].body == "") != op.bodyless {
 						t.Errorf("bodies = %q and %q, want the same body twice", s.sent[0].body, s.sent[1].body)
 					}
 					if s.sent[0].auth != "Bearer t1" || s.sent[1].auth != "Bearer t2" {
@@ -200,7 +233,7 @@ func TestRetryNotRetried(t *testing.T) {
 		for _, status := range []int{http.StatusInternalServerError, http.StatusBadRequest, http.StatusNotFound, http.StatusNotImplemented} {
 			t.Run(fmt.Sprintf("%s/%d", op.name, status), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					c, s := retrying(t, policy, nil, step{status: status}, step{status: http.StatusOK, body: op.ok})
+					c, s := retryingIn(t, op.mode, policy, nil, step{status: status}, step{status: http.StatusOK, body: op.ok})
 					err := op.run(t.Context(), c)
 					if apiErr, ok := errors.AsType[*ai.APIError](err); !ok || apiErr.Status != status {
 						t.Errorf("%s error = %v, want the *APIError of %d", op.name, err, status)
@@ -343,7 +376,8 @@ func TestRetryTokenSourceError(t *testing.T) {
 					s := &script{steps: []step{{status: http.StatusOK, body: op.ok}}}
 					var calls int
 					c := newClientWith(t, "http://router/v1", &http.Client{Transport: s}, ai.Options{
-						Retry: policy,
+						TranscriptionMode: op.mode,
+						Retry:             policy,
 						Token: func(context.Context) (string, error) {
 							calls++
 							return "", cause.err
