@@ -367,7 +367,7 @@ func checkRequest(req *protocol.Request, wireFormat format.Format, stream bool) 
 
 // refusedRequest returns the usage error of err, go-ai's refusal of req,
 // as [checkRequest] makes it in wireFormat, streamed when stream is set:
-// err, after the flag it is attributed to, as in "--max-tokens: ", or
+// err, after the flag whose field it is about, as in "--max-tokens: ", or
 // alone when it is attributed to none.
 //
 // go-ai's errors carry no field, so the refusal is attributed as
@@ -375,40 +375,56 @@ func checkRequest(req *protocol.Request, wireFormat format.Format, stream bool) 
 // once for each flag that set a field go-ai checks, with that field alone
 // put back to a value go-ai accepts in every format, the least max output
 // tokens, no effort, or no native object. The flag is the refusal's when
-// that request alone is accepted, and so is the only cause, and when no
-// other flag's is: two flags refused only together, or a request still
-// refused with each put back, as with a refused --native through messages
-// with no --max-tokens, name none. Clearing a field, rather than setting
-// one on a request of none, keeps the probes free of what to start from:
-// messages refuses a request with no max output tokens, so there is no
-// request of no fields every format accepts. A max-tokens refusal with no
-// --max-tokens given is messages', which requires one, and names the
-// format: "--format messages needs --max-tokens: ".
+// that request alone is accepted, and so is the only cause. When none is,
+// as with two flags each refused, the flag is the one whose request alone
+// is refused for another reason, its field the one err is about, as a
+// --native that isn't an object is through messages with no --max-tokens,
+// where the request without it is refused for having no max output tokens.
+// The errors are compared whole, not read. Two flags refused only together,
+// each request accepted, or a refusal no request changes, or that more
+// than one does, name none. Clearing a field, rather than setting one on a
+// request of none, keeps the probes free of what to start from: messages
+// refuses a request with no max output tokens, so there is no request of no
+// fields every format accepts. A max-tokens refusal with no --max-tokens
+// given is messages', which requires one, and names the format: "--format
+// messages needs --max-tokens: ".
 //
 // --instructions and --image are not attributed: go-ai refuses neither
 // as chat sets them, the instructions any text and each image an http(s)
 // URL or a base64 data URL of an image type, which every format carries.
 func refusedRequest(req *protocol.Request, wireFormat format.Format, stream bool, err error) error {
-	accepted := func(clear func(*protocol.Request)) bool {
-		r := *req
-		clear(&r)
-		return checkRequest(&r, wireFormat, stream) == nil
-	}
-	var flags []string
-	if accepted(func(r *protocol.Request) { r.MaxOutputTokens = protocol.MinMaxOutputTokens }) {
-		if req.MaxOutputTokens != 0 {
-			flags = append(flags, "--max-tokens")
-		} else if name := formatName(wireFormat); name != "" {
-			flags = append(flags, fmt.Sprintf("--format %s needs --max-tokens", name))
+	maxTokens := "--max-tokens"
+	if req.MaxOutputTokens == 0 {
+		// Only messages refuses a request with no max output tokens.
+		maxTokens = ""
+		if name := formatName(wireFormat); name != "" {
+			maxTokens = fmt.Sprintf("--format %s needs --max-tokens", name)
 		}
 	}
-	if accepted(func(r *protocol.Request) { r.Reasoning = protocol.ReasoningParam{} }) {
-		flags = append(flags, "--reasoning")
+	probes := []struct {
+		flag  string
+		clear func(*protocol.Request)
+	}{
+		{maxTokens, func(r *protocol.Request) { r.MaxOutputTokens = protocol.MinMaxOutputTokens }},
+		{"--reasoning", func(r *protocol.Request) { r.Reasoning = protocol.ReasoningParam{} }},
+		{"--native", func(r *protocol.Request) { r.Native = nil }},
 	}
-	if accepted(func(r *protocol.Request) { r.Native = nil }) {
-		flags = append(flags, "--native")
+	var accepted, changed []string
+	for _, p := range probes {
+		r := *req
+		p.clear(&r)
+		switch perr := checkRequest(&r, wireFormat, stream); {
+		case perr == nil:
+			accepted = append(accepted, p.flag)
+		case perr.Error() != err.Error():
+			changed = append(changed, p.flag)
+		}
 	}
-	if len(flags) != 1 {
+	flags := accepted
+	if len(accepted) == 0 {
+		flags = changed
+	}
+	if len(flags) != 1 || flags[0] == "" {
 		return cli.Usagef("%w", err)
 	}
 	return cli.Usagef("%s: %w", flags[0], err)

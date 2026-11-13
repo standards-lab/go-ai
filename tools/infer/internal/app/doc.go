@@ -60,8 +60,8 @@
 // or an http(s) URL as given), --reasoning, --max-tokens, and --native, a
 // JSON object merged into the request's top level. A request go-ai's
 // Validate or the format's encoding refuses is a usage error, exit 2,
-// before any request, naming the flag to change ahead of go-ai's reason
-// when one flag alone causes it, as in "--max-tokens: protocol: request's
+// before any request, naming the flag to change ahead of go-ai's reason,
+// the one whose value the reason is about when two are refused, as in "--max-tokens: protocol: request's
 // max output tokens 15 is below the minimum, 16", or "--format messages
 // needs --max-tokens: " ahead of messages' refusal of none. It streams by default, writing each text delta as
 // it arrives; --stream=false sends one unstreamed request. Either way it

@@ -329,9 +329,9 @@ func TestChat_ImageRefusals(t *testing.T) {
 
 // A request go-ai refuses is a usage error, exit 2, before any request,
 // the model listing included: go-ai's reason, by its Validate or by the
-// format's encoding, after the flag to change. A refusal no one flag
-// causes, as when two are refused or one is refused only beside another
-// unset, is go-ai's reason alone.
+// format's encoding, after the flag whose field the reason is about, when
+// two are refused as when one is. Two refused only together are go-ai's
+// reason alone.
 func TestChat_RefusedRequests(t *testing.T) {
 	const (
 		nativeObject = "protocol: request's native field isn't a JSON object with unique member names"
@@ -355,9 +355,11 @@ func TestChat_RefusedRequests(t *testing.T) {
 		{"native clashing unstreamed", "", []string{"--stream=false", "--max-tokens", "20", "--native", `{"max_completion_tokens":5}`}, "--native: completions: native member max_completion_tokens clashes with a member the request sets"},
 		{"messages without max tokens", "messages", nil, "--format messages needs --max-tokens: " + noMaxTokens},
 		{"messages max tokens 15", "messages", []string{"--max-tokens", "15"}, "--max-tokens: protocol: request's max output tokens 15 is below the minimum, 16"},
-		{"two flags refused", "", []string{"--max-tokens", "5", "--reasoning", "extreme"}, "protocol: request's max output tokens 5 is below the minimum, 16"},
+		{"two flags refused", "", []string{"--max-tokens", "5", "--reasoning", "extreme"}, "--max-tokens: protocol: request's max output tokens 5 is below the minimum, 16"},
 		{"two flags refused together", "", []string{"--reasoning", "low", "--native", `{"reasoning_effort":"low"}`}, "completions: native member reasoning_effort clashes with a member the request sets"},
-		{"native clash through messages without max tokens", "messages", []string{"--native", `{"stream":false}`}, noMaxTokens},
+		{"native clash through messages without max tokens", "messages", []string{"--native", `{"stream":false}`}, "--format messages needs --max-tokens: " + noMaxTokens},
+		{"array native through messages without max tokens", "messages", []string{"--native", `[1]`}, "--native: " + nativeObject},
+		{"effort and native refused", "", []string{"--reasoning", "extreme", "--native", `[1]`}, `--reasoning: protocol: request has unknown reasoning effort "extreme"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := completedStream(t, "agent")

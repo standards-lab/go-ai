@@ -212,7 +212,7 @@ infer --format messages chat --max-tokens 512 "Say hello."
 A request go-ai refuses, such as a `--max-tokens` below 16, an unknown effort, a `--native` that
 isn't a JSON object or sets a member a typed flag sets, or a Messages request with no
 `--max-tokens`, exits 2 before anything is sent, naming the flag to change ahead of go-ai's
-reason when one flag alone causes the refusal:
+reason. With two flags refused, go-ai's reason is about one of them, and that one is named:
 
 ```text
 $ infer chat --max-tokens 15 "Say hello."
@@ -220,7 +220,13 @@ infer chat: --max-tokens: protocol: request's max output tokens 15 is below the 
 
 $ infer --format messages chat "Say hello."
 infer chat: --format messages needs --max-tokens: messages: request has no max output tokens, which Messages requires as max_tokens
+
+$ infer --format messages chat --native '[1]' "Say hello."
+infer chat: --native: protocol: request's native field isn't a JSON object with unique member names
 ```
+
+Two flags refused only together, such as `--reasoning low` beside a `--native` that sets
+`reasoning_effort`, give go-ai's reason alone.
 
 A reply that isn't completed keeps the text already written, writes its summary, and exits 1
 naming its status and reason:
