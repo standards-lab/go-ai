@@ -284,7 +284,8 @@ func (d *streamDecoder) create() {
 }
 
 // addItem reads output_item.added: the item at its output_index, or the next in arrival order,
-// in progress, with no content or arguments.
+// in progress, with no content or arguments; a reasoning item's encrypted_content and summary are
+// dropped.
 func (d *streamDecoder) addItem(e streamEvent) error {
 	if e.Item == nil {
 		return errors.New("output_item.added has no item")
@@ -311,7 +312,11 @@ func (d *streamDecoder) addItem(e streamEvent) error {
 		}
 		added = protocol.Message{ID: w.ID, Status: protocol.StatusInProgress, Role: protocol.Role(w.Role)}
 	case "reasoning":
-		if len(w.Content) > 0 || w.EncryptedContent != "" {
+		// Its encrypted_content may be given, and incomplete, while it is in progress, the
+		// spec says, and so may its summary, an in-progress item echoed with as much detail as
+		// is available; the added event holds neither, and the item's output_item.done gives
+		// the whole of each, its encrypted_content going into the envelope.
+		if len(w.Content) > 0 {
 			return fmt.Errorf("reasoning item %q is added with content", w.ID)
 		}
 		added = protocol.Reasoning{ID: w.ID, Status: protocol.StatusInProgress}

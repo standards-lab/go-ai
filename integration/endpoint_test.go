@@ -42,11 +42,23 @@ const agentBound = 1024
 const requestTimeout = 3 * time.Minute
 
 // endpoint returns a Client of r's endpoint, speaking f, adjusted by opts and by r's
-// credentials, AI_<ROLE>_TOKEN and AI_<ROLE>_HEADER, as newClient reads them, and the one model
-// the endpoint lists. It skips t when r's variable is unset, and fails t when a credential
-// doesn't parse, New refuses the URL or the credentials, the model list can't be had, or it
-// names other than exactly one model; no failure prints a token or header value.
+// credentials, AI_<ROLE>_TOKEN and AI_<ROLE>_HEADER, as newClient reads them, and the model to
+// send to: the one AI_<ROLE>_MODEL names, as namedModel reads it, when set, for an endpoint whose
+// model list isn't one model, such as a cloud account's that lists its whole catalog; else the one
+// model the endpoint lists. It skips t when r's variable is unset, and fails t when a credential
+// doesn't parse, New refuses the URL or the credentials, or, with no model named, the model list
+// can't be had or names other than exactly one model; no failure prints a token or header value.
 func endpoint(t *testing.T, r role, f format.Format, opts ai.Options) (*ai.Client, string) {
+	t.Helper()
+	c := roleClient(t, r, f, opts)
+	if model := namedModel(string(r), os.Getenv); model != "" {
+		return c, model
+	}
+	return c, oneModel(t, r, listModels(t, c, r))
+}
+
+// roleClient returns a Client of r's endpoint as endpoint does, without choosing a model.
+func roleClient(t *testing.T, r role, f format.Format, opts ai.Options) *ai.Client {
 	t.Helper()
 	base := os.Getenv(string(r))
 	if base == "" {
@@ -56,14 +68,27 @@ func endpoint(t *testing.T, r role, f format.Format, opts ai.Options) (*ai.Clien
 	if err != nil {
 		t.Fatal(err)
 	}
+	return c
+}
+
+// listModels returns the models c's endpoint, r's, lists, failing t when the list can't be had.
+func listModels(t *testing.T, c *ai.Client, r role) []ai.Model {
+	t.Helper()
 	models, err := c.Models(requestContext(t))
 	if err != nil {
 		t.Fatalf("Models of %s: %v", r, err)
 	}
+	return models
+}
+
+// oneModel returns the ID of the one model in models, r's list, failing t when the list names
+// other than exactly one.
+func oneModel(t *testing.T, r role, models []ai.Model) string {
+	t.Helper()
 	if len(models) != 1 || models[0].ID == "" {
 		t.Fatalf("%s lists %+v, want exactly one model", r, models)
 	}
-	return c, models[0].ID
+	return models[0].ID
 }
 
 // requestContext is t's context, bounded by requestTimeout.
@@ -81,10 +106,14 @@ type testFormat struct {
 
 // formats are the formats a scenario runs through with eachFormat, by name.
 var formats = []testFormat{
-	{name: "completions", new: func() format.Format { return completions.New() }},
+	completionsFormat,
 	messagesFormat,
 	openResponses,
 }
+
+// completionsFormat is the Chat Completions format; a scenario the endpoint honors in some
+// formats only, such as the vision stream's, names it among them.
+var completionsFormat = testFormat{name: "completions", new: func() format.Format { return completions.New() }}
 
 // messagesFormat is the Messages format; a scenario of its own, such as the allowed_tools
 // choice's, runs it alone.
@@ -159,12 +188,21 @@ func completedText(t *testing.T, resp *protocol.Response) string {
 }
 
 // TestModels lists each role's endpoint and wants exactly one model, as endpoint does, so a
-// misnamed or crowded endpoint fails here by name before any scenario of it runs.
+// misnamed or crowded endpoint fails here by name before any scenario of it runs. A role whose
+// AI_<ROLE>_MODEL names its model needs no such list, so it wants the list to name at least one.
 func TestModels(t *testing.T) {
 	for _, r := range roles {
 		t.Run(string(r), func(t *testing.T) {
-			_, model := endpoint(t, r, completions.New(), ai.Options{})
-			t.Logf("%s serves %s", r, model)
+			c := roleClient(t, r, completions.New(), ai.Options{})
+			models := listModels(t, c, r)
+			if named := namedModel(string(r), os.Getenv); named != "" {
+				if len(models) == 0 {
+					t.Fatalf("%s lists no model", r)
+				}
+				t.Logf("%s lists %d models; %s names %s", r, len(models), modelVariable(string(r)), named)
+				return
+			}
+			t.Logf("%s serves %s", r, oneModel(t, r, models))
 		})
 	}
 }

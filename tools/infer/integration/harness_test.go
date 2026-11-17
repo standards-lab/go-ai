@@ -89,6 +89,7 @@ func TestEndpoint_MapsCredentials(t *testing.T) {
 	t.Setenv("AI_TEST_BASE_URL", "http://localhost:8000/v1")
 	t.Setenv("AI_TEST_TOKEN", tokenSecret)
 	t.Setenv("AI_TEST_HEADER", header)
+	t.Setenv("AI_TEST_MODEL", "")
 	rec := &logRecorder{TB: t}
 
 	overrides := integration.Endpoint(rec, "AI_TEST_BASE_URL")
@@ -115,17 +116,22 @@ func TestEndpoint_MapsCredentials(t *testing.T) {
 	}
 }
 
-// With neither credential variable set, Endpoint sets neither of infer's,
-// and logs nothing of them, so the program runs as it did before they
-// existed.
+// With neither credential variable set, nor the model's, Endpoint sets
+// none of infer's, and logs nothing of them, so the program runs as it did
+// before they existed.
 func TestEndpoint_NoCredentials(t *testing.T) {
 	unsetInfer(t)
 	t.Setenv("AI_TEST_BASE_URL", "http://localhost:8000/v1")
 	t.Setenv("AI_TEST_TOKEN", "")
 	t.Setenv("AI_TEST_HEADER", "")
+	t.Setenv("AI_TEST_MODEL", "")
 	rec := &logRecorder{TB: t}
 
-	integration.Endpoint(rec, "AI_TEST_BASE_URL")
+	overrides := integration.Endpoint(rec, "AI_TEST_BASE_URL")
+
+	if want := []string{"INFER_BASE_URL=http://localhost:8000/v1"}; !slices.Equal(overrides, want) {
+		t.Errorf("overrides = %q, want %q, no model", overrides, want)
+	}
 
 	for _, name := range []string{"INFER_TOKEN", "INFER_HEADER"} {
 		if v, ok := os.LookupEnv(name); ok {
@@ -134,5 +140,28 @@ func TestEndpoint_NoCredentials(t *testing.T) {
 	}
 	if logged := rec.String(); logged != "" {
 		t.Errorf("log = %q, want nothing", logged)
+	}
+}
+
+// A role's AI_<ROLE>_MODEL becomes the INFER_MODEL override, shown in the
+// run's shell line beside its base URL, while its credentials stay out of
+// the overrides and the log.
+func TestEndpoint_MapsModel(t *testing.T) {
+	unsetInfer(t)
+	t.Setenv("AI_TEST_BASE_URL", "http://localhost:8000/v1")
+	t.Setenv("AI_TEST_TOKEN", tokenSecret)
+	t.Setenv("AI_TEST_HEADER", "api-key: "+headerSecret)
+	t.Setenv("AI_TEST_MODEL", "gpt-5-mini")
+	rec := &logRecorder{TB: t}
+
+	overrides := integration.Endpoint(rec, "AI_TEST_BASE_URL")
+
+	if want := []string{"INFER_BASE_URL=http://localhost:8000/v1", "INFER_MODEL=gpt-5-mini"}; !slices.Equal(overrides, want) {
+		t.Errorf("overrides = %q, want %q", overrides, want)
+	}
+	for _, secret := range []string{tokenSecret, headerSecret} {
+		if strings.Contains(rec.String(), secret) || strings.Contains(strings.Join(overrides, " "), secret) {
+			t.Errorf("log = %q, overrides = %q, want neither to show %q", rec.String(), overrides, secret)
+		}
 	}
 }

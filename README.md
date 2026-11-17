@@ -114,16 +114,17 @@ mise run integration  # run every module's integration tier against the AI_*_BAS
 ```
 
 The unit tests are hermetic. They run each format against replies recorded from llama.cpp
-b11669 and vLLM 0.33.0, and the client against a loopback server.
+b11669, vLLM 0.33.0, and Azure AI Foundry, and the client against a loopback server.
 
 The integration tier runs against live endpoints, one per role. Each role's variable holds an
-API root, `/v1` included, with no default. A scenario whose variable is unset skips, and each
-endpoint must serve one model.
+API root, `/v1` included, with no default. A scenario whose variable is unset skips. Each scenario
+sends to the one model its endpoint lists, or, when set, to the model `AI_<ROLE>_MODEL` names,
+which an endpoint that lists more than one, such as a cloud account's whole catalog, needs.
 
 | Variable | The model it serves | Scenarios |
 | --- | --- | --- |
 | `AI_AGENT_BASE_URL` | reasoning, function calling, structured output | chat, stream, tools, structured, and reasoning, in every format |
-| `AI_VISION_BASE_URL` | reads images | image, in every format |
+| `AI_VISION_BASE_URL` | reads images | image, in every format, and a streamed reply in Chat Completions and Open Responses |
 | `AI_AUDIO_BASE_URL` | reads audio in a chat request | chat-mode `Transcribe`, and the endpoint's refusal of audio sent as Open Responses |
 | `AI_EMBEDDING_BASE_URL` | embeddings | `Embed` |
 | `AI_TRANSCRIPTION_BASE_URL` | serves the transcription route | route-mode `Transcribe` |

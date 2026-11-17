@@ -923,6 +923,39 @@ func TestDecode(t *testing.T) {
 	}
 }
 
+// TestDecodeUsageReasoningTokens covers where a usage's reasoning tokens are read from:
+// completion_tokens_details.reasoning_tokens, or the usage's top-level reasoning_tokens when the
+// details give none; the details' count wins, even 0, and a usage of neither gives 0.
+func TestDecodeUsageReasoningTokens(t *testing.T) {
+	cases := []struct {
+		name  string
+		usage string
+		want  int
+	}{
+		{"top level only", `"reasoning_tokens":18`, 18},
+		{"details only", `"completion_tokens_details":{"reasoning_tokens":28}`, 28},
+		{"both, details win", `"reasoning_tokens":18,"completion_tokens_details":{"reasoning_tokens":28}`, 28},
+		{"both, details of 0 win", `"reasoning_tokens":18,"completion_tokens_details":{"reasoning_tokens":0}`, 0},
+		{"details of none", `"reasoning_tokens":18,"completion_tokens_details":{}`, 18},
+		{"neither", `"completion_tokens_details":null`, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reply := `{"choices":[{"message":{"content":"Paris"},"finish_reason":"stop"}],
+				"usage":{"prompt_tokens":5,"completion_tokens":16,"total_tokens":21,` + tc.usage + `}}`
+			resp, err := decode(reply)
+			if err != nil {
+				t.Fatalf("DecodeResponse: %v", err)
+			}
+			want := protocol.Usage{InputTokens: 5, OutputTokens: 16, TotalTokens: 21,
+				OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: tc.want}}
+			if resp.Usage != want {
+				t.Errorf("Usage = %+v, want %+v", resp.Usage, want)
+			}
+		})
+	}
+}
+
 func TestDecodeRefusesReply(t *testing.T) {
 	cases := []struct {
 		name  string

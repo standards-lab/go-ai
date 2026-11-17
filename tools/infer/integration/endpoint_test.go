@@ -40,10 +40,11 @@ var formats = []string{"completions", "messages", "responses"}
 const answerBound = "1024"
 
 // runOn runs the built program once against r's endpoint, its API root
-// mapped onto INFER_BASE_URL and its credentials, when set, onto
-// INFER_TOKEN and INFER_HEADER, as [integration.Endpoint] maps them, with
-// env added and no model set, so infer sends to the one model the endpoint
-// lists. It skips t when r's variable is unset.
+// mapped onto INFER_BASE_URL, its model, when AI_<ROLE>_MODEL names one,
+// onto INFER_MODEL, and its credentials, when set, onto INFER_TOKEN and
+// INFER_HEADER, as [integration.Endpoint] maps them, with env added; with
+// no model named, infer sends to the one model the endpoint lists. It
+// skips t when r's variable is unset.
 func runOn(t *testing.T, r role, env []string, args ...string) processtest.Result {
 	t.Helper()
 	return integration.RunEnv(t, append(integration.Endpoint(t, string(r)), env...), args...)
@@ -112,7 +113,9 @@ func chatSummary(t *testing.T, stderr string) summary {
 }
 
 // TestModels lists each role's endpoint and wants exactly one model ID, one
-// line, as the one-model fallback of every other scenario needs.
+// line, as the one-model fallback of every other scenario needs. A role
+// whose AI_<ROLE>_MODEL names its model needs no fallback, so it wants at
+// least one model ID line.
 func TestModels(t *testing.T) {
 	for _, r := range roles {
 		t.Run(string(r), func(t *testing.T) {
@@ -120,7 +123,10 @@ func TestModels(t *testing.T) {
 
 			wantCode(t, res, process.ExitOK)
 			id, rest, found := strings.Cut(res.Stdout, "\n")
-			if strings.TrimSpace(id) == "" || !found || rest != "" {
+			switch {
+			case strings.TrimSpace(id) == "" || !found:
+				t.Errorf("stdout = %q, want a model ID line", res.Stdout)
+			case rest != "" && integration.Model(string(r)) == "":
 				t.Errorf("stdout = %q, want exactly one model ID line", res.Stdout)
 			}
 			if res.Stderr != "" {

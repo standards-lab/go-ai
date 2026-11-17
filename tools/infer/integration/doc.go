@@ -14,10 +14,12 @@
 //   - [BaseURL] returns the endpoint an AI_<ROLE>_BASE_URL variable names,
 //     skipping the test when it is unset.
 //   - [Endpoint] returns the INFER_BASE_URL override of a role's endpoint,
-//     as BaseURL gives it, and maps the role's AI_<ROLE>_TOKEN and
+//     as BaseURL gives it, and the INFER_MODEL override of the model its
+//     AI_<ROLE>_MODEL names, when set, and maps the role's AI_<ROLE>_TOKEN and
 //     AI_<ROLE>_HEADER, when set, onto INFER_TOKEN and INFER_HEADER in the
 //     test's environment, which the program inherits, so no run's logged
 //     shell line, and so no failure, shows a token or header value.
+//   - [Model] returns the model a role's AI_<ROLE>_MODEL names, or "".
 //   - [Media] returns the path of a medium the suite sends: an image or an
 //     audio clip of go-ai's own integration testdata.
 //
@@ -28,15 +30,18 @@
 // each an API root including /v1. A scenario maps its role's variable onto
 // INFER_BASE_URL, its credentials, AI_<ROLE>_TOKEN and AI_<ROLE>_HEADER,
 // when set, onto INFER_TOKEN and INFER_HEADER, for an endpoint that
-// requires them, such as a gateway, and its format onto INFER_FORMAT, sets
-// no model, so infer sends to the one model the endpoint lists, and skips
-// when the variable is unset; with none set, only the baseline and the
-// credentials scenario run. The scenarios are:
+// requires them, such as a gateway, its model, AI_<ROLE>_MODEL, when set,
+// onto INFER_MODEL, for an endpoint that lists more than one, and its
+// format onto INFER_FORMAT; with no model named it sets none, so infer
+// sends to the one model the endpoint lists. It skips when the variable is
+// unset; with none set, only the baseline and the credentials scenario
+// run. The scenarios are:
 //
 //   - credentials, against a loopback endpoint the suite serves, so it
 //     never skips: a role's token and header reach the endpoint through
 //     the built binary, and the run's log shows neither value;
-//   - models on every role, wanting exactly one model ID;
+//   - models on every role, wanting exactly one model ID, or at least one
+//     where AI_<ROLE>_MODEL names the model;
 //   - chat on the agent, in each format, streamed and unstreamed, wanting
 //     a completed answer, and an incomplete one at --max-tokens 16, exit 1
 //     with reason max_output_tokens;

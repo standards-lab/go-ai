@@ -58,16 +58,21 @@ func BaseURL(t testing.TB, variable string) string {
 // Endpoint returns the overrides that point a run at the endpoint of the
 // role whose API root variable is baseVariable, such as AI_AGENT_BASE_URL:
 // INFER_BASE_URL set to [BaseURL]'s, which skips t when the variable is
-// unset. It maps the role's credentials onto infer's as well, each only
-// when set and non-empty: AI_<ROLE>_TOKEN onto INFER_TOKEN and
-// AI_<ROLE>_HEADER onto INFER_HEADER. Those it sets in the test's own
-// environment, with t.Setenv, which the program inherits, rather than as
-// overrides, since a run logs its overrides in the shell line that replays
-// it: a scenario's log, and so its failure, shows its base URL but never a
-// token or header value. It logs the credentials it mapped by their
-// variables' names alone. Main cleared every INFER_ variable before the
-// suite ran, so with neither set the program reads neither; t.Setenv
-// panics in a parallel test, which no scenario is.
+// unset, and INFER_MODEL set to AI_<ROLE>_MODEL's when it is set and
+// non-empty, for an endpoint whose model list isn't one model, such as a
+// cloud account's that lists its whole catalog; unset, the run sets no
+// model, so infer sends to the one model the endpoint lists. A model is no
+// secret, so it is an override, shown in the run's logged shell line. It
+// maps the role's credentials onto infer's as well, each only when set and
+// non-empty: AI_<ROLE>_TOKEN onto INFER_TOKEN and AI_<ROLE>_HEADER onto
+// INFER_HEADER. Those it sets in the test's own environment, with
+// t.Setenv, which the program inherits, rather than as overrides, since a
+// run logs its overrides in the shell line that replays it: a scenario's
+// log, and so its failure, shows its base URL and model but never a token
+// or header value. It logs the credentials it mapped by their variables'
+// names alone. Main cleared every INFER_ variable before the suite ran, so
+// with neither set the program reads neither; t.Setenv panics in a
+// parallel test, which no scenario is.
 func Endpoint(t testing.TB, baseVariable string) []string {
 	t.Helper()
 	base := BaseURL(t, baseVariable)
@@ -79,7 +84,19 @@ func Endpoint(t testing.TB, baseVariable string) []string {
 			t.Logf("%s set from %s; its value isn't shown", to, from)
 		}
 	}
-	return []string{"INFER_BASE_URL=" + base}
+	overrides := []string{"INFER_BASE_URL=" + base}
+	if model := Model(baseVariable); model != "" {
+		overrides = append(overrides, "INFER_MODEL="+model)
+	}
+	return overrides
+}
+
+// Model returns the model AI_<ROLE>_MODEL names for the role whose API
+// root variable is baseVariable, such as AI_AGENT_MODEL for
+// AI_AGENT_BASE_URL, which [Endpoint] maps onto INFER_MODEL, or "" when it
+// is unset or empty.
+func Model(baseVariable string) string {
+	return os.Getenv(strings.TrimSuffix(baseVariable, "_BASE_URL") + "_MODEL")
 }
 
 // mediaDir is the directory of the media the suite sends, from the suite's

@@ -9,7 +9,7 @@
 //   - AI_AGENT_BASE_URL: a reasoning model with function calling and structured output. The
 //     chat, stream, tools, structured, and reasoning scenarios run on it in every format.
 //   - AI_VISION_BASE_URL: a model that reads images. The image scenario runs on it in every
-//     format.
+//     format, and a streamed text reply through Chat Completions and Open Responses.
 //   - AI_AUDIO_BASE_URL: a model that reads audio in a chat request. Transcribe runs on it in
 //     chat mode, through Chat Completions, and Open Responses' refusal of audio is asserted.
 //   - AI_EMBEDDING_BASE_URL: an embedding model. The embed scenario runs on it.
@@ -26,7 +26,10 @@
 // header value. The reading of them is untagged, so the unit tier tests it.
 //
 // A scenario whose role's variable is unset skips, naming the variable, so the tier with none
-// set skips whole. Each role's endpoint serves one model: a scenario sends to the one model the
-// endpoint's model list names, and fails when the list names none or more than one. Every role
-// runs the models scenario.
+// set skips whole. A scenario sends to the one model its endpoint's model list names, and fails
+// when the list names none or more than one. A role may instead name its model in
+// AI_<ROLE>_MODEL, such as AI_AGENT_MODEL='gpt-oss-120b', for an endpoint that lists more, such
+// as a cloud account's whole catalog: its scenarios then send to that model without listing. The
+// model is no secret, and is read apart from the credentials. Every role runs the models
+// scenario, which wants exactly one model listed, or at least one when AI_<ROLE>_MODEL is set.
 package integration

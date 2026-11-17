@@ -1,0 +1,168 @@
+{
+  "id": "resp_09fe9f588dbdce2a016afc4f6e75908194bd8c15239bc3ea2f",
+  "object": "response",
+  "created_at": 1794920302,
+  "status": "completed",
+  "access_programs": null,
+  "background": false,
+  "completed_at": 1794920303,
+  "content_filters": [
+    {
+      "blocked": false,
+      "source_type": "prompt",
+      "content_filter_raw": [],
+      "content_filter_results": {
+        "hate": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "sexual": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "violence": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "self_harm": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "jailbreak": {
+          "detected": false,
+          "filtered": false
+        }
+      },
+      "content_filter_offsets": {
+        "start_offset": 0,
+        "end_offset": 1188,
+        "check_offset": 0
+      }
+    },
+    {
+      "blocked": false,
+      "source_type": "completion",
+      "content_filter_raw": [],
+      "content_filter_results": {
+        "protected_material_code": {
+          "detected": false,
+          "filtered": false
+        },
+        "protected_material_text": {
+          "detected": false,
+          "filtered": false
+        },
+        "hate": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "sexual": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "violence": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "self_harm": {
+          "filtered": false,
+          "severity": "safe"
+        }
+      },
+      "content_filter_offsets": {
+        "start_offset": 0,
+        "end_offset": 314,
+        "check_offset": 0
+      }
+    }
+  ],
+  "error": null,
+  "frequency_penalty": 0.0,
+  "incomplete_details": null,
+  "instructions": null,
+  "max_output_tokens": 1024,
+  "max_tool_calls": null,
+  "model": "gpt-5-mini",
+  "moderation": null,
+  "output": [
+    {
+      "id": "rs_09fe9f588dbdce2a016afc4f6efd2481948e7b488124601fb2",
+      "type": "reasoning",
+      "content": [],
+      "encrypted_content": "gAAAAABq_E9vSeOW9FxJ3UMQxrrMC7Op_jBE39xyXj9hkybdcEecYWsBZYUX_3qRfANvQI2QUKwI2nefxh16y7N7WbR4jryjDHO6URXvDnDIhpMyg755tyl1dhJEHZbZlfXR39WYssNFJZKRUUlSeGnvUgk0jrtXzdN_U4G12GUBBrlOwhUGjbDA_V1C_WgYJQm5dUlziw5iFioEvlr0H8PrF3jqk6Dll5HqGyhfKiCauNDrWJ8z9heN8rjyUagFqNmDaJLhDrPqCiKYqQzE8SiybkmnldgAdBVbqzMYHri4uwNqAcCrA6BeCsbmHJXi7PvmtfLoIn7g7nvIkc8vfSgSpErD4NEEVP7tURJk7B_pKFbuVmpCYhNr2HGdaMWvALx7zx6mkhR2iP0N9q2lnRVJTE5WS2ctWeQsqlMD3l8upNuJBt0mkz7X2nM_mK66gcvOHi4prvlw3qy9U-ppqzxSfL1t1uCK5GWDxZ2lNNTEzejVm-zQ3zTvFBMjDL6P1QQ4JGUo1Y1lRL0IyAa6822lodh44R0rf3LyJj9x4i-ScfCP7O_pTN1dZGS7Q1hhVUoVttUZK3L3MfeVjIZhE85nOq411lor9JHLA10Ym8sODuzxT2wkTh9KT7YRvKa_hTZ_rEWS_7B0ajRvQZB6wbL7TdsikJMw2z4yRYvjBcGux5txjAXTxOH4JvZS3WieYQ5iNk1mY9ZV3_4cE09ewDhcWIz2H9IgpzLkEBIoSlLaJB-AhyqEoVBb-gMCDMQQk27vNCKLYJLtKYOz1BkST2tgrVw-KbbK_W8mWRoVsIXcTlYO_zB6ju81yNwgiTBko96SjhGOpVE7OnjVEvmNpapqAChMc5Tgdz6haibzUnwZyUtkNW4J5JiJtaJTJWZwNEcPuCM7IvoP7mTbmHTLVLT0-PVtVWgBkBCeq-dK4N_3qsddXin0h05VUvZzlGMcMoh6DXCLszGR50Z10b99zvlDdmzlehmBMzqXZ7KroOq4lTLlsmOhoJAnIXV2681SP05XZSS7ULpvAUFZJIcMWu2xoLy5R5HbftmrfwRpe6tAPeWx5Yq5n-021od1IuPO9MiDtifpeDxpZENnoBvIWFxCm2SCu310iG3-re1ksfj4sDQBIRa-dDo6c-d7O08lrhHcU_zd0X9aB6LgYTIUmIG5r5yP2LbB_UPMpA16RHS87Bz5kPWL92iSQURko1B0T8L_mEVc8hcVD2YK9sUcoPvPKQEuX8Y9a6lsOXUkDX2EuupYiBbfbqR9oA6f7A1TNlZMkfoGCvfnjh_h-TXcRgDgsuSmZM_bSeArw8reL9dLVEctYq-8lSge-pcIW5RDwnG1NccxAHy_KCq3bUY7Py-bZcX8C8RW5wYVXNmisR0fpQlB_B2Yr-25QV-yXr9qRJ9LuCujaXvOJeEA-8v01ymSgd8_ctXxflx0OqDsTvXn6yGWr6LLjJlNeapt6r4JQzArtKDpsxPio2rLQ0ooQOjYKiL5DHwK0EC3nIjDBFJFSFSG6gFHpRDU-BaWvgRnKIlCQm6uMhSU4dMGvP3LRJFFScqWD16q78WRehvld_QzBiAZ3EEajC6PIWKhEzrxj7pfHKboB84A2VQHqDeDDX3rtCPUIWlmeTT9kWL4MaxzyRDr5SsJ7zfeYVS9XcfRlATpVLf6pFXTVvUKzX56PJt3V2feiOl4k89brGM7dOX9ozq3ZbJz5N0vhUYgOQ4-tbgGBr9dNBCfXK7762iMRmQ3-gLUaF4uwCfQSYJD7emsIxMzGHcKfndQ0q4hFznR8sCDSva147kMnR4EjEREJ4Cu3PTIdOtd5TC81TP5UTE46Ts_mzekWb4w28jRhYx-m_R3apvhzBcgDCfwzYNRW6Hq7gVsJ03p2UpJwKbWqJNs8cXYqmERx520UsJYLFn4-GEbL6vD2-_WcNyJGdTNjJ4etxeJz74JBvKYBENPyJgd00fCdFI4vKlncB9EHDq3mKR0Hi07gZqeSmUvWLZHgdbb3fOJkapaV7Aze8wXLCYXEBFLL9qtHxoJa91o8I7GPqGqS5b3QEjjYp7owOlSdHSQNtxAtQhmzgmgI1TuBWbagjFDtqfAvLF2cFdxgU1JeZIQJl-XokHL-0WhkDoKysBUNFA7t6XAAYMQyytTKEKn8cOYwrikzJPcPcg8xQ2uUptPmGmTtcBf9MWl9Xj2waS2Y3T1tBin4mXju8D4lj1q1QzLs-BanKs1N5QmJ2JV7ytCk6npWlsTwKwgmW-5_53teUd5pQiMVA==",
+      "summary": []
+    },
+    {
+      "id": "msg_09fe9f588dbdce2a016afc4f6f78a88194aa0c2a08ab7d1e55",
+      "type": "message",
+      "status": "completed",
+      "content": [
+        {
+          "type": "output_text",
+          "annotations": [],
+          "logprobs": [],
+          "text": "Paris, Lyon, Marseille"
+        }
+      ],
+      "role": "assistant"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "presence_penalty": 0.0,
+  "previous_response_id": null,
+  "prompt_cache_key": null,
+  "prompt_cache_retention": "in_memory",
+  "reasoning": {
+    "context": "current_turn",
+    "effort": "low",
+    "mode": "standard",
+    "summary": null
+  },
+  "safety_identifier": null,
+  "service_tier": "default",
+  "store": false,
+  "temperature": 1.0,
+  "text": {
+    "format": {
+      "type": "text"
+    },
+    "verbosity": "medium"
+  },
+  "tool_choice": "auto",
+  "tool_usage": {
+    "image_gen": {
+      "input_tokens": 0,
+      "input_tokens_details": {
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "output_tokens": 0,
+      "output_tokens_details": {
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 0
+    },
+    "web_search": {
+      "num_requests": 0
+    }
+  },
+  "tools": [],
+  "top_logprobs": 0,
+  "top_p": 1.0,
+  "truncation": "disabled",
+  "usage": {
+    "input_tokens": 17,
+    "input_tokens_details": {
+      "cache_write_tokens": 0,
+      "cached_tokens": 0
+    },
+    "output_tokens": 76,
+    "output_tokens_details": {
+      "reasoning_tokens": 64
+    },
+    "total_tokens": 93
+  },
+  "user": null,
+  "metadata": {}
+}

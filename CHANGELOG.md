@@ -7,6 +7,38 @@ only; `tools/infer` keeps its own.
 
 ## [Unreleased]
 
+## [v0.1.1] - 2026-11-17
+
+This release fixes two stream decoders that rejected Azure AI Foundry's streams, and reads the
+reasoning tokens Foundry's gpt-oss-120b reports.
+
+### Fixed
+
+- `format/completions` accepts a stream chunk with no id and no choices, such as a leading chunk
+  that carries only the content filter's verdict on the prompt: the chunk neither sets the
+  stream's id nor is checked against it. The stream's id is the first id a chunk carries, and a
+  chunk with another id is still an error.
+- `format/responses` accepts a reasoning item added with `encrypted_content`, which the spec
+  allows to be incomplete while the item is in progress. The `OutputItemAdded` event carries no
+  encrypted content; the `OutputItemDone` event's item holds `output_item.done`'s in the envelope,
+  and the folded Response the terminal response's, as before.
+- `format/completions` reads a usage's `reasoning_tokens` at its top level, beside
+  `completion_tokens`, as gpt-oss-120b on Azure AI Foundry gives them, when
+  `completion_tokens_details` gives none, unstreamed and streamed; a count under
+  `completion_tokens_details` still wins. Such a reply's reasoning tokens had decoded as 0.
+
+### Changed
+
+- The integration tier reads an optional `AI_<ROLE>_MODEL`, which names the role's model for an
+  endpoint that lists more than one, such as a cloud account's whole catalog. With it set, a
+  scenario sends to that model, and the models scenario wants at least one model listed.
+- The integration tier gains a streamed text scenario on the vision role, through Chat Completions
+  and Open Responses.
+- The Chat Completions and Open Responses unit tests also run against replies recorded from Azure
+  AI Foundry: Chat Completions from gpt-5-mini and gpt-oss-120b, and Open Responses from
+  gpt-5-mini.
+- CI runs jdx/mise-action v5.2.9.
+
 ## [v0.1.0] - 2026-11-12
 
 The first release of go-ai's base module: a model client over the wire formats the model engines
@@ -68,5 +100,6 @@ one.
 - The release workflow, which makes a GitHub release from `CHANGELOG.md` for a `v*` tag and from
   `tools/infer/CHANGELOG.md` for a `tools/infer/v*` tag.
 
-[Unreleased]: https://github.com/standards-lab/go-ai/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/standards-lab/go-ai/compare/v0.1.1...HEAD
+[v0.1.1]: https://github.com/standards-lab/go-ai/releases/tag/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.1.0

@@ -176,13 +176,17 @@ type response struct {
 	Usage usage `json:"usage"`
 }
 
-// usage is a reply's token counts, in a response body or a stream's chunk.
+// usage is a reply's token counts, in a response body or a stream's chunk. The reasoning tokens
+// come under completion_tokens_details, as OpenAI gives them, or, from some servers, at the
+// usage's top level beside completion_tokens; each is a pointer, nil when its member is absent or
+// null, so that a count of 0 given under completion_tokens_details still counts as given.
 type usage struct {
-	PromptTokens            int `json:"prompt_tokens"`
-	CompletionTokens        int `json:"completion_tokens"`
-	TotalTokens             int `json:"total_tokens"`
+	PromptTokens            int  `json:"prompt_tokens"`
+	CompletionTokens        int  `json:"completion_tokens"`
+	TotalTokens             int  `json:"total_tokens"`
+	ReasoningTokens         *int `json:"reasoning_tokens"`
 	CompletionTokensDetails struct {
-		ReasoningTokens int `json:"reasoning_tokens"`
+		ReasoningTokens *int `json:"reasoning_tokens"`
 	} `json:"completion_tokens_details"`
 }
 
