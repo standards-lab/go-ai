@@ -2,10 +2,14 @@ package responses_test
 
 import (
 	"encoding/json/v2"
+	"errors"
+	"io"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/standards-lab/go-ai/internal/aitest"
+	"github.com/standards-lab/go-ai/internal/sse"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -102,34 +106,79 @@ func TestDecodeFoundry(t *testing.T) {
 // reasoning item, of null status there, completed as its output_item.done gives it. The
 // unstreamed .json beside each is another reply, of other token counts and encrypted content.
 //
-// Foundry adds gpt-5-mini's reasoning item with an encrypted_content of its own, which the done
-// item replaces, and the decoder refuses a reasoning item added with content. Until it accepts
-// that one, the cases assert the error, and the fix turns them into the comparison.
+// Foundry adds gpt-5-mini's reasoning item with an encrypted_content of its own, unlike the one
+// its output_item.done gives, which is unlike the terminal response's again: the item is added
+// with none, the envelope of the done item holds the done item's, and the folded item, the
+// terminal response's, holds the terminal response's. Each done item is otherwise the
+// terminal response's.
 func TestStreamFoundry(t *testing.T) {
-	cases := []struct {
-		name string
-		// err is the error the stream fails with, empty when it decodes.
-		err string
-	}{
-		{"text", `responses: stream: reasoning item "rs_05cbb2e980ddadaa016afc4f6cd71c8195885e0561d62bb4fb" is added with content`},
-		{"reasoning", `responses: stream: reasoning item "rs_0b0d1234b4344875016afc4f705fa08190b296b0752833e00c" is added with content`},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			body := string(aitest.ReadTestdata(t, "foundry/"+tc.name+".sse"))
-			r := decodeStream(t, body)
-			if tc.err != "" {
-				if r.err == nil || r.err.Error() != tc.err {
-					t.Fatalf("stream error = %v, want %q", r.err, tc.err)
-				}
-				return
+	for _, name := range []string{"text", "reasoning"} {
+		t.Run(name, func(t *testing.T) {
+			body := string(aitest.ReadTestdata(t, "foundry/"+name+".sse"))
+			added, done := foundryStreamEncrypted(t, body)
+			if added == "" || added == done {
+				t.Fatalf("the recording's reasoning item is added with encrypted_content %q, want one unlike its done item's", added)
 			}
+			r := decodeStream(t, body)
 			if r.err != nil {
 				t.Fatalf("stream error: %v", r.err)
 			}
 			want := terminalResponse(t, body)
 			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
-			assertDoneItems(t, r.events, want)
+			rs, ok := want.Output[0].(protocol.Reasoning)
+			if !ok {
+				t.Fatalf("output 0 = %T, want a reasoning item", want.Output[0])
+			}
+			if rs.EncryptedContent == seal(t, done) {
+				t.Fatalf("the terminal response's reasoning item holds the done item's encrypted_content, want another")
+			}
+			for _, e := range r.events {
+				if a, ok := e.(protocol.OutputItemAdded); ok {
+					if rs, ok := a.Item.(protocol.Reasoning); ok && rs.EncryptedContent != "" {
+						t.Errorf("output_item.added %d has encrypted content %q, want none", a.OutputIndex, rs.EncryptedContent)
+					}
+				}
+			}
+			doneWant := *want
+			doneWant.Output = append([]protocol.Item(nil), want.Output...)
+			rs.EncryptedContent = seal(t, done)
+			doneWant.Output[0] = rs
+			assertDoneItems(t, r.events, &doneWant)
 		})
+	}
+}
+
+// foundryStreamEncrypted returns the encrypted_content of the reasoning item that body, a stream
+// recorded in testdata/foundry, adds, and of the one it gives at the item's output_item.done.
+func foundryStreamEncrypted(t *testing.T, body string) (added, done string) {
+	t.Helper()
+	events := sse.NewDecoder(strings.NewReader(body))
+	for {
+		e, err := events.Next()
+		if errors.Is(err, io.EOF) {
+			return added, done
+		}
+		if err != nil {
+			t.Fatalf("sse: %v", err)
+		}
+		var ev struct {
+			Type string `json:"type"`
+			Item struct {
+				Type             string `json:"type"`
+				EncryptedContent string `json:"encrypted_content"`
+			} `json:"item"`
+		}
+		if err := json.Unmarshal([]byte(e.Data), &ev); err != nil {
+			t.Fatal(err)
+		}
+		if ev.Item.Type != "reasoning" {
+			continue
+		}
+		switch ev.Type {
+		case "response.output_item.added":
+			added = ev.Item.EncryptedContent
+		case "response.output_item.done":
+			done = ev.Item.EncryptedContent
+		}
 	}
 }

@@ -55,8 +55,11 @@
 // response.reasoning.delta and .done; and the events the server leaves out are filled in: a
 // reasoning item's content_part.added and content_part.done, response.reasoning.done,
 // response.function_call_arguments.done, and a part's output_text.done or content_part.done. It
-// never repeats an event the server sent. Items may be open at once, and an item the server gives
-// no status at its output_item.done is completed there. The Response the events fold into is
+// never repeats an event the server sent. A reasoning item added with encrypted_content, which the
+// spec allows to be incomplete while the item is in progress, is added with none, and its
+// output_item.done's encrypted_content goes into the envelope; an item added with content, a
+// summary, or arguments is refused. Items may be open at once, and an item the server gives no
+// status at its output_item.done is completed there. The Response the events fold into is
 // DecodeResponse's of the terminal event's response, with one exception: an item the terminal
 // response gives no status takes the completed status of its output_item.done, so the folded
 // Response agrees with the events. An error frame, the spec's error event or an OpenAI-style
