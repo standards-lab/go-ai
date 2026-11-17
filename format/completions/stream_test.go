@@ -158,7 +158,7 @@ func assertTrace(t *testing.T, events []protocol.Event, want string) {
 }
 
 // asStreamed returns reply, an unstreamed reply's body, as the reply body, a text/event-stream
-// reply, gave: its id the stream's first chunk's, and each tool call's id the one the stream gave
+// reply, gave: its id the first id the stream's chunks carry, and each tool call's id the one the stream gave
 // the call in its place. The recorded replies were each sent twice, and the router makes new ids
 // for each, so the streamed reply's ids aren't the other's.
 func asStreamed(t *testing.T, reply, body string) string {
@@ -186,20 +186,32 @@ func asStreamed(t *testing.T, reply, body string) string {
 	return string(b)
 }
 
-// firstChunkID returns the id of the first chunk of body, a text/event-stream reply.
+// firstChunkID returns the first id a chunk of body, a text/event-stream reply, carries: the
+// stream's id, which a leading chunk of no id doesn't set. It is empty when no chunk carries one.
 func firstChunkID(t *testing.T, body string) string {
 	t.Helper()
-	e, err := sse.NewDecoder(strings.NewReader(body)).Next()
-	if err != nil {
-		t.Fatal(err)
+	events := sse.NewDecoder(strings.NewReader(body))
+	for {
+		e, err := events.Next()
+		if errors.Is(err, io.EOF) {
+			return ""
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e.Data == "[DONE]" {
+			return ""
+		}
+		var c struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal([]byte(e.Data), &c); err != nil {
+			t.Fatal(err)
+		}
+		if c.ID != "" {
+			return c.ID
+		}
 	}
-	var c struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal([]byte(e.Data), &c); err != nil {
-		t.Fatal(err)
-	}
-	return c.ID
 }
 
 // streamCallIDs returns the ids of the tool calls in body, a text/event-stream reply, in the
@@ -844,6 +856,83 @@ func TestStreamNoReplyID(t *testing.T) {
 		t.Fatalf("DecodeResponse: %v", err)
 	}
 	aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
+}
+
+// TestStreamChunkOfNoIDNorChoices wants a chunk of no id and no choices, as an endpoint may send
+// with only the prompt's content filter verdict, to claim nothing about the reply: first or
+// between the reply's chunks, it neither sets the stream's id nor is checked against it, so every
+// item's id derives from the id the reply's chunks carry, and the usage it carries is read.
+func TestStreamChunkOfNoIDNorChoices(t *testing.T) {
+	const filter = `{"choices":[],"created":0,"id":"","model":"","object":"","prompt_filter_results":[{"prompt_index":0}]}`
+	const noIDUsage = `{"id":"","choices":[],"usage":{"completion_tokens":5,"prompt_tokens":7,"total_tokens":12}}`
+	text, stop := delta(`{"content":"Paris"}`, ""), delta(`{}`, "stop")
+	cases := []struct {
+		name   string
+		chunks []string
+		usage  protocol.Usage
+	}{
+		{"first", []string{filter, text, stop, "[DONE]"}, protocol.Usage{}},
+		{"between the reply's chunks", []string{text, filter, stop, "[DONE]"}, protocol.Usage{}},
+		{"with no id member at all", []string{`{"choices":[]}`, text, stop, "[DONE]"}, protocol.Usage{}},
+		{"carrying the usage", []string{filter, text, stop, noIDUsage, "[DONE]"}, protocol.Usage{InputTokens: 7, OutputTokens: 5, TotalTokens: 12}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := decodeStream(t, stream(tc.chunks...))
+			if r.err != nil {
+				t.Fatalf("stream error: %v", r.err)
+			}
+			for _, e := range r.events {
+				if d, ok := e.(protocol.OutputTextDelta); ok && d.ItemID != "chatcmpl-1/0" {
+					t.Errorf("output_text.delta item_id = %q, want %q", d.ItemID, "chatcmpl-1/0")
+				}
+			}
+			want, err := decode(`{"id":"chatcmpl-1","choices":[{"message":{"content":"Paris"},"finish_reason":"stop"}]}`)
+			if err != nil {
+				t.Fatalf("DecodeResponse: %v", err)
+			}
+			want.Usage = tc.usage
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
+		})
+	}
+}
+
+// TestStreamChunkOfNoIDWithChoices wants a chunk of no id that carries choices held to the
+// stream's id as before: first, it sets the stream's id, empty, so a later chunk of an id is of
+// another reply; after a chunk of an id, it is of another reply.
+func TestStreamChunkOfNoIDWithChoices(t *testing.T) {
+	noID := func(chunk string) string { return strings.Replace(chunk, `"id":"chatcmpl-1",`, `"id":"",`, 1) }
+	text := delta(`{"content":"Paris"}`, "")
+	cases := []struct {
+		name   string
+		chunks []string
+		want   string
+	}{
+		{"first", []string{noID(text), text}, `chunk of reply "chatcmpl-1" in the stream of reply ""`},
+		{"after a chunk of an id", []string{text, noID(text)}, `chunk of reply "" in the stream of reply "chatcmpl-1"`},
+		{"after the usage chunk", []string{text, usageChunk, noID(delta(`{}`, "stop"))}, `chunk of reply "" in the stream of reply "chatcmpl-1"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := decodeStream(t, stream(tc.chunks...))
+			if r.err == nil || !strings.Contains(r.err.Error(), tc.want) {
+				t.Fatalf("stream error = %v, want one containing %q", r.err, tc.want)
+			}
+		})
+	}
+}
+
+// TestStreamChunksOfTwoIDs wants two different ids an error even when a chunk of no id and no
+// choices comes between them: that chunk claims nothing, so the stream's id is still the first's.
+func TestStreamChunksOfTwoIDs(t *testing.T) {
+	const filter = `{"id":"","choices":[]}`
+	text := delta(`{"content":"Paris"}`, "")
+	other := strings.Replace(delta(`{}`, "stop"), "chatcmpl-1", "chatcmpl-2", 1)
+	r := decodeStream(t, stream(filter, text, filter, other))
+	want := `chunk of reply "chatcmpl-2" in the stream of reply "chatcmpl-1"`
+	if r.err == nil || !strings.Contains(r.err.Error(), want) {
+		t.Fatalf("stream error = %v, want one containing %q", r.err, want)
+	}
 }
 
 // TestStreamEnd covers how a stream ends: at [DONE], or at the stream's end once the

@@ -103,25 +103,19 @@ func TestDecodeFoundry(t *testing.T) {
 // differ in their reasoning and their token counts, so those are pinned from the stream.
 //
 // gpt-5-mini's streams open with a chunk of an empty id and no choices, its prompt's content
-// filter results, and the decoder takes the stream's id from that chunk, so the next chunk's id
-// fails it. Until the decoder reads that chunk, those cases assert the error, and the fix turns
-// them into the comparison.
+// filter results, which claims nothing about the reply: the stream's id is the next chunk's.
 func TestStreamFoundry(t *testing.T) {
 	cases := []struct {
-		name string
-		// err is the error the stream fails with, empty when it decodes.
-		err       string
+		name      string
 		reasoning string
 		usage     protocol.Usage
 	}{
 		{
 			name:  "text",
-			err:   `completions: stream: chunk of reply "chatcmpl-ElD2Uc6V9huK5IIhxiDepA1YOEdWQ" in the stream of reply ""`,
 			usage: protocol.Usage{InputTokens: 17, OutputTokens: 78, TotalTokens: 95, OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 64}},
 		},
 		{
 			name:  "reasoning",
-			err:   `completions: stream: chunk of reply "chatcmpl-ElD2XFRN5GI9qBkwXxP9iQah4s8q8" in the stream of reply ""`,
 			usage: protocol.Usage{InputTokens: 17, OutputTokens: 14, TotalTokens: 31},
 		},
 		{
@@ -139,12 +133,6 @@ func TestStreamFoundry(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			body := readTestdata(t, "foundry/"+tc.name+".sse")
 			r := decodeStream(t, body)
-			if tc.err != "" {
-				if r.err == nil || r.err.Error() != tc.err {
-					t.Fatalf("stream error = %v, want %q", r.err, tc.err)
-				}
-				return
-			}
 			if r.err != nil {
 				t.Fatalf("stream error: %v", r.err)
 			}

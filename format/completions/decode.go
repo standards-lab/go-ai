@@ -245,10 +245,13 @@ func (*Format) DecodeError(body []byte) (message, typ, code string) {
 // event after the frame is an error, as one after [DONE] is.
 //
 // A chunk that isn't JSON, an unknown finish_reason, a delta after the finish_reason, or an event
-// after [DONE] is an error. The stream's id is its first chunk's, which every chunk repeats; a
-// chunk with another id is an error. Each item's id, its events' item_id, is the one DecodeResponse
-// gives it: itemID derives it from the stream's id and the item's output index, as Chat Completions
-// supplies no item ids.
+// after [DONE] is an error. The stream's id is the first id a chunk carries, which every chunk
+// repeats; a chunk with another id is an error. A chunk with no id and no choices, which some
+// endpoints send ahead of the reply with only the prompt's content filter verdict, claims nothing
+// about the reply: it neither sets the stream's id nor is checked against it, and its usage, if
+// it carries any, is read. A chunk with no id but with choices is held to the stream's id as any
+// other. Each item's id, its events' item_id, is the one DecodeResponse gives it: itemID derives
+// it from the stream's id and the item's output index, as Chat Completions supplies no item ids.
 func (*Format) NewStreamDecoder() format.StreamDecoder {
 	return &streamDecoder{}
 }
@@ -257,7 +260,8 @@ func (*Format) NewStreamDecoder() format.StreamDecoder {
 type streamDecoder struct {
 	// seq is the next event's sequence number.
 	seq int
-	// id is the reply's id, the first chunk's; chunked is set once that chunk is read.
+	// id is the reply's id, the first chunk's that carries an id or choices; chunked is set once
+	// that chunk is read.
 	id      string
 	chunked bool
 	// created is set once response.created is made, and ended once the terminal event is, or
@@ -363,6 +367,9 @@ func (d *streamDecoder) decode(data []byte) error {
 		return nil
 	}
 	switch {
+	case c.ID == "" && len(c.Choices) == 0:
+		// A chunk of no id and no choices claims nothing about the reply, so it neither sets
+		// the stream's id nor is checked against it; its usage, if any, is still read.
 	case !d.chunked:
 		d.id, d.chunked = c.ID, true
 	case c.ID != d.id:
