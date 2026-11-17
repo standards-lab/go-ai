@@ -54,11 +54,7 @@ func endpoint(t *testing.T, r role, f format.Format, opts ai.Options) (*ai.Clien
 	if model := namedModel(string(r), os.Getenv); model != "" {
 		return c, model
 	}
-	models := listModels(t, c, r)
-	if len(models) != 1 || models[0].ID == "" {
-		t.Fatalf("%s lists %+v, want exactly one model", r, models)
-	}
-	return c, models[0].ID
+	return c, oneModel(t, r, listModels(t, c, r))
 }
 
 // roleClient returns a Client of r's endpoint as endpoint does, without choosing a model.
@@ -83,6 +79,16 @@ func listModels(t *testing.T, c *ai.Client, r role) []ai.Model {
 		t.Fatalf("Models of %s: %v", r, err)
 	}
 	return models
+}
+
+// oneModel returns the ID of the one model in models, r's list, failing t when the list names
+// other than exactly one.
+func oneModel(t *testing.T, r role, models []ai.Model) string {
+	t.Helper()
+	if len(models) != 1 || models[0].ID == "" {
+		t.Fatalf("%s lists %+v, want exactly one model", r, models)
+	}
+	return models[0].ID
 }
 
 // requestContext is t's context, bounded by requestTimeout.
@@ -196,10 +202,7 @@ func TestModels(t *testing.T) {
 				t.Logf("%s lists %d models; %s names %s", r, len(models), modelVariable(string(r)), named)
 				return
 			}
-			if len(models) != 1 || models[0].ID == "" {
-				t.Fatalf("%s lists %+v, want exactly one model", r, models)
-			}
-			t.Logf("%s serves %s", r, models[0].ID)
+			t.Logf("%s serves %s", r, oneModel(t, r, models))
 		})
 	}
 }

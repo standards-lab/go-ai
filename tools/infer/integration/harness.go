@@ -86,7 +86,7 @@ func Endpoint(t testing.TB, baseVariable string) []string {
 	}
 	overrides := []string{"INFER_BASE_URL=" + base}
 	if model := Model(baseVariable); model != "" {
-		overrides = append(overrides, envPrefix+"MODEL="+model)
+		overrides = append(overrides, "INFER_MODEL="+model)
 	}
 	return overrides
 }

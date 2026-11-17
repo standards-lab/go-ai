@@ -158,16 +158,16 @@ func assertTrace(t *testing.T, events []protocol.Event, want string) {
 }
 
 // asStreamed returns reply, an unstreamed reply's body, as the reply body, a text/event-stream
-// reply, gave: its id the first id the stream's chunks carry, and each tool call's id the one the stream gave
-// the call in its place. The recorded replies were each sent twice, and the router makes new ids
-// for each, so the streamed reply's ids aren't the other's.
+// reply, gave: its id the stream's, and each tool call's id the one the stream gave the call in
+// its place. The recorded replies were each sent twice, and the endpoint makes new ids for each,
+// so the streamed reply's ids aren't the other's.
 func asStreamed(t *testing.T, reply, body string) string {
 	t.Helper()
 	var r map[string]any
 	if err := json.Unmarshal([]byte(reply), &r); err != nil {
 		t.Fatal(err)
 	}
-	r["id"] = firstChunkID(t, body)
+	r["id"] = streamID(t, body)
 	callIDs := streamCallIDs(t, body)
 	for _, c := range r["choices"].([]any) {
 		m := c.(map[string]any)["message"].(map[string]any)
@@ -186,9 +186,9 @@ func asStreamed(t *testing.T, reply, body string) string {
 	return string(b)
 }
 
-// firstChunkID returns the first id a chunk of body, a text/event-stream reply, carries: the
+// streamID returns the first id a chunk of body, a text/event-stream reply, carries: the
 // stream's id, which a leading chunk of no id doesn't set. It is empty when no chunk carries one.
-func firstChunkID(t *testing.T, body string) string {
+func streamID(t *testing.T, body string) string {
 	t.Helper()
 	events := sse.NewDecoder(strings.NewReader(body))
 	for {
