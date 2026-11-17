@@ -171,8 +171,8 @@ sends and writes.
 
 The integration tier builds `cmd/infer` and runs it against live endpoints. It reads the same
 role variables as [go-ai's tier](../../README.md#development), mapping each role's
-`AI_<ROLE>_BASE_URL`, `AI_<ROLE>_TOKEN`, and `AI_<ROLE>_HEADER` onto `INFER_BASE_URL`,
-`INFER_TOKEN`, and `INFER_HEADER`:
+`AI_<ROLE>_BASE_URL`, `AI_<ROLE>_TOKEN`, `AI_<ROLE>_HEADER`, and `AI_<ROLE>_MODEL` onto
+`INFER_BASE_URL`, `INFER_TOKEN`, `INFER_HEADER`, and `INFER_MODEL`:
 
 | Variable | Scenarios |
 | --- | --- |

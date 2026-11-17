@@ -41,6 +41,21 @@ func withCredentials(opts ai.Options, baseVariable string, getenv func(string) s
 	return opts, nil
 }
 
+// modelVariable is the variable that names the model of the role whose API root variable is
+// baseVariable: AI_<ROLE>_MODEL, such as AI_AGENT_MODEL for AI_AGENT_BASE_URL.
+func modelVariable(baseVariable string) string {
+	return strings.TrimSuffix(baseVariable, "_BASE_URL") + "_MODEL"
+}
+
+// namedModel returns the model AI_<ROLE>_MODEL names, read through getenv, for the role whose
+// API root variable is baseVariable, or "" when it is unset or empty, so the role's scenarios
+// send to the one model its endpoint lists, as before the variable existed. A model is no
+// secret, so a scenario may print it; it is read apart from the credentials, so printing it
+// never prints them.
+func namedModel(baseVariable string, getenv func(string) string) string {
+	return getenv(modelVariable(baseVariable))
+}
+
 // parseHeader returns the headers v holds: one "Name: value" per line, split at the first colon,
 // the line, the name, and the value each trimmed of surrounding space, and a blank line skipped;
 // a name given on several lines has each value. A line with no colon, or no name before it, is
@@ -189,6 +204,26 @@ func TestNewClient_FailureOmitsSecrets(t *testing.T) {
 			}
 			if strings.Contains(err.Error(), secret) {
 				t.Errorf("err = %q, want it never to print the token or the header's value", err)
+			}
+		})
+	}
+}
+
+// AI_<ROLE>_MODEL names the role's own model; another role's, or the variable unset or empty,
+// names none.
+func TestNamedModel(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		vars map[string]string
+		want string
+	}{
+		{"unset", map[string]string{"AI_VISION_MODEL": "other"}, ""},
+		{"empty", map[string]string{"AI_AGENT_MODEL": ""}, ""},
+		{"set", map[string]string{"AI_AGENT_MODEL": "gpt-oss-120b", "AI_VISION_MODEL": "other"}, "gpt-oss-120b"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := namedModel("AI_AGENT_BASE_URL", env(tc.vars)); got != tc.want {
+				t.Errorf("namedModel = %q, want %q", got, tc.want)
 			}
 		})
 	}

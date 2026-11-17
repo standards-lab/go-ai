@@ -118,18 +118,20 @@ b11669 and vLLM 0.33.0, and the client against a loopback server.
 
 The integration tier runs against live endpoints, one per role. Each role's variable holds an
 API root, `/v1` included, with no default. A scenario whose variable is unset skips, and each
-endpoint must serve one model.
+endpoint must serve one model, unless the role names it in `AI_<ROLE>_MODEL`.
 
 | Variable | The model it serves | Scenarios |
 | --- | --- | --- |
 | `AI_AGENT_BASE_URL` | reasoning, function calling, structured output | chat, stream, tools, structured, and reasoning, in every format |
-| `AI_VISION_BASE_URL` | reads images | image, in every format |
+| `AI_VISION_BASE_URL` | reads images | image, in every format, and a streamed reply in Chat Completions and Open Responses |
 | `AI_AUDIO_BASE_URL` | reads audio in a chat request | chat-mode `Transcribe`, and the endpoint's refusal of audio sent as Open Responses |
 | `AI_EMBEDDING_BASE_URL` | embeddings | `Embed` |
 | `AI_TRANSCRIPTION_BASE_URL` | serves the transcription route | route-mode `Transcribe` |
 
 An endpoint that needs credentials takes them from `AI_<ROLE>_TOKEN`, sent as the bearer token,
-and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value.
+and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value. An endpoint
+that lists more than one model, such as a cloud account's whole catalog, takes the role's model
+from `AI_<ROLE>_MODEL`.
 
 ```sh
 AI_AGENT_BASE_URL=https://gateway.example/agent/v1 AI_AGENT_HEADER='api-key: …' mise run integration

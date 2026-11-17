@@ -87,6 +87,30 @@ func TestStreamText(t *testing.T) {
 	})
 }
 
+// visionStreamBound is the MaxOutputTokens of the vision stream's request: the vision model may
+// reason, at its deployment's default effort, ahead of its answer, within the same bound.
+const visionStreamBound = 1024
+
+// TestStreamVisionText streams a chat reply from the vision model through Chat Completions and
+// Open Responses, the formats a cloud deployment of it serves, folds its events, and wants text
+// to arrive and the Response completed, its text the deltas joined.
+func TestStreamVisionText(t *testing.T) {
+	eachFormatOf(t, vision, []testFormat{completionsFormat, openResponses}, func(t *testing.T, c *ai.Client, model string) {
+		f := accumulate(t, c, &protocol.Request{
+			Model:           model,
+			Instructions:    "Answer in one sentence.",
+			Input:           []protocol.Item{userText("What is the capital of France?")},
+			MaxOutputTokens: visionStreamBound,
+		})
+		if f.text.Len() == 0 {
+			t.Fatalf("no output_text delta arrived; Response %#v", f.resp)
+		}
+		if text := completedText(t, f.resp); text != f.text.String() {
+			t.Errorf("output_text %q, want the deltas joined, %q", text, f.text.String())
+		}
+	})
+}
+
 // TestStreamFunctionCall streams a reply that must call get_weather through each format, folds
 // its events, and wants the Response completed with one function call: a call id, the function's
 // name, arguments that parse as a JSON object naming the city, the deltas joined, and an id, the
