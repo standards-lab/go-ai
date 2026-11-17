@@ -284,7 +284,8 @@ func (d *streamDecoder) create() {
 }
 
 // addItem reads output_item.added: the item at its output_index, or the next in arrival order,
-// in progress, with no content or arguments; a reasoning item's encrypted_content is dropped.
+// in progress, with no content or arguments; a reasoning item's encrypted_content and summary are
+// dropped.
 func (d *streamDecoder) addItem(e streamEvent) error {
 	if e.Item == nil {
 		return errors.New("output_item.added has no item")

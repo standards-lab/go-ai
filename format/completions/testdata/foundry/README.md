@@ -53,9 +53,9 @@ Every later chunk carries the reply's id. OpenAI's chat completion chunk says of
 identifier for the chat completion. Each chunk has the same ID.", and of `choices`: "Can also be
 empty for the last chunk if you set `stream_options: {"include_usage": true}`."
 ([OpenAI API reference, chat completion streaming events](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events)).
-The decoder took the stream's id from the first chunk, so the second chunk's failed it:
-`chunk of reply "chatcmpl-…" in the stream of reply ""`. It now takes a chunk of no id and no
-choices to claim nothing about the reply, so the stream's id is the first id a chunk carries.
+A decoder that takes the stream's id from the first chunk fails the second:
+`chunk of reply "chatcmpl-…" in the stream of reply ""`. go-ai's decoder takes a chunk of no id and
+no choices to claim nothing about the reply, so the stream's id is the first id a chunk carries.
 gpt-oss-120b's streams have no such chunk.
 
 gpt-5-mini's replies carry members of Azure's own, which the format ignores: each choice's and

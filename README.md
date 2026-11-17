@@ -117,9 +117,9 @@ The unit tests are hermetic. They run each format against replies recorded from 
 b11669, vLLM 0.33.0, and Azure AI Foundry, and the client against a loopback server.
 
 The integration tier runs against live endpoints, one per role. Each role's variable holds an
-API root, `/v1` included, with no default. A scenario whose variable is unset skips, and each
-endpoint must serve one model, unless the role names its model in `AI_<ROLE>_MODEL`, as an
-endpoint that lists more, such as a cloud account's whole catalog, needs.
+API root, `/v1` included, with no default. A scenario whose variable is unset skips. Each scenario
+sends to the one model its endpoint lists, or, when set, to the model `AI_<ROLE>_MODEL` names,
+which an endpoint that lists more than one, such as a cloud account's whole catalog, needs.
 
 | Variable | The model it serves | Scenarios |
 | --- | --- | --- |

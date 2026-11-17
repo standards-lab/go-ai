@@ -26,11 +26,10 @@
 // header value. The reading of them is untagged, so the unit tier tests it.
 //
 // A scenario whose role's variable is unset skips, naming the variable, so the tier with none
-// set skips whole. Each role's endpoint serves one model: a scenario sends to the one model the
-// endpoint's model list names, and fails when the list names none or more than one. A role may
-// instead name its model in AI_<ROLE>_MODEL, such as AI_AGENT_MODEL='gpt-oss-120b', for an
-// endpoint that lists more, such as a cloud account's whole catalog: its scenarios send to that
-// model and list nothing, and its models scenario wants the list to name at least one. Unset, the
-// role is as before. The model is no secret, and is read apart from the credentials. Every role
-// runs the models scenario.
+// set skips whole. A scenario sends to the one model its endpoint's model list names, and fails
+// when the list names none or more than one. A role may instead name its model in
+// AI_<ROLE>_MODEL, such as AI_AGENT_MODEL='gpt-oss-120b', for an endpoint that lists more, such
+// as a cloud account's whole catalog: its scenarios then send to that model without listing. The
+// model is no secret, and is read apart from the credentials. Every role runs the models
+// scenario, which wants exactly one model listed, or at least one when AI_<ROLE>_MODEL is set.
 package integration

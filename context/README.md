@@ -27,4 +27,5 @@ client and processing layers").
   with real output.
 - **Integration tiers**: go-ai's and infer's, run by `mise run integration` against one endpoint
   per role, named by `AI_<ROLE>_BASE_URL`, with the role's optional credentials in
-  `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER`.
+  `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER` and its optional model in `AI_<ROLE>_MODEL`, for an
+  endpoint that lists more than one.

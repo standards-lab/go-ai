@@ -256,7 +256,10 @@ of layers' surface to go-ai's.
     given to `ai.New` as it is, with no default. A scenario whose variable is unset skips, naming
     it, so the tier with none set skips whole. Each scenario sends to the one model its endpoint's
     `/models` lists, and fails when the list names none or more than one, so no model name is
-    fixed in the tier. `mise run integration` runs it, verbose. No CI job runs it, since the models
+    fixed in the tier. A role's optional `AI_<ROLE>_MODEL` names its model instead, for an
+    endpoint whose `/models` lists more than one, such as Azure AI Foundry's, which lists its
+    whole catalog; with it set, the role's models scenario wants at least one model listed. The
+    variable is read by the tests alone and is no secret. `mise run integration` runs it, verbose. No CI job runs it, since the models
     are on the organization's own machines.
 42. **Where the router drops a hint, the integration tier logs the outcome and passes either way**
     (`integration/router_test.go`, `hinted` and `record`). Against `tests-and-docs.md`: a test
@@ -277,7 +280,19 @@ of layers' surface to go-ai's.
     folding. Recorded against vLLM, Chat Completions gives a reply's reasoning as `reasoning` where
     llama.cpp gives `reasoning_content`, so `format/completions` reads either, and
     `reasoning_content` alone when a server sends both, as both carry one text; it still sends
-    reasoning back as `reasoning_content`.
+    reasoning back as `reasoning_content`. Azure AI Foundry's recordings join them in
+    `format/completions/testdata/foundry`, from gpt-5-mini and gpt-oss-120b, and
+    `format/responses/testdata/foundry`, from gpt-5-mini, by a `record.sh` that reads the role's
+    `AI_<ROLE>_BASE_URL` and `AI_<ROLE>_HEADER` and hands them to curl on stdin, so no key or
+    account name is printed or recorded. Foundry's two replies to one request differ in text and
+    usage, so the Chat Completions tests compare a folded stream with the `.json`'s shape and pin
+    the stream's own ids, reasoning text, and usage, and the Responses tests compare it with the
+    stream's terminal response. Foundry's streams hold two forms the formats normalize: gpt-5-mini's
+    chat stream opens with a chunk of no id and no choices, which neither sets nor is checked
+    against the stream's id, so the stream's id is the first id a chunk carries; and its Responses
+    stream adds a reasoning item with `encrypted_content`, which the spec allows to be incomplete
+    while the item is in progress, so the decoder adds the item with none, and the envelope holds
+    the `encrypted_content` of its `output_item.done`.
 
 ### Check, CI, and release
 
@@ -815,9 +830,9 @@ go-ai/                        module github.com/standards-lab/go-ai
 ├── *.go                      package ai
 ├── protocol/
 ├── format/
-│   ├── completions/testdata/ llama.cpp b11669's recordings, and vLLM 0.33.0's in vllm/
+│   ├── completions/testdata/ llama.cpp b11669's recordings, vLLM 0.33.0's in vllm/, and Foundry's in foundry/
 │   ├── messages/testdata/
-│   └── responses/testdata/
+│   └── responses/testdata/   as completions'
 ├── integration/              the integration tier, behind the integration build tag
 ├── internal/
 │   ├── aitest/
@@ -835,8 +850,8 @@ go-ai/                        module github.com/standards-lab/go-ai
         └── apptest/
 ```
 
-Each format's testdata is recorded from llama.cpp b11669's router and from vLLM 0.33.0, each set
-with a README that names its engine and build, says how it was recorded, and records what the
+Each format's testdata is recorded from llama.cpp b11669's router and from vLLM 0.33.0, and Chat
+Completions' and Open Responses' also from Azure AI Foundry, each set with a README that names its engine and build, says how it was recorded, and records what the
 engine departs from (findings 31 and 43). The integration tier is a root-level package of the
 base module, as the spike's is: the check builds, vets, and lints it under its build tag (finding
 45), and `mise run integration` runs it against the endpoints its `AI_<ROLE>_BASE_URL` variables
@@ -953,10 +968,11 @@ with `infer`'s own fixtures in `internal/apptest`, never go-ai's internal helper
 what each command sends and writes. The integration tier, `tools/infer/integration` behind the
 integration build tag, builds `cmd/infer` and runs it one shot at a time on go-core's
 `processtest`, mapping each `AI_<ROLE>_BASE_URL` the base module's tier reads (finding 41) onto
-`INFER_BASE_URL` after clearing every `INFER_` variable, with no model set, so each role's
-endpoint must list one; a scenario whose variable is unset skips. Both tiers read a role's
-optional credentials, `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER`. The base module's tier puts them
-in `Options.Token` and `Options.Header`; `infer`'s maps them onto `INFER_TOKEN` and
+`INFER_BASE_URL` after clearing every `INFER_` variable. It maps a role's optional
+`AI_<ROLE>_MODEL` onto `INFER_MODEL`; with none, it sets no model, so the role's endpoint must
+list one. A scenario whose variable is unset skips. Both tiers read a role's optional
+credentials, `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER`. The base module's tier puts them in
+`Options.Token` and `Options.Header`; `infer`'s maps them onto `INFER_TOKEN` and
 `INFER_HEADER` in the test's environment rather than in a run's logged overrides, so no failing
 scenario prints a value. `mise run integration` runs it after the base module's tier; no CI job
 runs either.
@@ -1048,7 +1064,7 @@ What the review rules out, one line each with its reason, cited as the sections 
   (finding 41).
 - **One endpoint variable for the integration tier, or a model name fixed in it.** vLLM serves one
   model per endpoint, so each role has its variable, and each scenario sends to the one model its
-  endpoint lists (finding 41).
+  endpoint lists, or to the one its role's optional `AI_<ROLE>_MODEL` names (finding 41).
 - **An integration check that logs the outcome and passes either way.** A test proves a behavior
   only if it can fail (finding 42).
 - **shellcheck in the check.** go-ai's check omits it, and no page asks for it (finding 45).

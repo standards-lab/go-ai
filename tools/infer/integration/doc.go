@@ -34,8 +34,8 @@
 // onto INFER_MODEL, for an endpoint that lists more than one, and its
 // format onto INFER_FORMAT; with no model named it sets none, so infer
 // sends to the one model the endpoint lists. It skips when the variable is
-// unset; with none set, only the baseline and the
-// credentials scenario run. The scenarios are:
+// unset; with none set, only the baseline and the credentials scenario
+// run. The scenarios are:
 //
 //   - credentials, against a loopback endpoint the suite serves, so it
 //     never skips: a role's token and header reach the endpoint through

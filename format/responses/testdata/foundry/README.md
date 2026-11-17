@@ -33,8 +33,8 @@ same request sent again, has other token counts and encrypted content.
 ## What Foundry departs from
 
 Foundry adds gpt-5-mini's reasoning item with an `encrypted_content` already set, 1188
-characters in both streams, and the item's `response.output_item.done` replaces it with another,
-the one the terminal response holds; the added one is not a prefix of it:
+characters in both streams. The item's `response.output_item.done` gives another, and the
+terminal response a third, of the same length as the done one; none is a prefix of another:
 
 ```
 event: response.output_item.added
@@ -51,10 +51,10 @@ with as much detail as is available at that time.", and of reasoning, that `encr
 "format and cryptographic properties are provider-specific" and clients "treat this field as
 opaque and non-inspectable"
 ([Open Responses specification](https://www.openresponses.org/specification), "Items are
-streamable" and "Reasoning"). The decoder refused a reasoning item added with
-`encrypted_content`, so both streams failed at their third event: `reasoning item "rs_…" is added
-with content`. It now adds the item with no encrypted content, and the envelope holds its
-`output_item.done`'s.
+streamable" and "Reasoning"). A decoder that refuses a reasoning item added with
+`encrypted_content` fails both streams at their third event: `reasoning item "rs_…" is added with
+content`. go-ai's decoder adds the item with no encrypted content; the done event's item holds its
+`output_item.done`'s in the envelope, and the folded Response the terminal response's.
 
 The reasoning item has no `status` in its `output_item.done`, the terminal response, or the
 unstreamed reply, and no text and no summary: its `content` and `summary` are `[]`. No reasoning

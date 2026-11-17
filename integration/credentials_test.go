@@ -49,9 +49,8 @@ func modelVariable(baseVariable string) string {
 
 // namedModel returns the model AI_<ROLE>_MODEL names, read through getenv, for the role whose
 // API root variable is baseVariable, or "" when it is unset or empty, so the role's scenarios
-// send to the one model its endpoint lists, as before the variable existed. A model is no
-// secret, so a scenario may print it; it is read apart from the credentials, so printing it
-// never prints them.
+// send to the one model its endpoint lists. A model is no secret, so a scenario may print it; it
+// is read apart from the credentials, so printing it never prints them.
 func namedModel(baseVariable string, getenv func(string) string) string {
 	return getenv(modelVariable(baseVariable))
 }
