@@ -9,15 +9,16 @@ request naming the deployment as its `model`:
 | `agent`  | `gpt-oss-120b` | `gpt-oss-120b`           |
 | `vision` | `gpt-5-mini`   | `gpt-5-mini-2025-08-07`  |
 
-`record.sh` made every file here: it posts each request with curl to `/chat/completions` and
-writes the reply's body as it arrived, with `curl -o`. Nothing is stripped or edited. It reads
-each role's `AI_<ROLE>_BASE_URL` and `AI_<ROLE>_HEADER`, the variables the integration tiers
-read, the header here `api-key: <key>`, and hands the URL and the headers to curl in a config on
-stdin (`curl -K -`), so neither the account's name nor its key is in curl's arguments, its output,
-or a file; curl runs with `-s` and without `-S`, so an error prints no host. The script prints one
-line per request, its time, path, model, whether it streamed, and its HTTP status, and stops at
-any status but 200. Name stems, such as `./record.sh oss_length`, to record those alone. Run it
-again to re-record; the ids and some texts will differ, and the tests that pin them must follow.
+`record.sh` made every file here: it posts each request with curl to `/chat/completions` and writes
+the reply's body as it arrived, with `curl -o`. Nothing is stripped or edited. It reads each role's
+`AI_<ROLE>_BASE_URL` and `AI_<ROLE>_HEADER`, the variables the integration tiers read, the header
+here `api-key: <key>`, and hands the URL and the headers to curl in a config on stdin (`curl -K -`),
+so neither the account's name nor its key is in curl's arguments, its output, or a file; curl runs
+with `-s` and without `-S`, so an error prints no host. The script prints one line per request, its
+time, path, model, whether it streamed, and its HTTP status, and stops at any status but 200,
+discarding that reply so it never replaces a recording. Name stems, such as
+`./record.sh oss_length`, to record those alone. Run it again to re-record; the ids and some texts
+will differ, and the tests that pin them must follow.
 
 Each request is in the script verbatim, its members as `EncodeRequest` gives them, the bound as
 `max_completion_tokens`. Each unstreamed request adds `"stream":false`, and each streamed one
@@ -52,9 +53,10 @@ Every later chunk carries the reply's id. OpenAI's chat completion chunk says of
 identifier for the chat completion. Each chunk has the same ID.", and of `choices`: "Can also be
 empty for the last chunk if you set `stream_options: {"include_usage": true}`."
 ([OpenAI API reference, chat completion streaming events](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events)).
-The decoder takes the stream's id from the first chunk, so the second chunk's fails it:
-`chunk of reply "chatcmpl-…" in the stream of reply ""`. gpt-oss-120b's streams have no such
-chunk.
+The decoder took the stream's id from the first chunk, so the second chunk's failed it:
+`chunk of reply "chatcmpl-…" in the stream of reply ""`. It now takes a chunk of no id and no
+choices to claim nothing about the reply, so the stream's id is the first id a chunk carries.
+gpt-oss-120b's streams have no such chunk.
 
 gpt-5-mini's replies carry members of Azure's own, which the format ignores: each choice's and
 chunk's `content_filter_results`, the reply's `prompt_filter_results`, `obfuscation` on each

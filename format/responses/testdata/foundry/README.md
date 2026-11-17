@@ -9,12 +9,12 @@ Completions alone.
 `record.sh` made every file here: it posts each request with curl to `/responses` and writes the
 reply's body as it arrived, with `curl -o`. Nothing is stripped or edited. It reads
 `AI_VISION_BASE_URL` and `AI_VISION_HEADER`, the variables the integration tiers read, the header
-here `api-key: <key>`, and hands the URL and the headers to curl in a config on stdin
-(`curl -K -`), so neither the account's name nor its key is in curl's arguments, its output, or a
-file; curl runs with `-s` and without `-S`, so an error prints no host. The script prints one line
-per request, its time, path, model, whether it streamed, and its HTTP status, and stops at any
-status but 200. Run it again to re-record; the ids and some texts will differ, and the tests that
-pin them must follow.
+here `api-key: <key>`, and hands the URL and the headers to curl in a config on stdin (`curl -K -`),
+so neither the account's name nor its key is in curl's arguments, its output, or a file; curl runs
+with `-s` and without `-S`, so an error prints no host. The script prints one line per request, its
+time, path, model, whether it streamed, and its HTTP status, and stops at any status but 200,
+discarding that reply so it never replaces a recording. Run it again to re-record; the ids and some
+texts will differ, and the tests that pin them must follow.
 
 Each request is in the script verbatim, in the shape `EncodeRequest` gives, with a
 `max_output_tokens` of 1024 and no `temperature`, which gpt-5-mini refuses other than 1. Each
@@ -51,8 +51,10 @@ with as much detail as is available at that time.", and of reasoning, that `encr
 "format and cryptographic properties are provider-specific" and clients "treat this field as
 opaque and non-inspectable"
 ([Open Responses specification](https://www.openresponses.org/specification), "Items are
-streamable" and "Reasoning"). The decoder refuses a reasoning item added with content, so both
-streams fail at their third event: `reasoning item "rs_…" is added with content`.
+streamable" and "Reasoning"). The decoder refused a reasoning item added with
+`encrypted_content`, so both streams failed at their third event: `reasoning item "rs_…" is added
+with content`. It now adds the item with no encrypted content, and the envelope holds its
+`output_item.done`'s.
 
 The reasoning item has no `status` in its `output_item.done`, the terminal response, or the
 unstreamed reply, and no text and no summary: its `content` and `summary` are `[]`. No reasoning

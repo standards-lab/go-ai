@@ -114,11 +114,12 @@ mise run integration  # run every module's integration tier against the AI_*_BAS
 ```
 
 The unit tests are hermetic. They run each format against replies recorded from llama.cpp
-b11669 and vLLM 0.33.0, and the client against a loopback server.
+b11669, vLLM 0.33.0, and Azure AI Foundry, and the client against a loopback server.
 
 The integration tier runs against live endpoints, one per role. Each role's variable holds an
 API root, `/v1` included, with no default. A scenario whose variable is unset skips, and each
-endpoint must serve one model, unless the role names it in `AI_<ROLE>_MODEL`.
+endpoint must serve one model, unless the role names its model in `AI_<ROLE>_MODEL`, as an
+endpoint that lists more, such as a cloud account's whole catalog, needs.
 
 | Variable | The model it serves | Scenarios |
 | --- | --- | --- |
@@ -129,9 +130,7 @@ endpoint must serve one model, unless the role names it in `AI_<ROLE>_MODEL`.
 | `AI_TRANSCRIPTION_BASE_URL` | serves the transcription route | route-mode `Transcribe` |
 
 An endpoint that needs credentials takes them from `AI_<ROLE>_TOKEN`, sent as the bearer token,
-and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value. An endpoint
-that lists more than one model, such as a cloud account's whole catalog, takes the role's model
-from `AI_<ROLE>_MODEL`.
+and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value.
 
 ```sh
 AI_AGENT_BASE_URL=https://gateway.example/agent/v1 AI_AGENT_HEADER='api-key: …' mise run integration
