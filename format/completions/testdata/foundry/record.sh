@@ -24,29 +24,34 @@ quote() {
 
 # config role path: writes the curl config of a request to the role's base URL and path, with
 # each of the role's header lines.
+# The header lines are read through a pipe from printf, a builtin, so no value reaches a process's
+# arguments or a temporary file.
 config() {
   local base="AI_${1}_BASE_URL" header="AI_${1}_HEADER" line
+  quote url "${!base%/}$2"
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then quote header "$line"; fi
+  done < <(printf '%s\n' "${!header:-}")
+}
+
+# send file role path model streamed [curl arguments...]: sends the request, writing the reply's
+# body to file, and prints its line. A reply of another status than 200 is discarded, so it never
+# replaces a recording.
+send() {
+  local file=$1 role=$2 path=$3 model=$4 streamed=$5 base="AI_${2}_BASE_URL" status
+  shift 5
   if [ -z "${!base:-}" ]; then
     echo "$base is not set" >&2
     exit 1
   fi
-  quote url "${!base%/}$2"
-  while IFS= read -r line; do
-    if [ -n "$line" ]; then quote header "$line"; fi
-  done <<<"${!header:-}"
-}
-
-# send file role path model streamed [curl arguments...]: sends the request, writing the reply's
-# body to file, and prints its line.
-send() {
-  local file=$1 role=$2 path=$3 model=$4 streamed=$5 status
-  shift 5
-  status=$(config "$role" "$path" | curl -s -K - -o "$file" -w '%{http_code}' "$@") || true
+  status=$(config "$role" "$path" | curl -s -K - -o "$file.part" -w '%{http_code}' "$@") || true
   printf '%s %s %s stream=%s %s\n' "$(date -u +%FT%TZ)" "$path" "$model" "$streamed" "$status"
   if [ "$status" != 200 ]; then
+    rm -f "$file.part"
     echo "$file: HTTP $status; stopping" >&2
     exit 1
   fi
+  mv "$file.part" "$file"
 }
 
 # wanted name: whether name is to be recorded, every name when none was given.
