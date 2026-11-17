@@ -1,0 +1,168 @@
+{
+  "id": "resp_0ed6014bde04d50e016afc4f69fad08195a25bbe0fe3a1e843",
+  "object": "response",
+  "created_at": 1794920298,
+  "status": "completed",
+  "access_programs": null,
+  "background": false,
+  "completed_at": 1794920300,
+  "content_filters": [
+    {
+      "blocked": false,
+      "source_type": "prompt",
+      "content_filter_raw": [],
+      "content_filter_results": {
+        "hate": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "sexual": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "violence": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "self_harm": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "jailbreak": {
+          "detected": false,
+          "filtered": false
+        }
+      },
+      "content_filter_offsets": {
+        "start_offset": 0,
+        "end_offset": 1189,
+        "check_offset": 0
+      }
+    },
+    {
+      "blocked": false,
+      "source_type": "completion",
+      "content_filter_raw": [],
+      "content_filter_results": {
+        "protected_material_code": {
+          "detected": false,
+          "filtered": false
+        },
+        "protected_material_text": {
+          "detected": false,
+          "filtered": false
+        },
+        "hate": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "sexual": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "violence": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "self_harm": {
+          "filtered": false,
+          "severity": "safe"
+        }
+      },
+      "content_filter_offsets": {
+        "start_offset": 0,
+        "end_offset": 877,
+        "check_offset": 0
+      }
+    }
+  ],
+  "error": null,
+  "frequency_penalty": 0.0,
+  "incomplete_details": null,
+  "instructions": null,
+  "max_output_tokens": 1024,
+  "max_tool_calls": null,
+  "model": "gpt-5-mini",
+  "moderation": null,
+  "output": [
+    {
+      "id": "rs_0ed6014bde04d50e016afc4f6a824881958b5e07baea04f688",
+      "type": "reasoning",
+      "content": [],
+      "encrypted_content": "gAAAAABq_E9s8CR99yjrCYrp9B2N7YIPtQmapMTrMAZMW-7BdHAap9GPKLenwV0FZeChsi1AOeFfnJ350b_RgodPgLLuaCQ63tFBTsGFrxExQ9RWScirXkmnUHxTpCvQ6-4as3e0F51Tz_e3j60-X5xp8jm9adFP3jhyHItI1e8mLt-5EAW5KgFdK7ZBJ4_379E6gPhCd8hWKx5Sa93wX5hZss3L-3bMNgLK2y8JaMSsB_e-QnA0fXMsIdpDf4128jDy8vqs98v_PONn9wNMqTXqLV5bIzXTYPi1di75NsJnug9IEmZviVKPOWkebt3P0mByasxvwfL-kHkGbdnAKWhDzejF7EedSjN1TuqLTSC7PUJxufaCQyPNAgjKwXFut8nHUPEjH7MmvI2BtCqJ712wl3nSvIxUeJKXy3xprPOaMULl30HSPSKU12S1FlPjB3OgtZLlWNJ813vpGNBphA25umv4qjSeXT7h1655IZk64o3PxfyI9_dTWyivGAoJpRYY6t5nJqFWcZwYphVEFHWtZON1TkSm-NCdmkSdWESWbbYBaC7D_sfyV4IDIw0Hj_OvQi66IY6Jhfw-GTpUCKwSo-48F9RX06wQLrUKVMo-7Vml8j_R-D2VYdVN1VKTZDrR1jnXFvafY6FpCHd3xUoIS9BVmSKjqrqnk59wO1ezYFEfJPw3AKmeQ6AcM9yrVWLavIAMtEGLayaMOIpZIX_L-1Ut5NCb2auPwQXPAdqXxZu94g6N4M7Y5MzDuocbhBb8REXlhWH-NXSW7mxXjFAM5fVafXS5glMzFNGrrdMIA1zj1ePi0BkBC8P_nlkc9moFN-BNgL4Xa7IBUQDVZ_J-UExUhFPSNV4rOzCjnpmrcnbNXdkAAkYMxodDc9_2wLoPzTnGjbqcZSCJk1yldYRvMHPDK-UtrdXh1ug8Vle4LJjkdV-Dpgi7dx5tcaW-bsEG7e3ksqpwgvBU_r3BBQMOH-lNDMquG-nGJ4wHTgBNGrthsbmSm40jyidcU9-zmgrEwg_jhZQjI4X9j_eEoXvDQD7YCW1Hkrsm1RydJzBWg66M_oAKIIgiEqB3MOIJRZAjsAQ56cLP_WEH7R5iGEuIE_xVsT4UIVCyOlmkrftcp8O-ATU8lc1Wy4Ey2EXze07n2bDbKG0xAxD4dEKotZev532j9hJo0IYeNlNGiQ6ymgJPN3Z5odEfL50_8fLCZD_3kZoxDK6vGr08Tl1OCFgODB0v4txODOgul0aEgMvNs1gXs0E_cHnwfo_57soQJdVGw1HuW4QAb01tNPA643ch1LjJmnb8iJOKYQ10p05_3odc9cBSmuPU9qutLJgbgSfj8Ve3VWWipTOVYzh5DOpZTd2H4pVdHNyjw4FUt6oX0DXqW10BunmLmSNC5QTZpJt354piZy4hW5Yj8izkuOQBUJJizm_kiGNeCALhKfLPMJosz2MFvWXh9x5VWtMGEinWvXwkFCjs3J2-KZyGfjnIAZPVwek_Bf0koryCsJgdAjBK5qDx8V33qmF4sihITua0q9ogN1gTq6kZsaQjFj8XIqbRWBObbG1a1hwvVfD2zn9nGXb0MWNPzyHFD6UpWhuDOI5F7MtVpGp4SlSrZEz-31TXV70EfqkDvIKsQvLKPYu83COKBbBJd4vhZ06dYxKVSjCdTCHDPR65beZeAgBwZY2loKfBwKCPixZSxyfEUdhLNtuTk7PYt98MoVkzALnhEhmzVabega-x7HW_m3-PYLV8mlYQYyRp1Dy37W7aK6UYUCzkyVxnea1XEqrdrwv8_N86uVVPzD3xaqzcMpXSEJeinWGJq0e6DYitZFjy-iXNofzHiKTShX3se0uIiz-VCrOdmYUV9iBRRWcLpVn40DbGgt3ZOtNhQzaiHmrgzjG9-DHNibWfzh4lixowugqTkF9WygjTJWBo86krp3QHtHBk7Ssx76VpeDlmYkkbH07jwr18d8YYtB_N_SpafZaHjMjU--dCmq_Q1yJNRX743f1q6nzRb3IRKbiDgecC6oaP2GvAymIvOgJY0wQLsinqNPLSZUDSXHa6SeVQhtTLQaUMToSUl9brEAxdvJo5Do1A068SbsmaJVU6MNfctKpHYcqs5-7bWHraWJdZ2wMggdB3JkYjvUs5LAqEtQ3IZemir-p_L8he2zLNrkoThZHYYLIotrsTb-B1nl-xFUOeJQaaP-yO_tkGdL2bDg2EIKo2B0d9JAXLATtKRB30VzwmYJ29t2DuIoMvySEoScj9x6eKD6miOCltp8glqUr0XHawHSpWg7SxXTiZzzh96zccr0UV6zwAWu_yl716hpg33f2eFT90fjJzzBlDCNF5VgWYHcrIE6MITyc3QvLLkW55BQONVLGcECfNqAZsAFn0umSLv5pbLmdgNanOg-kptsim2z5X6W1NOBDFGDRiAEKup6B_oByz5_tTRARZWpGJdnHEih9A4QoD5Fj0cn-l2vnSd-vKUSNKGMLU2vlx5BKIzMwvZBmKaPJnoGzgkXy4szWd-mTR8AKbWNkvYRefWAZGg-EccUjQnoJZ7Z337wqQTWqavkQ1M-sP5jklF-uCxs4JKnLlR8suUM7QNhd-XJ688eBmqD9oYwT9mtNKgFS1y0ubac2pWyMsBF_ud8n-Ix1vmAPxNWxKhaxj-qSvmEc5T5uYllx7WzYXXUsniKPelUvvqnqRogcnTeaU7Plcc1Z_iNY4SXJw-CEP44kuiSyXLoIsqIWoQ0L6wYknNTznQ21CV7GjsuPi5sh5ujgwKPYez82OIBJ2kEjZnYyeRt7MF_Q9AiJ9pbZt8WHy0qhJLGB3BrFRpWLTGEkOU_GX7ryDN3YsCsmBdrDPwvzU92H9SJgMAqoIZYAtM0pT7Qdwop_Mkhy0FBD6yLOjNRRwW-bAbeTwTJ8cdVVrJ-_uIDKOqHQwCNxk3G-hAfl3D0ywbyt7FMB8DxWzNd4axjHEjgpfHeTP5SefWN45uciLBLMedF2weR5WU-L9zWXDjWA2O4iFFiD5Bs8ICtEQXVKPV3ZraKl7BdUIvkxwZevutPKYlNKBCA6jyu30dYUZpltOhjiwqactdlWnHwOG_g7DScRHtztBGhJsSwH4hZE0o10bCqMhDMfz56GH6GKBHOWfB1u7U0OwR9dNa2qf--mVp9k2WoerZj1ynLOx5oGU51fga8h2kwmxJoqoZ0OdwmIGkmm6oZBPkqeNkOofn8T4gGBbf1ujwQXzCU3nYdajp_PWV-weViGIvOncEizcIXj-4HqbbdXcUXBWMRxNkqLfG3Fpn-8nXPpXXcfVEUj2q3DlcLEAghIFNYA-z8JFIhXjJLlCS1TCIK5PUT7jaAX50wMTU5illACycIRRa-nKCNv_esdg6gDeeaAEDhGxcI7GBAclfKGlcvTksd-9IkCcAb2rwx2dXrJkTV7m42gAyptJWze1YEBiD5lvlUeFYTpew1LoqSGWEav9FlB8rUI_Cb8GAS8fBUfkAe5dcrUE4kLIQd-wniTUiAk3rLmhYX5b_ACstwP5yYDpbsebtIjMf0pB2x9hH_1S355QWj2PIZvPw539L4cu1ohE40ewzw06oycN3KCTKx8NORsqHzazkWDkF4SO9UUoPqNhDwsBeuxZJyUYDfO7UNEeKcTN-H-2xW0saFDtToOndgNJqt3Fd_BW8IUQEt22QII9bfm9wHmD-wQouIT44lopVWxRxZnxOALVjUwB0m30wJhP7GNHH7tGIGCom8iZSlgXHAvZjt4ZpkNCU-k=",
+      "summary": []
+    },
+    {
+      "id": "msg_0ed6014bde04d50e016afc4f6bdf6081958ef937be11a8c82e",
+      "type": "message",
+      "status": "completed",
+      "content": [
+        {
+          "type": "output_text",
+          "annotations": [],
+          "logprobs": [],
+          "text": "Paris, Lyon, Marseille"
+        }
+      ],
+      "role": "assistant"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "presence_penalty": 0.0,
+  "previous_response_id": null,
+  "prompt_cache_key": null,
+  "prompt_cache_retention": "in_memory",
+  "reasoning": {
+    "context": "current_turn",
+    "effort": "medium",
+    "mode": "standard",
+    "summary": null
+  },
+  "safety_identifier": null,
+  "service_tier": "default",
+  "store": false,
+  "temperature": 1.0,
+  "text": {
+    "format": {
+      "type": "text"
+    },
+    "verbosity": "medium"
+  },
+  "tool_choice": "auto",
+  "tool_usage": {
+    "image_gen": {
+      "input_tokens": 0,
+      "input_tokens_details": {
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "output_tokens": 0,
+      "output_tokens_details": {
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 0
+    },
+    "web_search": {
+      "num_requests": 0
+    }
+  },
+  "tools": [],
+  "top_logprobs": 0,
+  "top_p": 1.0,
+  "truncation": "disabled",
+  "usage": {
+    "input_tokens": 17,
+    "input_tokens_details": {
+      "cache_write_tokens": 0,
+      "cached_tokens": 0
+    },
+    "output_tokens": 188,
+    "output_tokens_details": {
+      "reasoning_tokens": 128
+    },
+    "total_tokens": 205
+  },
+  "user": null,
+  "metadata": {}
+}

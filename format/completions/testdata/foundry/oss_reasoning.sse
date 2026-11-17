@@ -1,0 +1,20 @@
+data: {"id":"9569860c10ad4967817cec55bf0026c4","object":"chat.completion.chunk","created":1794920336,"model":"gpt-oss-120b","choices":[{"index":0,"delta":{"reasoning_content":null,"role":"assistant","content":""},"logprobs":null,"finish_reason":null,"matched_stop":null}]}
+
+data: {"id":"9569860c10ad4967817cec55bf0026c4","object":"chat.completion.chunk","created":1794920336,"model":"gpt-oss-120b","choices":[{"index":0,"delta":{"reasoning_content":"We"},"logprobs":null,"finish_reason":null,"matched_stop":null}]}
+
+data: {"id":"9569860c10ad4967817cec55bf0026c4","object":"chat.completion.chunk","created":1794920336,"model":"gpt-oss-120b","choices":[{"index":0,"delta":{"reasoning_content":" just output three French"},"logprobs":null,"finish_reason":null,"matched_stop":null}]}
+
+data: {"id":"9569860c10ad4967817cec55bf0026c4","object":"chat.completion.chunk","created":1794920336,"model":"gpt-oss-120b","choices":[{"index":0,"delta":{"reasoning_content":" cities separated"},"logprobs":null,"finish_reason":null,"matched_stop":null}]}
+
+data: {"id":"9569860c10ad4967817cec55bf0026c4","object":"chat.completion.chunk","created":1794920336,"model":"gpt-oss-120b","choices":[{"index":0,"delta":{"reasoning_content":" by commas."},"logprobs":null,"finish_reason":null,"matched_stop":null}]}
+
+data: {"id":"9569860c10ad4967817cec55bf0026c4","object":"chat.completion.chunk","created":1794920336,"model":"gpt-oss-120b","choices":[{"index":0,"delta":{"reasoning_content":null,"content":"Paris"},"logprobs":null,"finish_reason":null,"matched_stop":null}]}
+
+data: {"id":"9569860c10ad4967817cec55bf0026c4","object":"chat.completion.chunk","created":1794920336,"model":"gpt-oss-120b","choices":[{"index":0,"delta":{"reasoning_content":null,"content":", Lyon, Marseille"},"logprobs":null,"finish_reason":null,"matched_stop":null}]}
+
+data: {"id":"9569860c10ad4967817cec55bf0026c4","object":"chat.completion.chunk","created":1794920336,"model":"gpt-oss-120b","choices":[{"index":0,"delta":{"reasoning_content":null},"logprobs":null,"finish_reason":"stop","matched_stop":200002}]}
+
+data: {"id":"9569860c10ad4967817cec55bf0026c4","object":"chat.completion.chunk","created":1794920336,"model":"gpt-oss-120b","choices":[],"usage":{"prompt_tokens":78,"total_tokens":103,"completion_tokens":25,"prompt_tokens_details":null,"reasoning_tokens":14}}
+
+data: [DONE]
+
