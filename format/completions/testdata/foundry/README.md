@@ -64,8 +64,10 @@ chunk, and `routing` and `latency_checkpoint` on the reply and the usage chunk. 
 reasoning text in Chat Completions. gpt-oss-120b's replies are of another server's shape: an id
 of 32 hex digits with no `chatcmpl-` prefix, `matched_stop` on each choice, `reasoning_content`
 null on the chunks that carry none, and the usage's `reasoning_tokens` beside `completion_tokens`
-rather than in `completion_tokens_details`, which the format doesn't read, so its reasoning
-tokens decode as 0. That count can exceed `completion_tokens`, as `oss_length`'s 18 of 16 does.
+rather than in `completion_tokens_details`. The format reads that top-level count when
+`completion_tokens_details` gives none, so the reasoning tokens decode as Foundry reports them:
+17 and 18 unstreamed, 14 and 16 streamed. The count can exceed `completion_tokens`, as
+`oss_length`'s 18 of 16 does, and is taken as given.
 
 ## What /models lists
 

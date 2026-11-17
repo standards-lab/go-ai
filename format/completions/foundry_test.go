@@ -67,12 +67,14 @@ func TestDecodeFoundry(t *testing.T) {
 					message("6fa1f6f05ae2411c932c26011d5474a7/1", "Paris, Lyon, Marseille"),
 				},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 78, OutputTokens: 28, TotalTokens: 106},
+				Usage: protocol.Usage{InputTokens: 78, OutputTokens: 28, TotalTokens: 106,
+					OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 17}},
 			},
 		},
 		{
 			// Stopped at max_completion_tokens 16 in the reasoning: the content is empty, which
-			// gives no message, and the reasoning is incomplete.
+			// gives no message, and the reasoning is incomplete. The usage's top-level
+			// reasoning_tokens, 18, exceeds its completion_tokens, 16, and is taken as given.
 			file: "oss_length.json",
 			want: &protocol.Response{
 				Output: []protocol.Item{
@@ -80,7 +82,8 @@ func TestDecodeFoundry(t *testing.T) {
 				},
 				Status:            protocol.StatusIncomplete,
 				IncompleteDetails: &protocol.IncompleteDetails{Reason: protocol.ReasonMaxOutputTokens},
-				Usage:             protocol.Usage{InputTokens: 78, OutputTokens: 16, TotalTokens: 94},
+				Usage: protocol.Usage{InputTokens: 78, OutputTokens: 16, TotalTokens: 94,
+					OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 18}},
 			},
 		},
 	}
@@ -121,12 +124,12 @@ func TestStreamFoundry(t *testing.T) {
 		{
 			name:      "oss_reasoning",
 			reasoning: foundryCitiesStreamReasoning,
-			usage:     protocol.Usage{InputTokens: 78, OutputTokens: 25, TotalTokens: 103},
+			usage:     protocol.Usage{InputTokens: 78, OutputTokens: 25, TotalTokens: 103, OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 14}},
 		},
 		{
 			name:      "oss_length",
 			reasoning: foundryLengthReasoning,
-			usage:     protocol.Usage{InputTokens: 78, OutputTokens: 16, TotalTokens: 94},
+			usage:     protocol.Usage{InputTokens: 78, OutputTokens: 16, TotalTokens: 94, OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 16}},
 		},
 	}
 	for _, tc := range cases {

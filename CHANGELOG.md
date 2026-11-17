@@ -9,7 +9,8 @@ only; `tools/infer` keeps its own.
 
 ## [v0.1.1] - 2026-11-17
 
-This release fixes two stream decoders that rejected Azure AI Foundry's streams.
+This release fixes two stream decoders that rejected Azure AI Foundry's streams, and reads the
+reasoning tokens Foundry's gpt-oss-120b reports.
 
 ### Fixed
 
@@ -21,6 +22,10 @@ This release fixes two stream decoders that rejected Azure AI Foundry's streams.
   allows to be incomplete while the item is in progress. The `OutputItemAdded` event carries no
   encrypted content; the `OutputItemDone` event's item holds `output_item.done`'s in the envelope,
   and the folded Response the terminal response's, as before.
+- `format/completions` reads a usage's `reasoning_tokens` at its top level, beside
+  `completion_tokens`, as gpt-oss-120b on Azure AI Foundry gives them, when
+  `completion_tokens_details` gives none, unstreamed and streamed; a count under
+  `completion_tokens_details` still wins. Such a reply's reasoning tokens had decoded as 0.
 
 ### Changed
 

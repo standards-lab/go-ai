@@ -34,7 +34,9 @@ import (
 // the spec has only the last item incomplete; a reasoning item takes its status like any other,
 // so a reply of reasoning alone stopped at length is an incomplete reasoning item. Any other
 // finish_reason, or a body with no choices, is an error. The reply's usage gives the response's:
-// prompt_tokens, completion_tokens, total_tokens, and completion_tokens_details.reasoning_tokens.
+// prompt_tokens, completion_tokens, total_tokens, and the reasoning tokens, from
+// completion_tokens_details.reasoning_tokens or, when that is absent, the usage's top-level
+// reasoning_tokens.
 func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 	var wire response
 	if err := json.Unmarshal(body, &wire); err != nil {
@@ -138,14 +140,25 @@ func itemID(reply string, output int) string {
 	return reply + "/" + strconv.Itoa(output)
 }
 
-// decodeUsage returns a reply's usage as the protocol's.
+// decodeUsage returns a reply's usage as the protocol's. Its reasoning tokens are
+// completion_tokens_details.reasoning_tokens when the usage gives that member, even as 0, and
+// otherwise the usage's top-level reasoning_tokens, or 0 when it gives neither. A count is taken
+// as given, never clamped, though a server's may exceed completion_tokens.
 func decodeUsage(u usage) protocol.Usage {
+	reasoning := u.CompletionTokensDetails.ReasoningTokens
+	if reasoning == nil {
+		reasoning = u.ReasoningTokens
+	}
+	var reasoningTokens int
+	if reasoning != nil {
+		reasoningTokens = *reasoning
+	}
 	return protocol.Usage{
 		InputTokens:  u.PromptTokens,
 		OutputTokens: u.CompletionTokens,
 		TotalTokens:  u.TotalTokens,
 		OutputTokensDetails: protocol.OutputTokensDetails{
-			ReasoningTokens: u.CompletionTokensDetails.ReasoningTokens,
+			ReasoningTokens: reasoningTokens,
 		},
 	}
 }

@@ -28,7 +28,9 @@
 // output item's id derives from the reply's id and its place in the output, alike streamed and
 // unstreamed; the reasoning, which llama.cpp sends as reasoning_content and vLLM as reasoning,
 // becomes a reasoning item ahead of the message, read from either name; and the
-// finish_reason gives the status, only the last item taking an incomplete one. A stream's tool
+// finish_reason gives the status, only the last item taking an incomplete one; the usage's
+// reasoning tokens are read from completion_tokens_details or, when a server gives them at the
+// usage's top level instead, from there. A stream's tool
 // call fragments, which may interleave, are assembled by index; a chunk carrying no id and no
 // choices, as some endpoints send ahead of the reply, claims nothing about it, and neither sets
 // nor checks the stream's id; and an error frame ends the stream with the error event and
