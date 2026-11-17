@@ -312,9 +312,10 @@ func (d *streamDecoder) addItem(e streamEvent) error {
 		added = protocol.Message{ID: w.ID, Status: protocol.StatusInProgress, Role: protocol.Role(w.Role)}
 	case "reasoning":
 		// Its encrypted_content may be given, and incomplete, while it is in progress, the
-		// spec says; the added event holds none, and the item's output_item.done gives the
-		// whole of it, which the envelope holds.
-		if len(w.Content) > 0 || len(w.Summary) > 0 {
+		// spec says, and so may its summary, an in-progress item echoed with as much detail as
+		// is available; the added event holds neither, and the item's output_item.done gives
+		// the whole of each, its encrypted_content going into the envelope.
+		if len(w.Content) > 0 {
 			return fmt.Errorf("reasoning item %q is added with content", w.ID)
 		}
 		added = protocol.Reasoning{ID: w.ID, Status: protocol.StatusInProgress}

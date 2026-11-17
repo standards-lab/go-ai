@@ -752,6 +752,27 @@ func TestStreamReasoningAddedEncrypted(t *testing.T) {
 	assertDoneItems(t, r.events, want)
 }
 
+// TestStreamReasoningAddedSummary covers a reasoning item added with a summary, an in-progress
+// item echoed with as much detail as is available: the item is added with no summary, and its
+// output_item.done gives the summary.
+func TestStreamReasoningAddedSummary(t *testing.T) {
+	rsSummed := `{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"Tool."}],"content":[]}`
+	body := stream(created, added(rsSummed), itemDone(rsSummed),
+		terminal("response.completed", "completed", usageJSON, rsSummed))
+	r := decodeStream(t, body)
+	if r.err != nil {
+		t.Fatalf("stream error: %v", r.err)
+	}
+	assertTrace(t, r.events, `
+		0 response.created in_progress
+		1 response.output_item.added 0 protocol.Reasoning{ID:"rs_1", Status:"in_progress", Content:[]protocol.ReasoningText(nil), Summary:[]protocol.SummaryText(nil), EncryptedContent:""}
+		2 response.output_item.done 0 protocol.Reasoning{ID:"rs_1", Status:"completed", Content:[]protocol.ReasoningText(nil), Summary:[]protocol.SummaryText{protocol.SummaryText{Text:"Tool."}}, EncryptedContent:"`+seal(t, "")+`"}
+		3 response.completed 1 items`)
+	want := terminalResponse(t, body)
+	aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
+	assertDoneItems(t, r.events, want)
+}
+
 func TestStreamRefusesEvent(t *testing.T) {
 	msg := []string{created, added(msgAdded)}
 	part := event("response.content_part.added", `"item_id":"msg_1","part":{"type":"output_text","text":""}`)
@@ -776,7 +797,6 @@ func TestStreamRefusesEvent(t *testing.T) {
 		{"a message added with content", []string{created, added(msgDone)}, `message "msg_1" is added with content`},
 		{"a reasoning item added with content", []string{created, added(rsDone)}, `reasoning item "rs_1" is added with content`},
 		{"a reasoning item added with content and encrypted_content", []string{created, added(`{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"reasoning_text","text":"Need"}],"encrypted_content":"part"}`)}, `reasoning item "rs_1" is added with content`},
-		{"a reasoning item added with a summary", []string{created, added(`{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"Tool."}],"content":[]}`)}, `reasoning item "rs_1" is added with content`},
 		{"a call added with arguments", []string{created, added(fcDone)}, `function call "fc_1" is added with arguments`},
 		{"a delta of an item never added", []string{created, delta("response.output_text.delta", "msg_9", "Hi")}, `item "msg_9" wasn't added`},
 		{"a delta at an index never added", []string{created, event("response.output_text.delta", `"output_index":3,"item_id":"msg_1","content_index":0,"delta":"Hi"`)}, "output 3 wasn't added"},
