@@ -191,8 +191,9 @@ type chatFlags struct {
 // unique members or that sets a member a typed flag sets, or, through
 // messages, no --max-tokens at all. It names the flag to change ahead of
 // go-ai's reason, as [refusedRequest] finds it, as in "--max-tokens:
-// responses: request's max output tokens 15 is below the minimum, 16". The
-// model isn't resolved yet when the request is checked, so an unset one is
+// responses: request's max output tokens 15 is below the minimum, 16", and,
+// for a refusal the deployment's profile declares, the setting that
+// declared it after the reason. The model isn't resolved yet when the request is checked, so an unset one is
 // checked as a stand-in name.
 //
 // A reply that isn't completed keeps the text already written, and its
@@ -264,7 +265,7 @@ func chat(ctx context.Context, inv *cli.Invocation, n *Nodes, f *chatFlags) erro
 	if err := out.end(); err != nil {
 		return err
 	}
-	if err := writeSummary(inv.Stderr, resp, reportsReasoningTokens(formatName)); err != nil {
+	if err := writeSummary(inv.Stderr, resp); err != nil {
 		return err
 	}
 	return replyError(resp)
@@ -371,24 +372,34 @@ func checkRequest(req *protocol.Request, wireFormat format.Format, stream bool) 
 // field it is about, as in "--max-tokens: ", or alone when it is
 // attributed to none.
 //
-// go-ai's errors carry no field, so the refusal is attributed as
-// [settingsRefusal] attributes ai.New's, by checking the request again:
-// once for each flag that set a field go-ai checks, with that field alone
-// put back to a value go-ai accepts in every format, [anyFormatMaxTokens],
-// no effort, or no native object. The flag is the refusal's when
-// that request alone is accepted, and so is the only cause. When none is,
-// as with two flags each refused, the flag is the one whose request alone
-// is refused for another reason, its field the one err is about, as a
-// --native that isn't an object is through messages with no --max-tokens,
-// where the request without it is refused for having no max output tokens.
-// The errors are compared whole, not read. Two flags refused only together,
-// each request accepted, or a refusal no request changes, or that more
-// than one does, name none. Clearing a field, rather than setting one on a
-// request of none, keeps the probes free of what to start from: messages
-// refuses a request with no max output tokens, so there is no request of no
-// fields every format accepts. A max-tokens refusal with no --max-tokens
-// given is messages', which requires one, and names the format: "--format
-// messages needs --max-tokens: ".
+// A format's refusal is a *format.UnsupportedError, whose Feature names the
+// request feature refused, so the flag is the one that sets that feature,
+// as [featureFlag] reads it, with no further check. When the refusal is
+// Declared, of a gap the deployment's profile declares rather than one the
+// format's spec has, the error names the setting that declared it too,
+// after err: "; declared by --profile (INFER_PROFILE)", as the request flag
+// is the one to change for this deployment and the profile is why it is
+// refused. A max-tokens refusal with no --max-tokens given is messages',
+// which requires one, and names the format: "--format messages needs
+// --max-tokens: ".
+//
+// Any other refusal, protocol.Request's Validate's or a Feature no flag
+// sets, carries no field, so it is attributed as [settingsRefusal]
+// attributes ai.New's, by checking the request again: once for each flag
+// that set a field go-ai checks, with that field alone put back to a value
+// go-ai accepts in every format, [anyFormatMaxTokens], no effort, or no
+// native object. The flag is the refusal's when that request alone is
+// accepted, and so is the only cause. When none is, as with two flags each
+// refused, the flag is the one whose request alone is refused for another
+// reason, its field the one err is about, as a --native that isn't an
+// object is through messages with no --max-tokens, where the request
+// without it is refused for having no max output tokens. The errors are
+// compared whole, not read. Two flags refused only together, each request
+// accepted, or a refusal no request changes, or that more than one does,
+// name none. Clearing a field, rather than setting one on a request of
+// none, keeps the probes free of what to start from: messages refuses a
+// request with no max output tokens, so there is no request of no fields
+// every format accepts.
 //
 // --instructions and --image are not attributed: go-ai refuses neither
 // as chat sets them, the instructions any text and each image an http(s)
@@ -398,6 +409,14 @@ func refusedRequest(req *protocol.Request, wireFormat format.Format, formatName 
 	if req.MaxOutputTokens == 0 {
 		// Only messages refuses a request with no max output tokens.
 		maxTokens = fmt.Sprintf("--format %s needs --max-tokens", formatName)
+	}
+	if u, ok := errors.AsType[*format.UnsupportedError](err); ok {
+		if flag := featureFlag(u.Feature, maxTokens); flag != "" {
+			if u.Declared {
+				return cli.Usagef("%s: %w; declared by %s", flag, err, flagAndVar("profile"))
+			}
+			return cli.Usagef("%s: %w", flag, err)
+		}
 	}
 	probes := []struct {
 		flag  string
@@ -426,6 +445,25 @@ func refusedRequest(req *protocol.Request, wireFormat format.Format, formatName 
 		return cli.Usagef("%w", err)
 	}
 	return cli.Usagef("%s: %w", flags[0], err)
+}
+
+// featureFlag returns the chat flag that sets the request feature a
+// *format.UnsupportedError's Feature names, maxTokens standing for
+// --max-tokens as [refusedRequest] words it, or empty for a feature no chat
+// flag sets, such as a tool choice. The Features are the ones go-ai's
+// formats refuse a request of chat's fields for: an effort, a max output
+// tokens, and a native member, which --native sets, a typed member it
+// clashes with included.
+func featureFlag(feature, maxTokens string) string {
+	switch feature {
+	case "reasoning effort":
+		return "--reasoning"
+	case "max output tokens":
+		return maxTokens
+	case "native member":
+		return "--native"
+	}
+	return ""
 }
 
 // streamReply sends req through client as a stream, writing each output
@@ -508,12 +546,15 @@ func (o *textOut) end() error {
 //	usage: 78 input tokens, 38 output tokens (27 reasoning), 116 total tokens
 //	reasoning items: 1
 //
-// The reasoning tokens are as the endpoint reports them. When reasoning is
-// false, the format's usage has no reasoning count, as messages' has none,
-// so the summary says so, "(reasoning not reported)", rather than show a
-// zero go-ai can't tell from none. The item count is the output's own, so
-// it shows a reply with no reasoning whatever the endpoint reports.
-func writeSummary(w io.Writer, resp *protocol.Response, reasoning bool) error {
+// The summary reads the reply alone, whatever its format. The reasoning
+// tokens are shown when the usage reports some. When it reports none but
+// the output holds a reasoning item, the summary says "(reasoning not
+// reported)", as the model did reason and a zero is go-ai's decoding of a
+// count the endpoint left out, as messages' thinking_tokens may be. With
+// neither, the reply shows no reasoning, and the summary shows no count.
+// The item count is the output's own, so it shows a reply with no
+// reasoning whatever the endpoint reports.
+func writeSummary(w io.Writer, resp *protocol.Response) error {
 	items := 0
 	for _, it := range resp.Output {
 		if _, ok := it.(protocol.Reasoning); ok {
@@ -521,11 +562,14 @@ func writeSummary(w io.Writer, resp *protocol.Response, reasoning bool) error {
 		}
 	}
 	u := resp.Usage
-	ofOutput := "reasoning not reported"
-	if reasoning {
-		ofOutput = fmt.Sprintf("%d reasoning", u.OutputTokensDetails.ReasoningTokens)
+	var ofOutput string
+	switch n := u.OutputTokensDetails.ReasoningTokens; {
+	case n > 0:
+		ofOutput = fmt.Sprintf(" (%d reasoning)", n)
+	case items > 0:
+		ofOutput = " (reasoning not reported)"
 	}
-	_, err := fmt.Fprintf(w, "status: %s\nusage: %d input tokens, %d output tokens (%s), %d total tokens\nreasoning items: %d\n",
+	_, err := fmt.Fprintf(w, "status: %s\nusage: %d input tokens, %d output tokens%s, %d total tokens\nreasoning items: %d\n",
 		resp.Status, u.InputTokens, u.OutputTokens, ofOutput, u.TotalTokens, items)
 	return err
 }

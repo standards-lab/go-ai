@@ -73,14 +73,18 @@
 // the one whose value the reason is about when two are refused, as in
 // "--max-tokens: responses: request's max output tokens 15 is below the
 // minimum, 16", which only responses refuses, or "--format messages needs
-// --max-tokens: " ahead of messages' refusal of none. It streams by default, writing each text
-// delta as it arrives; --stream=false sends one unstreamed request. Either way it
-// ends the text with a newline and writes the reply's status, token usage,
-// and reasoning item count to stderr, the reasoning tokens as part of the
-// output, as in "usage: 78 input tokens, 38 output tokens (27 reasoning),
-// 116 total tokens", or "(reasoning not reported)" through messages, whose
-// usage has no reasoning count; a reply that isn't completed exits 1
-// naming its status and reason, as in "incomplete: max_output_tokens".
+// --max-tokens: " ahead of messages' refusal of none. A refusal the
+// deployment's profile declares, such as of an effort, also names the
+// setting that declared it, ending "; declared by --profile
+// (INFER_PROFILE)". It streams by default, writing each text delta as it
+// arrives; --stream=false sends one unstreamed request. Either way it ends
+// the text with a newline and writes the reply's status, token usage, and
+// reasoning item count to stderr, the reasoning tokens as part of the
+// output when the reply reports some, as in "usage: 78 input tokens, 38
+// output tokens (27 reasoning), 116 total tokens", or "(reasoning not
+// reported)" when it reports none but holds a reasoning item; a reply that
+// isn't completed exits 1 naming its status and reason, as in "incomplete:
+// max_output_tokens".
 // chat's --idle-timeout, set from INFER_IDLE_TIMEOUT, ends a stream that
 // sends nothing for that long, exit 1; it reaches only the chat client, so
 // no other command reads it, and a negative or unparsable one is a usage

@@ -331,8 +331,9 @@ func TestChat_ImageRefusals(t *testing.T) {
 // A request go-ai refuses is a usage error, exit 2, before any request,
 // the model listing included: go-ai's reason, by its Validate or by the
 // format's encoding, after the flag whose field the reason is about, when
-// two are refused as when one is. Two refused only together are go-ai's
-// reason alone.
+// two are refused as when one is. A format's refusal names the flag of its
+// Feature, so a native member clashing with --reasoning's names --native;
+// a spec's refusal carries no profile suffix.
 func TestChat_RefusedRequests(t *testing.T) {
 	const (
 		nativeObject = "protocol: request's native field isn't a JSON object with unique member names"
@@ -356,7 +357,9 @@ func TestChat_RefusedRequests(t *testing.T) {
 		{"native clashing unstreamed", "", []string{"--stream=false", "--max-tokens", "20", "--native", `{"max_completion_tokens":5}`}, "--native: completions: native member max_completion_tokens clashes with a member the request sets"},
 		{"messages without max tokens", "messages", nil, "--format messages needs --max-tokens: " + noMaxTokens},
 		{"two flags refused", "responses", []string{"--max-tokens", "5", "--native", `[1]`}, "--native: " + nativeObject},
-		{"two flags refused together", "", []string{"--reasoning", "low", "--native", `{"reasoning_effort":"low"}`}, "completions: native member reasoning_effort clashes with a member the request sets"},
+		{"native clashing with --reasoning", "", []string{"--reasoning", "low", "--native", `{"reasoning_effort":"low"}`}, "--native: completions: native member reasoning_effort clashes with a member the request sets"},
+		{"responses max tokens 5 with an effort", "responses", []string{"--reasoning", "low", "--max-tokens", "5"}, "--max-tokens: responses: request's max output tokens 5 is below the minimum, 16"},
+		{"spec effort through messages", "messages", []string{"--max-tokens", "64", "--reasoning", "minimal"}, "--reasoning: messages: reasoning effort minimal has no Messages form"},
 		{"native clash through messages without max tokens", "messages", []string{"--native", `{"stream":false}`}, "--format messages needs --max-tokens: " + noMaxTokens},
 		{"array native through messages without max tokens", "messages", []string{"--native", `[1]`}, "--native: " + nativeObject},
 		{"effort and native refused", "", []string{"--reasoning", "extreme", "--native", `[1]`}, `--reasoning: protocol: request has unknown reasoning effort "extreme"`},
@@ -373,6 +376,56 @@ func TestChat_RefusedRequests(t *testing.T) {
 			wantCode(t, r, process.ExitUsage)
 			if first, _, _ := strings.Cut(r.stderr, "\n"); first != "infer chat: "+tc.want || strings.Count(r.stderr, "infer chat: ") != 1 {
 				t.Errorf("stderr = %q, want one error, %q", r.stderr, "infer chat: "+tc.want)
+			}
+			if r.stdout != "" {
+				t.Errorf("stdout = %q, want empty", r.stdout)
+			}
+			wantNoRequest(t, e)
+		})
+	}
+}
+
+// refusesNone is a profile whose responses member refuses the effort none.
+const refusesNone = `{"responses":{"refused_efforts":["none"]}}`
+
+// declaredSuffix ends a refusal the deployment's profile declares, naming
+// the setting that declared it after the format's reason.
+const declaredSuffix = "; declared by --profile (INFER_PROFILE)"
+
+// An effort the profile refuses is a usage error, exit 2, before any
+// request: the format's reason after --reasoning, the flag to change, and
+// then the setting that declared the refusal, through each format and
+// from the flag or the variable alike.
+func TestChat_DeclaredRefusals(t *testing.T) {
+	const declares = "is refused by the deployment, as its profile declares"
+	for _, tc := range []struct {
+		name    string
+		format  string // the format setting; completions when empty
+		profile string // INFER_PROFILE; unset when empty
+		args    []string
+		want    string // the error's line, after "infer chat: "
+	}{
+		{"responses, from the flag", "responses", "", []string{"--profile", refusesNone, "--reasoning", "none"}, "--reasoning: responses: reasoning effort none " + declares},
+		{"responses, from the variable", "responses", refusesNone, []string{"--reasoning", "none"}, "--reasoning: responses: reasoning effort none " + declares},
+		{"completions", "", `{"completions":{"refused_efforts":["low"]}}`, []string{"--reasoning", "low"}, "--reasoning: completions: reasoning effort low " + declares},
+		{"messages", "messages", `{"messages":{"refused_efforts":["high"]}}`, []string{"--reasoning", "high", "--max-tokens", "64"}, "--reasoning: messages: reasoning effort high " + declares},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := completedStream(t, "agent")
+			env := map[string]string{"INFER_BASE_URL": e.URL}
+			if tc.format != "" {
+				env["INFER_FORMAT"] = tc.format
+			}
+			if tc.profile != "" {
+				env["INFER_PROFILE"] = tc.profile
+			}
+
+			r := runApp(t, env, append(append([]string{"chat"}, tc.args...), "hello")...)
+
+			wantCode(t, r, process.ExitUsage)
+			want := "infer chat: " + tc.want + declaredSuffix
+			if first, _, _ := strings.Cut(r.stderr, "\n"); first != want || strings.Count(r.stderr, "infer chat: ") != 1 {
+				t.Errorf("stderr = %q, want one error, %q", r.stderr, want)
 			}
 			if r.stdout != "" {
 				t.Errorf("stdout = %q, want empty", r.stdout)
@@ -709,8 +762,8 @@ func TestChat_Help(t *testing.T) {
 
 // Through messages, --max-tokens and --reasoning reach the wire as
 // max_tokens and thinking with output_config.effort, and the stream's text
-// deltas are written in order. Messages' usage has no reasoning count, so
-// the summary says the reasoning tokens are not reported, not zero.
+// deltas are written in order. The reply reports no thinking tokens and
+// holds no thinking block, so the summary shows no reasoning count.
 func TestChat_Messages(t *testing.T) {
 	frames := []string{
 		`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"usage":{"input_tokens":31,"output_tokens":0}}}`,
@@ -737,23 +790,73 @@ func TestChat_Messages(t *testing.T) {
 	if body["max_tokens"] != 32.0 || thinking["type"] != "adaptive" || config["effort"] != "low" || body["system"] != "Be brief." || body["stream"] != true {
 		t.Errorf("body = %v, want max_tokens 32, adaptive thinking of effort low, the system prompt, and stream", body)
 	}
-	if want := "status: completed\nusage: 31 input tokens, 8 output tokens (reasoning not reported), 39 total tokens\nreasoning items: 0\n"; r.stderr != want {
+	if want := "status: completed\nusage: 31 input tokens, 8 output tokens, 39 total tokens\nreasoning items: 0\n"; r.stderr != want {
 		t.Errorf("stderr = %q, want %q", r.stderr, want)
 	}
 }
 
-// Through completions, a reply whose usage reports no reasoning tokens
-// shows zero of them: the summary decides "not reported" by the format,
-// not by the count.
-func TestChat_ZeroReasoningReported(t *testing.T) {
-	reply := `{"id":"chatcmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"Paris"},"finish_reason":"stop"}],"usage":` + usageJSON(0) + `}`
-	e := chatEndpoint(t, nil, completionsRoute, apptest.Reply(completionsRoute, reply))
+// The summary reads the reply alone, in every format: reasoning tokens
+// reported are shown; none reported, with a reasoning item in the output,
+// are "not reported", as the model reasoned; none, with no reasoning item,
+// show no count at all.
+func TestChat_ReasoningSummary(t *testing.T) {
+	completions := func(reasoning string, tokens int) string {
+		message := `{"role":"assistant","content":"Paris"}`
+		if reasoning != "" {
+			message = `{"role":"assistant","content":"Paris","reasoning_content":"` + reasoning + `"}`
+		}
+		return `{"id":"chatcmpl-1","object":"chat.completion","choices":[{"index":0,"message":` + message + `,"finish_reason":"stop"}],"usage":` + usageJSON(tokens) + `}`
+	}
+	messages := func(thinking bool, tokens string) string {
+		content := `{"type":"text","text":"Paris"}`
+		if thinking {
+			content = `{"type":"thinking","thinking":"Think.","signature":"sig"},` + content
+		}
+		return `{"id":"msg_1","type":"message","role":"assistant","model":"agent","content":[` + content + `],"stop_reason":"end_turn","stop_sequence":null,` +
+			`"usage":{"input_tokens":78,"output_tokens":25` + tokens + `}}`
+	}
+	responses := func(reasoning bool, tokens int) string {
+		output := `{"id":"msg_1","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","annotations":[],"text":"Paris"}]}`
+		if reasoning {
+			output = `{"id":"rs_1","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"Think."}],"encrypted_content":"","status":"completed"},` + output
+		}
+		return `{"id":"resp_1","object":"response","status":"completed","output":[` + output + `],` +
+			fmt.Sprintf(`"usage":{"input_tokens":78,"output_tokens":25,"total_tokens":103,"output_tokens_details":{"reasoning_tokens":%d}}}`, tokens)
+	}
+	const (
+		reported    = "usage: 78 input tokens, 25 output tokens (12 reasoning), 103 total tokens\nreasoning items: 1\n"
+		notReported = "usage: 78 input tokens, 25 output tokens (reasoning not reported), 103 total tokens\nreasoning items: 1\n"
+		none        = "usage: 78 input tokens, 25 output tokens, 103 total tokens\nreasoning items: 0\n"
+	)
+	for _, tc := range []struct {
+		name   string
+		format string
+		route  string
+		reply  string
+		want   string // the summary, after its status line
+	}{
+		{"completions reported", "completions", completionsRoute, completions("Think.", 12), reported},
+		{"completions zero with a reasoning item", "completions", completionsRoute, completions("Think.", 0), notReported},
+		{"completions zero without one", "completions", completionsRoute, completions("", 0), none},
+		{"messages reported", "messages", "messages", messages(true, `,"output_tokens_details":{"thinking_tokens":12}`), reported},
+		{"messages unreported with a thinking block", "messages", "messages", messages(true, ""), notReported},
+		{"messages zero without one", "messages", "messages", messages(false, `,"output_tokens_details":{"thinking_tokens":0}`), none},
+		{"responses reported", "responses", "responses", responses(true, 12), reported},
+		{"responses zero with a reasoning item", "responses", "responses", responses(true, 0), notReported},
+		{"responses zero without one", "responses", "responses", responses(false, 0), none},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := chatEndpoint(t, nil, tc.route, apptest.Reply(tc.route, tc.reply))
+			env := agent(e)
+			env["INFER_FORMAT"] = tc.format
 
-	r := runApp(t, agent(e), "chat", "--stream=false", "capital?")
+			r := runApp(t, env, "chat", "--stream=false", "--max-tokens", "64", "capital?")
 
-	wantCode(t, r, process.ExitOK)
-	if want := "status: completed\nusage: 78 input tokens, 25 output tokens (0 reasoning), 103 total tokens\nreasoning items: 0\n"; r.stderr != want {
-		t.Errorf("stderr = %q, want %q", r.stderr, want)
+			wantCode(t, r, process.ExitOK)
+			if want := "status: completed\n" + tc.want; r.stderr != want {
+				t.Errorf("stderr = %q, want %q", r.stderr, want)
+			}
+		})
 	}
 }
 

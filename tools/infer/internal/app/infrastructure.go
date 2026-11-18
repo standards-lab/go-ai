@@ -312,15 +312,6 @@ func writeEnvironment(w io.Writer) {
 		config.EnvName(envPrefix, "token"), headerVariable)
 }
 
-// reportsReasoningTokens reports whether replies in the format the format
-// setting name names count their reasoning tokens. messages' usage counts
-// them only as thinking_tokens, which an endpoint may leave out, and go-ai
-// decodes its absence as zero, so a zero there is "not reported", not
-// "none".
-func reportsReasoningTokens(name string) bool {
-	return name != "messages"
-}
-
 // refusesAudio reports whether err is a format's refusal of an audio part,
 // as a chat-mode transcription sends: a *format.UnsupportedError of the
 // feature "content part" and the value protocol.InputAudio, as messages,
