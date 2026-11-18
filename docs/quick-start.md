@@ -27,7 +27,7 @@ the model the program uses, and the [features](features.md) document states each
 ```sh
 mkdir ask && cd ask
 go mod init example.com/ask
-go get github.com/standards-lab/go-ai@v0.1.0
+go get github.com/standards-lab/go-ai@v0.3.0
 ```
 
 Name the endpoint by its API root, `/v1` included:

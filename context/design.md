@@ -290,7 +290,9 @@ of layers' surface to go-ai's.
     the route does: a reply that isn't completed is an `*IncompleteTranscriptError`.
 38. **The client has no `/models` listing, and builds only POSTs** (`client.go`, `request`). Against
     ai-strategy, "Repositories and placement" (the client gains a `/models` listing). **changed**:
-    the listing is added, as a GET through the same token and retry path.
+    the listing is added, as a GET through the same token and retry path. Each listed `Model`
+    keeps its entry as the endpoint sent it in `Native` (acceptance task), so a caller reads
+    provider members such as vLLM's `root`.
 
 ### Tests
 
@@ -607,8 +609,11 @@ type IncompleteTranscriptError struct {
     Reason protocol.IncompleteReason // empty when the reply gave none
 }
 
-// Model is one entry of the endpoint's model list.
-type Model struct{ ID string }
+// Model is one entry of the endpoint's model list: its id, and the entry as the endpoint sent it.
+type Model struct {
+    ID     string
+    Native jsontext.Value
+}
 // Models GETs the OpenAI-compatible models route whatever the format, through the retry loop.
 func (c *Client) Models(ctx context.Context) ([]Model, error)
 ```

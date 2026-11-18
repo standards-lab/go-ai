@@ -18,7 +18,7 @@ of a go-ai checkout.
 ## 1. Install
 
 ```sh
-go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.2.0
+go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.3.0
 ```
 
 `infer` alone prints its help. This part shows the commands and the two settings that have no
@@ -76,9 +76,9 @@ $ infer models
 agent	openai/gpt-oss-120b
 ```
 
-Each line is a model ID, the one `--model` takes. Where the endpoint's listing gives the model an
-alias's root, as vLLM does for a `--served-model-name`, a tab and that root follow the ID; an
-endpoint that lists IDs alone gets the ID alone.
+Each line starts with a model ID, the name `--model` takes. When the listing entry has a `root`,
+as vLLM gives a model served under `--served-model-name`, a tab and that root follow the ID; an
+entry without one prints the ID alone.
 
 ## 4. Chat
 
