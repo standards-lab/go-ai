@@ -195,7 +195,8 @@ func effortRequest(e protocol.ReasoningEffort) *protocol.Request {
 }
 
 // A request the profile declares a gap of skips, streamed or not, naming the variable, the
-// format, and the gap; one the spec refuses, Declared false, and one the format sends, don't.
+// format, and the gap; one the spec refuses, Declared false, is returned as it came, and one the
+// format sends is encoded, neither skipping.
 func TestSkipDeclared(t *testing.T) {
 	refusesNone := responses.New(responses.Options{RefusedEfforts: []protocol.ReasoningEffort{protocol.ReasoningEffortNone}})
 	for _, tc := range []struct {
@@ -203,10 +204,13 @@ func TestSkipDeclared(t *testing.T) {
 		effort protocol.ReasoningEffort
 		// skip is what the skip's text holds, or empty for no skip.
 		skip []string
+		// specRefusal is whether the request comes back as the spec's refusal; else it is
+		// encoded. It is read only when skip is empty.
+		specRefusal bool
 	}{
-		{"declared", protocol.ReasoningEffortNone, []string{"AI_AGENT_PROFILE", "the responses format", `"reasoning effort none"`}},
-		{"the spec's", protocol.ReasoningEffortMinimal, nil},
-		{"sent", protocol.ReasoningEffortLow, nil},
+		{"declared", protocol.ReasoningEffortNone, []string{"AI_AGENT_PROFILE", "the responses format", `"reasoning effort none"`}, false},
+		{"the spec's", protocol.ReasoningEffortMinimal, nil, true},
+		{"sent", protocol.ReasoningEffortLow, nil, false},
 	} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%t", tc.name, stream), func(t *testing.T) {
@@ -219,23 +223,23 @@ func TestSkipDeclared(t *testing.T) {
 
 				_, err := encode(effortRequest(tc.effort), make(http.Header))
 
-				if tc.skip == nil {
-					if rec.skipped != "" {
-						t.Errorf("skipped %q, want no skip", rec.skipped)
-					}
-					u, ok := errors.AsType[*format.UnsupportedError](err)
-					switch {
-					case tc.effort == protocol.ReasoningEffortMinimal && (!ok || u.Declared):
-						t.Errorf("err = %v, want the spec's refusal returned", err)
-					case tc.effort == protocol.ReasoningEffortLow && err != nil:
-						t.Errorf("err = %v, want the request encoded", err)
+				if tc.skip != nil {
+					for _, want := range tc.skip {
+						if !strings.Contains(rec.skipped, want) {
+							t.Errorf("skipped %q, want it to name %s", rec.skipped, want)
+						}
 					}
 					return
 				}
-				for _, want := range tc.skip {
-					if !strings.Contains(rec.skipped, want) {
-						t.Errorf("skipped %q, want it to name %s", rec.skipped, want)
+				if rec.skipped != "" {
+					t.Errorf("skipped %q, want no skip", rec.skipped)
+				}
+				if tc.specRefusal {
+					if u, ok := errors.AsType[*format.UnsupportedError](err); !ok || u.Declared {
+						t.Errorf("err = %v, want the spec's refusal returned", err)
 					}
+				} else if err != nil {
+					t.Errorf("err = %v, want the request encoded", err)
 				}
 			})
 		}

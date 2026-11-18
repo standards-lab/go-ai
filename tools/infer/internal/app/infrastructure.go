@@ -10,7 +10,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -37,10 +36,6 @@ const envPrefix = "INFER"
 // --format is given.
 const defaultFormat = "completions"
 
-// formatNames holds each format setting, the name of a go-ai format
-// package; [buildFormat] builds the format each names.
-var formatNames = []string{"completions", "messages", "responses"}
-
 // formatOptions holds the Options each format is built with, the profile
 // of the deployment it speaks to; its zero value is each format's spec. It
 // is what --profile and INFER_PROFILE hold, a JSON object keyed by format
@@ -52,21 +47,15 @@ type formatOptions struct {
 	Responses   responses.Options   `json:"responses,omitzero,case:strict"`
 }
 
-// buildFormat returns the format name names, one of formatNames, built
-// with its Options from opts. This file is the one that names a format
-// package, and this the one function that builds a format; the rest of the
-// program sees only the format.Format the format node holds and the name
-// the format name node holds.
-func buildFormat(name string, opts formatOptions) (format.Format, error) {
-	switch name {
-	case "completions":
-		return completions.New(opts.Completions), nil
-	case "messages":
-		return messages.New(opts.Messages), nil
-	case "responses":
-		return responses.New(opts.Responses), nil
-	}
-	return nil, fmt.Errorf("no format %q", name)
+// formats maps each format setting, the name of a go-ai format package, to
+// its constructor, which builds the format with its member of opts. This
+// file is the one that names a format package; the rest of the program
+// sees only the format.Format the format nodes hold and the name the format
+// name node holds.
+var formats = map[string]func(opts formatOptions) format.Format{
+	"completions": func(opts formatOptions) format.Format { return completions.New(opts.Completions) },
+	"messages":    func(opts formatOptions) format.Format { return messages.New(opts.Messages) },
+	"responses":   func(opts formatOptions) format.Format { return responses.New(opts.Responses) },
 }
 
 // anyFormatMaxTokens is the least max output tokens every format accepts:
@@ -165,19 +154,19 @@ func parseString(s string) (string, error) { return s, nil }
 
 // newFormat returns the format node's constructor: the format the format
 // name node names, built with each format's zero Options, its spec, as
-// [formatName] checks the name.
+// [formatOf] checks the name.
 func newFormat(n *Nodes) func(*graph.Scope) (format.Format, error) {
 	return func(s *graph.Scope) (format.Format, error) {
-		name, err := formatName(s, n)
+		build, err := formatOf(s, n)
 		if err != nil {
 			return nil, err
 		}
-		return buildFormat(name, formatOptions{})
+		return build(formatOptions{}), nil
 	}
 }
 
 // newProfiledFormat returns the profiled format node's constructor: the
-// format the format name node names, as [formatName] checks the name,
+// format the format name node names, as [formatOf] checks the name,
 // built with its member of the profile the root flag --profile, over
 // INFER_PROFILE, holds, as [newSetting] resolves it, or with its zero
 // Options when the profile has no such member. An unset or empty profile
@@ -192,7 +181,7 @@ func newFormat(n *Nodes) func(*graph.Scope) (format.Format, error) {
 // refuses, such as an effort protocol.ReasoningEffort doesn't name.
 func newProfiledFormat(n *Nodes, flags *rootFlags) func(*graph.Scope) (format.Format, error) {
 	return func(s *graph.Scope) (format.Format, error) {
-		name, err := formatName(s, n)
+		build, err := formatOf(s, n)
 		if err != nil {
 			return nil, err
 		}
@@ -206,19 +195,20 @@ func newProfiledFormat(n *Nodes, flags *rootFlags) func(*graph.Scope) (format.Fo
 				return nil, cli.Usagef("%s: %w", flagAndVar("profile"), err)
 			}
 		}
-		return buildFormat(name, opts)
+		return build(opts), nil
 	}
 }
 
-// formatName returns the format name node's setting, refusing a name
-// formatNames doesn't hold as a usage error naming the flag and its
-// variable.
-func formatName(s *graph.Scope, n *Nodes) (string, error) {
+// formatOf returns the constructor of the format the format name node
+// names, from [formats], refusing a name it doesn't hold as a usage error
+// naming the flag and its variable.
+func formatOf(s *graph.Scope, n *Nodes) (func(formatOptions) format.Format, error) {
 	name := s.Use(n.FormatName)
-	if !slices.Contains(formatNames, name) {
-		return "", cli.Usagef("unknown format %q: %s is completions, messages, or responses", name, flagAndVar("format"))
+	build, ok := formats[name]
+	if !ok {
+		return nil, cli.Usagef("unknown format %q: %s is completions, messages, or responses", name, flagAndVar("format"))
 	}
-	return name, nil
+	return build, nil
 }
 
 // newClient returns the constructor of a client node: the go-ai client of

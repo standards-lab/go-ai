@@ -137,7 +137,7 @@ type profile struct {
 // naming its own --profile and INFER_PROFILE. A profile is no secret, so the
 // error may show it.
 func Profile(baseVariable string) (string, error) {
-	variable := strings.TrimSuffix(baseVariable, "_BASE_URL") + "_PROFILE"
+	variable := profileVariable(baseVariable)
 	v := os.Getenv(variable)
 	if v == "" {
 		return "", nil
@@ -147,6 +147,13 @@ func Profile(baseVariable string) (string, error) {
 		return "", fmt.Errorf("%s: %w", variable, err)
 	}
 	return v, nil
+}
+
+// profileVariable is the variable that holds the profile of the role whose
+// API root variable is baseVariable: AI_<ROLE>_PROFILE, such as
+// AI_AGENT_PROFILE for AI_AGENT_BASE_URL.
+func profileVariable(baseVariable string) string {
+	return strings.TrimSuffix(baseVariable, "_BASE_URL") + "_PROFILE"
 }
 
 // declaredSuffix ends infer's error line for a request the deployment's
@@ -174,8 +181,7 @@ func SkipDeclared(t testing.TB, baseVariable string, res processtest.Result) {
 	}
 	for line := range strings.Lines(res.Stderr) {
 		if line = strings.TrimSuffix(line, "\n"); strings.HasSuffix(line, declaredSuffix) {
-			variable := strings.TrimSuffix(baseVariable, "_BASE_URL") + "_PROFILE"
-			t.Skipf("%s, passed as INFER_PROFILE, declares the request's gap: %s", variable, line)
+			t.Skipf("%s, passed as INFER_PROFILE, declares the request's gap: %s", profileVariable(baseVariable), line)
 			return
 		}
 	}
