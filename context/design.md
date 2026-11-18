@@ -121,7 +121,8 @@ of layers' surface to go-ai's.
     `tests-and-docs.md`, "Integration and acceptance suites, and where each runs". **kept**: the
     unit tests are go-ai's proof of retry, and go-ai's integration tiers carry no retry or gateway
     scenario. The proof against the live gateway's 429, 503, and Retry-After belongs to
-    spike-model-gateway, which owns all testing through the gateway (architect).
+    spike-model-gateway, which owns all testing through the gateway (architect); its retry test
+    passed all four cases (spike-model-gateway `docs/findings/answer.md`).
 18. **In-band stream failures are events, and errors are for a stream that breaks or never begins**
     (`stream.go`; `format.StreamDecoder`). Against layers, "Generation: vision and extraction": any
     status but completed and incomplete is an error to the caller. **kept**: the stream ends as the
