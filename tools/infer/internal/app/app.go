@@ -72,29 +72,38 @@ type Nodes struct {
 	LifecycleConfig *graph.Node[lifecycle.Config]
 	BaseURL         *graph.Node[string] // the endpoint's API root, such as http://localhost:8000/v1
 	// FormatName is the format setting, such as "messages", as
-	// INFER_FORMAT and --format give it; the format node refuses a name it
-	// doesn't build.
+	// INFER_FORMAT and --format give it; the format nodes refuse a name
+	// they don't build.
 	FormatName *graph.Node[string]
-	Format     *graph.Node[format.Format] // the wire format the client speaks, the one FormatName names
-	Model      *graph.Node[string]        // the model a request names; empty when not given
+	// Format is the wire format FormatName names, in its spec's form, the
+	// zero Options: the format the client speaks, whose commands, models
+	// and embed, send no request a profile changes.
+	Format *graph.Node[format.Format]
+	// ProfiledFormat is the same format built with its member of the
+	// deployment's profile, as INFER_PROFILE and --profile give it: the
+	// format the transcriber and the chat client speak, and chat checks a
+	// request against.
+	ProfiledFormat *graph.Node[format.Format]
+	Model          *graph.Node[string] // the model a request names; empty when not given
 	// RetryPolicy is when and how long every client waits to send a
 	// request again; its zero value retries nothing.
 	RetryPolicy *graph.Node[ai.RetryPolicy]
-	Client      *graph.Node[*ai.Client] // the client of the endpoint, in the format, with the token and the retry policy
+	Client      *graph.Node[*ai.Client] // the client of the endpoint, in Format, with the token and the retry policy
 	// TranscriptionMode is how transcribe sends a clip: to the endpoint's
 	// transcription route, or as a chat request in the format.
 	TranscriptionMode *graph.Node[ai.TranscriptionMode]
 	// Transcriber is the client transcribe sends through: Client's
-	// endpoint, format, and token, transcribing in the transcription mode.
-	// Only transcribe declares it, so no other command reads the mode.
+	// endpoint and token, in ProfiledFormat, transcribing in the
+	// transcription mode. Only transcribe declares it, so no other command
+	// reads the mode.
 	Transcriber *graph.Node[*ai.Client]
 	// IdleTimeout bounds each read of a streamed chat reply; zero sets no
 	// bound.
 	IdleTimeout *graph.Node[time.Duration]
 	// ChatClient is the client chat sends through: Client's endpoint,
-	// format, token, and retry policy, bounding a stream by the idle
-	// timeout. Only chat declares it, so no other command reads the idle
-	// timeout.
+	// token, and retry policy, in ProfiledFormat, bounding a stream by the
+	// idle timeout. Only chat declares it, so no other command reads the
+	// idle timeout.
 	ChatClient *graph.Node[*ai.Client]
 }
 

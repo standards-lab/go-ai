@@ -114,6 +114,8 @@ func TestRun_RootHelp(t *testing.T) {
 				// Each retry flag shows the type its node parses it as,
 				// not the string the flag holds.
 				"--retries int", "--retry-base-delay duration", "--retry-max-delay duration",
+				// --profile is a deployment's profile, JSON keyed by format name.
+				"--profile JSON", "INFER_PROFILE", "keyed by format name",
 				// INFER_TOKEN and INFER_HEADER have no flag, so the
 				// footer names them.
 				"\nEnvironment:\n  INFER_TOKEN    the bearer token sent with each request",

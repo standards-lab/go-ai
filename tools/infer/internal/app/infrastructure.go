@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
@@ -41,11 +42,14 @@ const defaultFormat = "completions"
 var formatNames = []string{"completions", "messages", "responses"}
 
 // formatOptions holds the Options each format is built with, the profile
-// of the deployment it speaks to; its zero value is each format's spec.
+// of the deployment it speaks to; its zero value is each format's spec. It
+// is what --profile and INFER_PROFILE hold, a JSON object keyed by format
+// name, as [newProfiledFormat] decodes it: each member is that format's
+// Options, under the snake_case, case-strict names go-ai's tags give them.
 type formatOptions struct {
-	completions completions.Options
-	messages    messages.Options
-	responses   responses.Options
+	Completions completions.Options `json:"completions,omitzero,case:strict"`
+	Messages    messages.Options    `json:"messages,omitzero,case:strict"`
+	Responses   responses.Options   `json:"responses,omitzero,case:strict"`
 }
 
 // buildFormat returns the format name names, one of formatNames, built
@@ -56,11 +60,11 @@ type formatOptions struct {
 func buildFormat(name string, opts formatOptions) (format.Format, error) {
 	switch name {
 	case "completions":
-		return completions.New(opts.completions), nil
+		return completions.New(opts.Completions), nil
 	case "messages":
-		return messages.New(opts.messages), nil
+		return messages.New(opts.Messages), nil
 	case "responses":
-		return responses.New(opts.responses), nil
+		return responses.New(opts.Responses), nil
 	}
 	return nil, fmt.Errorf("no format %q", name)
 }
@@ -73,10 +77,12 @@ const anyFormatMaxTokens = responses.MinMaxOutputTokens
 // defineInfrastructure defines the infrastructure nodes on g into n: the
 // lifecycle configuration; the endpoint settings and the retry policy, each
 // read from its INFER_ variables and its root flags; the client of the
-// endpoint, built from them, INFER_TOKEN, and INFER_HEADER; and two
-// clients of the same endpoint for one command each: the transcriber, in
-// the transcription mode read from INFER_TRANSCRIPTION_MODE and
-// transcribe's --mode, and the chat client, bounded by the idle timeout
+// endpoint, built from them, INFER_TOKEN, and INFER_HEADER, in the format's
+// spec form; the profiled format, the same format under the deployment's
+// profile read from INFER_PROFILE and --profile; and two clients of the
+// same endpoint in the profiled format for one command each: the
+// transcriber, in the transcription mode read from INFER_TRANSCRIPTION_MODE
+// and transcribe's --mode, and the chat client, bounded by the idle timeout
 // read from INFER_IDLE_TIMEOUT and chat's --idle-timeout. It constructs
 // nothing: each value is read in its node's constructor, which runs only
 // when a Build reaches the node, so configuration is read only for a
@@ -89,22 +95,28 @@ const anyFormatMaxTokens = responses.MinMaxOutputTokens
 // other commands share: building them into that one would read both
 // variables for every command, and an unknown mode would refuse a chat that
 // never transcribes. All three clients are [newClient]'s, so the endpoint,
-// the format, the token, the headers, and the retry policy reach each
-// alike.
+// the token, the headers, and the retry policy reach each alike.
+//
+// The profile is likewise read only by the commands whose requests it
+// changes. Every field of a format's Options is about a chat request,
+// which neither models nor embed sends, so the client they share is in the
+// format's spec form and reads no profile: a malformed INFER_PROFILE
+// fails neither.
 func defineInfrastructure(g *graph.Graph, n *Nodes, flags *rootFlags, cmd commandFlags) {
 	n.LifecycleConfig = g.Define("lifecycle config", newLifecycleConfig)
 	n.BaseURL = g.Define("base url", newSetting(flags, "base-url", ""))
 	n.FormatName = g.Define("format name", newSetting(flags, "format", defaultFormat))
 	n.Format = g.Define("format", newFormat(n))
+	n.ProfiledFormat = g.Define("profiled format", newProfiledFormat(n, flags))
 	n.Model = g.Define("model", newSetting(flags, "model", ""))
 	n.RetryPolicy = g.Define("retry policy", newRetryPolicy(flags))
-	n.Client = g.Define("client", newClient(n, func(*graph.Scope) ai.Options { return ai.Options{} }))
+	n.Client = g.Define("client", newClient(n, n.Format, func(*graph.Scope) ai.Options { return ai.Options{} }))
 	n.TranscriptionMode = g.Define("transcription mode", newTranscriptionMode(cmd.mode))
-	n.Transcriber = g.Define("transcriber", newClient(n, func(s *graph.Scope) ai.Options {
+	n.Transcriber = g.Define("transcriber", newClient(n, n.ProfiledFormat, func(s *graph.Scope) ai.Options {
 		return ai.Options{TranscriptionMode: s.Use(n.TranscriptionMode)}
 	}))
 	n.IdleTimeout = g.Define("idle timeout", newIdleTimeout(cmd.idleTimeout))
-	n.ChatClient = g.Define("chat client", newClient(n, func(s *graph.Scope) ai.Options {
+	n.ChatClient = g.Define("chat client", newClient(n, n.ProfiledFormat, func(s *graph.Scope) ai.Options {
 		return ai.Options{StreamIdleTimeout: s.Use(n.IdleTimeout)}
 	}))
 }
@@ -152,31 +164,76 @@ func resolveSetting(def, variable, flagValue string, flagGiven bool) (string, er
 func parseString(s string) (string, error) { return s, nil }
 
 // newFormat returns the format node's constructor: the format the format
-// name node names, built with each format's zero Options, its spec. A name
-// formatNames doesn't hold is a usage error naming the flag and its
-// variable.
+// name node names, built with each format's zero Options, its spec, as
+// [formatName] checks the name.
 func newFormat(n *Nodes) func(*graph.Scope) (format.Format, error) {
 	return func(s *graph.Scope) (format.Format, error) {
-		name := s.Use(n.FormatName)
-		if !slices.Contains(formatNames, name) {
-			return nil, cli.Usagef("unknown format %q: %s is completions, messages, or responses", name, flagAndVar("format"))
+		name, err := formatName(s, n)
+		if err != nil {
+			return nil, err
 		}
 		return buildFormat(name, formatOptions{})
 	}
 }
 
+// newProfiledFormat returns the profiled format node's constructor: the
+// format the format name node names, as [formatName] checks the name,
+// built with its member of the profile the root flag --profile, over
+// INFER_PROFILE, holds, as [newSetting] resolves it, or with its zero
+// Options when the profile has no such member. An unset or empty profile
+// is the zero profile, each format's spec.
+//
+// The profile is decoded whole, as go-ai's own tests decode Options, with
+// encoding/json/v2 and json.RejectUnknownMembers, so every member is
+// checked, not only the one in use: an unknown format name, an unknown or
+// misspelled field, or a Go field name in place of the snake_case one,
+// which the case:strict tags refuse, is a usage error naming the flag and
+// its variable ahead of the decoder's error, and so is a value a field
+// refuses, such as an effort protocol.ReasoningEffort doesn't name.
+func newProfiledFormat(n *Nodes, flags *rootFlags) func(*graph.Scope) (format.Format, error) {
+	return func(s *graph.Scope) (format.Format, error) {
+		name, err := formatName(s, n)
+		if err != nil {
+			return nil, err
+		}
+		v, err := newSetting(flags, "profile", "")(s)
+		if err != nil {
+			return nil, err
+		}
+		var opts formatOptions
+		if v != "" {
+			if err := json.Unmarshal([]byte(v), &opts, json.RejectUnknownMembers(true)); err != nil {
+				return nil, cli.Usagef("%s: %w", flagAndVar("profile"), err)
+			}
+		}
+		return buildFormat(name, opts)
+	}
+}
+
+// formatName returns the format name node's setting, refusing a name
+// formatNames doesn't hold as a usage error naming the flag and its
+// variable.
+func formatName(s *graph.Scope, n *Nodes) (string, error) {
+	name := s.Use(n.FormatName)
+	if !slices.Contains(formatNames, name) {
+		return "", cli.Usagef("unknown format %q: %s is completions, messages, or responses", name, flagAndVar("format"))
+	}
+	return name, nil
+}
+
 // newClient returns the constructor of a client node: the go-ai client of
-// the endpoint the base url node names, in the format node's format, with
-// the retry policy node's policy and the options opts returns, which reads
-// the nodes of the one command the client is for, as [buildClient] builds
-// it. The client node's opts returns none, so it transcribes through the
-// route, go-ai's default, and bounds no stream, as no command that declares
-// it transcribes or streams.
-func newClient(n *Nodes, opts func(*graph.Scope) ai.Options) func(*graph.Scope) (*ai.Client, error) {
+// the endpoint the base url node names, in wireFormat's format, the format
+// node's or the profiled format node's, with the retry policy node's
+// policy and the options opts returns, which reads the nodes of the one
+// command the client is for, as [buildClient] builds it. The client node's
+// opts returns none, so it transcribes through the route, go-ai's default,
+// and bounds no stream, as no command that declares it transcribes or
+// streams.
+func newClient(n *Nodes, wireFormat *graph.Node[format.Format], opts func(*graph.Scope) ai.Options) func(*graph.Scope) (*ai.Client, error) {
 	return func(s *graph.Scope) (*ai.Client, error) {
 		o := opts(s)
 		o.Retry = s.Use(n.RetryPolicy)
-		return buildClient(s.Use(n.BaseURL), s.Use(n.Format), o)
+		return buildClient(s.Use(n.BaseURL), s.Use(wireFormat), o)
 	}
 }
 
@@ -460,6 +517,8 @@ func bindRootFlags(fs *flag.FlagSet) *rootFlags {
 	fs.String("base-url", "", "the endpoint's API root, such as http://localhost:8000/v1"+env("base-url"))
 	fs.String("format", defaultFormat, "the wire format: completions, messages, or responses"+env("format"))
 	fs.String("model", "", "the model the request names"+env("model"))
+	fs.String("profile", "", "the deployment's profile, a `JSON` object keyed by format name, each member that format's options, "+
+		`such as {"responses":{"refused_efforts":["none"]}}; unset or empty is each format's spec`+env("profile"))
 	fs.String("retries", "", "the most attempts of each request, an `int` that counts the first, so 3 retries twice, "+
 		"when the endpoint answers 408, 429, 502, 503, or 504 or the connection fails; 0 or 1 retries nothing"+env("retries"))
 	fs.String("retry-base-delay", "", "the longest wait before the first retry, a `duration` such as 500ms, doubling for each retry after it; "+

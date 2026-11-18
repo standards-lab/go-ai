@@ -26,7 +26,16 @@
 // INFER_FORMAT, and INFER_MODEL, when given; --format is completions,
 // messages, or responses, and completions when neither is given. The
 // bearer token is INFER_TOKEN's, never a flag's, and an empty one sends
-// none. INFER_HEADER, never a flag's either, holds headers sent on every
+// none. The root flag --profile, over INFER_PROFILE, is the deployment's
+// profile: a JSON object keyed by format name, completions, messages, or
+// responses, each member that format's go-ai Options under their
+// snake_case names, as in {"responses":{"refused_efforts":["none"]}}. The
+// format in use is built with its member, or its spec's form when there is
+// none, and unset or empty is no member at all. It is decoded strictly: an
+// unknown key or field, a Go field name, or a value a field refuses is a
+// usage error, exit 2, naming the flag and its variable. Only chat and
+// transcribe, whose requests a profile changes, read it, so a malformed
+// one fails neither models nor embed. INFER_HEADER, never a flag's either, holds headers sent on every
 // request, such as a gateway's api-key, one "Name: value" per line, each
 // line trimmed and a blank one skipped; a line with no colon or no name, a
 // name the client sets (Authorization, Content-Type, or Accept), or a name

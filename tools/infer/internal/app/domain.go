@@ -223,7 +223,7 @@ func chatCommand(n *Nodes, idle *commandFlag) *cli.Command {
 	fs.StringVar(&f.native, "native", "", "JSON object merged into the request's top level, for parameters the typed flags don't cover")
 	fs.BoolVar(&f.stream, "stream", true, "stream the reply, writing its text as it arrives")
 	idle.bind(fs, "", "end a streamed reply that sends nothing for this `duration`, such as 30s; 0 sets no bound")
-	return cmd.Use(n.ChatClient, n.Model, n.Format, n.FormatName)
+	return cmd.Use(n.ChatClient, n.Model, n.ProfiledFormat, n.FormatName)
 }
 
 // chat is the chat command's Run, over the flags f holds.
@@ -239,7 +239,7 @@ func chat(ctx context.Context, inv *cli.Invocation, n *Nodes, f *chatFlags) erro
 	if err != nil {
 		return err
 	}
-	wireFormat, formatName := inv.Get(n.Format), inv.Get(n.FormatName)
+	wireFormat, formatName := inv.Get(n.ProfiledFormat), inv.Get(n.FormatName)
 	if err := checkRequest(req, wireFormat, f.stream); err != nil {
 		return refusedRequest(req, wireFormat, formatName, f.stream, err)
 	}
