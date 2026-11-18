@@ -1,0 +1,1 @@
+{"error":{"code":"UnsupportedToolUse","message":"Request included unsupported tool use. tool_choice 'required' is not supported for the model.","details":"Request included unsupported tool use. tool_choice 'required' is not supported for the model."}}

@@ -30,7 +30,7 @@ type streamResult struct {
 // at the body's end. It stops at the first error.
 func decodeStream(t *testing.T, body string) streamResult {
 	t.Helper()
-	wf := messages.New()
+	wf := messages.New(messages.Options{})
 	decoder := wf.NewStreamDecoder()
 	events := wf.EventStream().NewReader(strings.NewReader(body))
 	var r streamResult
@@ -835,7 +835,7 @@ func TestStreamIgnores(t *testing.T) {
 		})
 	}
 	// A ping ahead of message_start makes nothing either: response.created waits for it.
-	decoder := messages.New().NewStreamDecoder()
+	decoder := messages.New(messages.Options{}).NewStreamDecoder()
 	if events, err := decoder.Decode(format.WireEvent{Data: []byte(ping)}); err != nil || len(events) > 0 {
 		t.Errorf("Decode(ping) first = %v, %v; want nothing", events, err)
 	}
@@ -987,7 +987,7 @@ func TestStreamErrorFrame(t *testing.T) {
 				t.Errorf("output before the frame = %#v\nwant the failed response's %#v", before.Output, tc.output)
 			}
 
-			decoder := messages.New().NewStreamDecoder()
+			decoder := messages.New(messages.Options{}).NewStreamDecoder()
 			for _, data := range tc.events {
 				if _, err := decoder.Decode(format.WireEvent{Data: []byte(data)}); err != nil {
 					t.Fatalf("Decode: %v", err)
@@ -1047,7 +1047,7 @@ func TestStreamEnd(t *testing.T) {
 			}
 		})
 	}
-	decoder := messages.New().NewStreamDecoder()
+	decoder := messages.New(messages.Options{}).NewStreamDecoder()
 	for _, data := range []string{messageStart, messageDelta("end_turn"), messageStop} {
 		if _, err := decoder.Decode(format.WireEvent{Data: []byte(data)}); err != nil {
 			t.Fatalf("Decode(%s): %v", data, err)
@@ -1088,7 +1088,7 @@ func TestStreamRefusesEvent(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			decoder := messages.New().NewStreamDecoder()
+			decoder := messages.New(messages.Options{}).NewStreamDecoder()
 			var err error
 			for _, data := range tc.events {
 				if _, err = decoder.Decode(format.WireEvent{Data: []byte(data)}); err != nil {
@@ -1109,7 +1109,7 @@ func TestStreamRefusesEvent(t *testing.T) {
 // io.ErrUnexpectedEOF, reported as an event the format can't decode, not as a stream that ended
 // early.
 func TestStreamDecodeErrorIsNoEndOfStream(t *testing.T) {
-	_, err := messages.New().NewStreamDecoder().Decode(format.WireEvent{Data: []byte(`{"type":`)})
+	_, err := messages.New(messages.Options{}).NewStreamDecoder().Decode(format.WireEvent{Data: []byte(`{"type":`)})
 	if err == nil || !strings.Contains(err.Error(), "decode event") || errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Errorf("Decode error = %v, want a decode error that doesn't match io.ErrUnexpectedEOF", err)
 	}
@@ -1121,7 +1121,7 @@ func TestEncodeStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	header := make(http.Header)
-	body, err := messages.New().EncodeStreamRequest(req, header)
+	body, err := messages.New(messages.Options{}).EncodeStreamRequest(req, header)
 	if err != nil {
 		t.Fatalf("EncodeStreamRequest: %v", err)
 	}
@@ -1136,7 +1136,7 @@ func TestEncodeStream(t *testing.T) {
 // request of no max output tokens among them, and a Native stream member, which clashes with the
 // stream member the body always sets, streamed or not; each before it sets a header.
 func TestEncodeStreamRefuses(t *testing.T) {
-	f := messages.New()
+	f := messages.New(messages.Options{})
 	encodings := map[string]func(*protocol.Request, http.Header) ([]byte, error){
 		"EncodeRequest":       f.EncodeRequest,
 		"EncodeStreamRequest": f.EncodeStreamRequest,

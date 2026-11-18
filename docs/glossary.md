@@ -31,6 +31,10 @@ The library's vocabulary, grouped by the layer each term belongs to. The
 - **Refuse**: fail a request before anything is sent, because the format can't send something
   it needs. The error is a `*format.UnsupportedError`.
 - **Drop**: leave out a hint the format's API has no form for, with no error.
+- **Profile**: a format's `Options`, the gaps of the one deployment it sends to. Its zero value
+  is the spec.
+- **Declared gap**: a departure from the format's spec that a profile declares. A request that
+  needs it is refused with `Declared` true, or, for `allowed_tools`, narrowed.
 - **Normalize**: reshape a reply into the spec's model, such as deriving item ids an API doesn't
   give.
 - **Reasoning envelope**: the prefixed form, such as `go-ai:completions/v1:`, in which a format

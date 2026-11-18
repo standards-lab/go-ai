@@ -36,7 +36,7 @@ A client joins three things: an endpoint's API root, the caller's `*http.Client`
 format. A request is a `protocol.Request` whatever the format.
 
 ```go
-client, err := ai.New("http://localhost:8000/v1", http.DefaultClient, completions.New(), ai.Options{})
+client, err := ai.New("http://localhost:8000/v1", http.DefaultClient, completions.New(completions.Options{}), ai.Options{})
 if err != nil {
 	return err
 }
@@ -63,6 +63,13 @@ client, err := ai.New(baseURL, http.DefaultClient, responses.New(responses.Optio
 
 The client also streams (`GenerateStream`), embeds (`Embed`), lists models (`Models`), and
 transcribes audio (`Transcribe`).
+
+Each format takes its `Options`, the format's **profile**, whose zero value is the spec. A
+deployment that departs from its format's spec, such as one that refuses some reasoning efforts,
+declares its gaps there, and the format refuses a request that needs one before sending it. A
+profile binds a format to one deployment, so a program builds one client per deployment, all
+sharing one `*http.Client`. [Concepts](docs/concepts.md#profiles) shows a profile for each
+format.
 
 ## Conventions
 
@@ -116,7 +123,7 @@ mise run integration  # run every module's integration tier against the AI_*_BAS
 ```
 
 The unit tests are hermetic. They run each format against replies recorded from llama.cpp
-b11669, vLLM 0.33.0, and Azure AI Foundry, and the client against a loopback server.
+b11669, vLLM 0.33.0 and 0.34.0, and Azure AI Foundry, and the client against a loopback server.
 
 The integration tier runs against live endpoints, one per role. Each role's variable holds an
 API root, `/v1` included, with no default. A scenario whose variable is unset skips. Each scenario

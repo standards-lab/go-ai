@@ -159,7 +159,7 @@ func TestNewClient_SendsCredentials(t *testing.T) {
 	defer srv.Close()
 	vars := map[string]string{"AI_AGENT_TOKEN": "tok", "AI_AGENT_HEADER": "api-key: key\nx-tenant: docs"}
 
-	c, err := newClient("AI_AGENT_BASE_URL", srv.URL+"/v1", completions.New(), ai.Options{}, env(vars))
+	c, err := newClient("AI_AGENT_BASE_URL", srv.URL+"/v1", completions.New(completions.Options{}), ai.Options{}, env(vars))
 	if err != nil {
 		t.Fatalf("newClient: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestNewClient_FailureOmitsSecrets(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			vars := map[string]string{"AI_AGENT_TOKEN": secret, "AI_AGENT_HEADER": tc.header}
 
-			_, err := newClient("AI_AGENT_BASE_URL", base, completions.New(), ai.Options{}, env(vars))
+			_, err := newClient("AI_AGENT_BASE_URL", base, completions.New(completions.Options{}), ai.Options{}, env(vars))
 
 			if err == nil {
 				t.Fatal("newClient succeeded, want it refused")

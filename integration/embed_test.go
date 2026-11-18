@@ -22,7 +22,7 @@ import (
 //     which fails if the vectors came back in arrival order rather than input order, or
 //     swapped.
 func TestEmbed(t *testing.T) {
-	c, model := endpoint(t, embedding, completions.New(), ai.Options{})
+	c, model := endpoint(t, embedding, completions.New(completions.Options{}), ai.Options{})
 	inputs := []string{
 		"The cat sat on the warm windowsill all afternoon.",
 		"A cat dozed in the sunny window for hours.",

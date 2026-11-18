@@ -4,6 +4,8 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/standards-lab/go-ai/internal/native"
 )
@@ -83,6 +85,29 @@ const (
 	ReasoningEffortMax ReasoningEffort = "max"
 )
 
+// reasoningEfforts are the protocol's efforts, least first.
+var reasoningEfforts = []ReasoningEffort{
+	ReasoningEffortNone, ReasoningEffortMinimal, ReasoningEffortLow, ReasoningEffortMedium,
+	ReasoningEffortHigh, ReasoningEffortXHigh, ReasoningEffortMax,
+}
+
+// UnmarshalText decodes an effort, accepting only the protocol's seven and refusing any other
+// name, the empty one included, with an error that names it and the efforts accepted. It is
+// strict so that a mistyped effort in a configuration, such as a format profile's list of the
+// efforts its host refuses, fails to decode instead of silently matching nothing. No format
+// decodes a host's reply into a ReasoningEffort, so a host's unknown effort never meets it.
+func (e *ReasoningEffort) UnmarshalText(text []byte) error {
+	if !slices.Contains(reasoningEfforts, ReasoningEffort(text)) {
+		names := make([]string, len(reasoningEfforts))
+		for i, known := range reasoningEfforts {
+			names[i] = string(known)
+		}
+		return fmt.Errorf("protocol: unknown reasoning effort %q, want one of %s", text, strings.Join(names, ", "))
+	}
+	*e = ReasoningEffort(text)
+	return nil
+}
+
 // ReasoningSummary is how detailed a summary of its reasoning a model gives, alongside the
 // reasoning itself.
 type ReasoningSummary string
@@ -142,11 +167,8 @@ func (r *Request) validate() error {
 	case r.MaxOutputTokens < 0:
 		return fmt.Errorf("request's max output tokens %d is negative", r.MaxOutputTokens)
 	}
-	switch r.Reasoning.Effort {
-	case "", ReasoningEffortNone, ReasoningEffortMinimal, ReasoningEffortLow, ReasoningEffortMedium,
-		ReasoningEffortHigh, ReasoningEffortXHigh, ReasoningEffortMax:
-	default:
-		return fmt.Errorf("request has unknown reasoning effort %q", r.Reasoning.Effort)
+	if e := r.Reasoning.Effort; e != "" && !slices.Contains(reasoningEfforts, e) {
+		return fmt.Errorf("request has unknown reasoning effort %q", e)
 	}
 	switch r.Reasoning.Summary {
 	case "", ReasoningSummaryAuto, ReasoningSummaryConcise, ReasoningSummaryDetailed:

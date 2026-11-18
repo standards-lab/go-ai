@@ -154,7 +154,7 @@ func TestStreamIdleTimeoutResetByBytes(t *testing.T) {
 		for _, chunk := range streamed[2:] {
 			parts = append(parts, part{after: gap, text: eventStream(chunk)})
 		}
-		c, _ := pacedClient(t, completions.New(), ai.Options{StreamIdleTimeout: idleLimit}, false, parts...)
+		c, _ := pacedClient(t, completions.New(completions.Options{}), ai.Options{StreamIdleTimeout: idleLimit}, false, parts...)
 		var acc protocol.Accumulator
 		for e, err := range c.GenerateStream(t.Context(), hello()) {
 			if err != nil {
@@ -177,7 +177,7 @@ func TestStreamIdleTimeoutZero(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), time.Hour)
 		defer cancel()
-		c, _ := pacedClient(t, completions.New(), ai.Options{}, true, part{text: eventStream(streamed[:3]...)})
+		c, _ := pacedClient(t, completions.New(completions.Options{}), ai.Options{}, true, part{text: eventStream(streamed[:3]...)})
 		start := time.Now()
 		_, _, errs := collect(t, c.GenerateStream(ctx, hello()))
 		if len(errs) != 1 || !errors.Is(errs[0], context.DeadlineExceeded) {

@@ -89,8 +89,8 @@ back into a `protocol.Response`. go-ai has three:
 The caller picks one by calling its constructor and passing it to `ai.New`:
 
 ```go
-completions.New()
-messages.New()
+completions.New(completions.Options{})
+messages.New(messages.Options{})
 responses.New(responses.Options{})
 ```
 
@@ -106,13 +106,82 @@ handles each gap in one of three ways, and its package comment lists which:
 - It **normalizes** the reply to the spec's model. Chat Completions gives no item ids, so the
   format derives them.
 
+## Profiles
+
+A deployment doesn't always serve its format's spec whole. vLLM 0.34.0 refuses some reasoning
+efforts its spec defines, and ignores an Open Responses `allowed_tools` choice; gpt-oss-120b on
+Azure AI Foundry refuses Chat Completions' `tool_choice` `required`. Sent such a request, the
+deployment fails it or quietly does something else.
+
+A format's `Options` is its **profile**: the gaps of the deployment it sends to. The zero value
+is the spec, and declares none. A field declares one gap, and the format handles a request that
+needs it before anything is sent or any token is fetched, in one of two ways:
+
+- It **refuses** the request, with a `*format.UnsupportedError` whose `Declared` is true. A
+  refusal of the spec's own gap has `Declared` false, so a caller can tell a deployment's limit
+  from the format's.
+- It **narrows** an `allowed_tools` choice the deployment has no form for: only the allowed
+  tools go out, in the request's order, and the choice's mode goes out as a plain tool choice,
+  as Messages sends one.
+
+| Format | Field | JSON name | Declares that the deployment |
+| --- | --- | --- | --- |
+| all three | `RefusedEfforts` | `refused_efforts` | refuses or ignores these reasoning efforts |
+| `completions` | `NoToolChoiceRequired` | `no_tool_choice_required` | refuses `tool_choice` `required` |
+| `completions`, `responses` | `NoAllowedTools` | `no_allowed_tools` | has no `allowed_tools` choice, or ignores it |
+| `responses` | `ResendReasoningText` | `resend_reasoning_text` | reads reasoning sent back as text, and gives no encrypted content |
+
+A profile is configuration, so each `Options` decodes from JSON under its snake_case names.
+vLLM 0.34.0 serving gpt-oss-120b has these three:
+
+```json
+{"refused_efforts": ["none", "minimal", "xhigh", "max"], "no_allowed_tools": true}
+```
+
+```json
+{"refused_efforts": ["none", "xhigh"], "no_allowed_tools": true, "resend_reasoning_text": true}
+```
+
+```json
+{"refused_efforts": ["none", "xhigh", "max"]}
+```
+
+The first is Chat Completions', the second Open Responses', and the third Messages'. Decode a
+profile strictly, so that a mistyped name is an error instead of a gap silently undeclared. An
+unknown effort is always one:
+
+```go
+var opts completions.Options
+if err := json.Unmarshal(data, &opts, json.RejectUnknownMembers(true)); err != nil {
+	return err
+}
+client, err := ai.New(baseURL, httpClient, completions.New(opts), ai.Options{})
+```
+
+`json` is `encoding/json/v2`. Only the snake_case names decode: the Go field names don't.
+
+go-ai ships no loader and no presets. Where a profile is kept, and which deployment it names,
+are the program's. Each field's documentation names a deployment it was seen on.
+
+A profile binds a format to one deployment. A program that talks to several builds one client
+for each, with the profile its deployment needs, and shares one `*http.Client` among them, so
+they share its connections:
+
+```go
+agent, err := ai.New(agentURL, httpClient, completions.New(agentProfile), ai.Options{})
+if err != nil {
+	return err
+}
+vision, err := ai.New(visionURL, httpClient, completions.New(completions.Options{}), ai.Options{})
+```
+
 ## The client
 
 `ai.New` joins an API root, the caller's `*http.Client`, and a format into a `*ai.Client`.
 Optional settings go in `ai.Options`, whose zero value sets nothing:
 
 ```go
-client, err := ai.New("http://localhost:8000/v1", httpClient, completions.New(), ai.Options{
+client, err := ai.New("http://localhost:8000/v1", httpClient, completions.New(completions.Options{}), ai.Options{
 	Token: func(context.Context) (string, error) { return os.Getenv("AI_TOKEN"), nil },
 	Retry: ai.RetryPolicy{MaxAttempts: 4, BaseDelay: 500 * time.Millisecond, MaxDelay: 30 * time.Second},
 })
@@ -176,6 +245,8 @@ standard type, and callers' Go code doesn't change.
 - **A vendor SDK.** None covers all three formats, and each brings its vendor's dependencies.
 - **A format registry, or a format chosen by name.** The caller constructs the format, so a new
   format is one import at the composition root.
+- **Profile presets, or a profile loader.** Which hosts a program meets, and where it keeps their
+  profiles, are the program's. A preset would also go stale as a host's version moves.
 - **Defaults for timeouts, retries, or limits.** These are the application's policy. Every
   option's zero value sets none.
 - **A typed field for an engine parameter.** The standard tier stays the spec. An engine's own

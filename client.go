@@ -76,7 +76,7 @@ type Client struct {
 var clientHeaders = []string{"Content-Type", "Accept", "Authorization"}
 
 // New returns a Client of the endpoint at baseURL, sending its requests with httpClient in
-// wireFormat, such as completions.New(). It makes no request.
+// wireFormat, such as completions.New(completions.Options{}). It makes no request.
 //
 // baseURL is the endpoint's API root, such as "http://localhost:8080/v1", an absolute http or
 // https URL with no query or fragment; Options.Query holds the query. Each route, such as
@@ -98,7 +98,7 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
 		panic("ai: New: httpClient is nil; pass the *http.Client that sends the requests")
 	}
 	if wireFormat == nil {
-		panic("ai: New: wireFormat is nil; pass a format's constructor, such as completions.New()")
+		panic("ai: New: wireFormat is nil; pass a format's constructor, such as completions.New(completions.Options{})")
 	}
 	if baseURL == "" {
 		return nil, fmt.Errorf("ai: no base URL")

@@ -1,0 +1,1 @@
+{"error":{"message":"Harmony does not support reasoning_effort='none' (parameter=reasoning_effort)","type":"BadRequestError","param":"reasoning_effort","code":400}}

@@ -1,6 +1,7 @@
 package protocol_test
 
 import (
+	"encoding/json/v2"
 	"strings"
 	"testing"
 
@@ -374,6 +375,57 @@ func TestDataURL(t *testing.T) {
 		t.Run(tc.mediaType, func(t *testing.T) {
 			if got := protocol.DataURL(tc.mediaType, tc.data); got != tc.want {
 				t.Errorf("DataURL(%q, %v) = %q, want %q", tc.mediaType, tc.data, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestReasoningEffortUnmarshalAccepts(t *testing.T) {
+	for _, want := range []protocol.ReasoningEffort{
+		protocol.ReasoningEffortNone, protocol.ReasoningEffortMinimal, protocol.ReasoningEffortLow,
+		protocol.ReasoningEffortMedium, protocol.ReasoningEffortHigh, protocol.ReasoningEffortXHigh,
+		protocol.ReasoningEffortMax,
+	} {
+		t.Run(string(want), func(t *testing.T) {
+			quoted := `"` + string(want) + `"`
+			var got protocol.ReasoningEffort
+			if err := json.Unmarshal([]byte(quoted), &got); err != nil || got != want {
+				t.Fatalf("Unmarshal(%s) = %q, %v; want %q", quoted, got, err, want)
+			}
+			var list []protocol.ReasoningEffort
+			if err := json.Unmarshal([]byte("["+quoted+"]"), &list); err != nil || len(list) != 1 || list[0] != want {
+				t.Fatalf("Unmarshal([%s]) = %q, %v; want [%q]", quoted, list, err, want)
+			}
+			// Encoding is untouched: an effort still goes out as its plain string.
+			if out, err := json.Marshal(want); err != nil || string(out) != quoted {
+				t.Fatalf("Marshal(%q) = %s, %v; want %s", want, out, err, quoted)
+			}
+		})
+	}
+}
+
+func TestReasoningEffortUnmarshalRefuses(t *testing.T) {
+	for _, tc := range []struct{ name, in, bad string }{
+		{"unknown", `"nonne"`, `"nonne"`},
+		{"empty", `""`, `""`},
+		{"wrong case", `"High"`, `"High"`},
+		{"unknown in a list", `["low", "nonne"]`, `"nonne"`},
+		{"empty in a list", `["low", ""]`, `""`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var err error
+			if strings.HasPrefix(tc.in, "[") {
+				var list []protocol.ReasoningEffort
+				err = json.Unmarshal([]byte(tc.in), &list)
+			} else {
+				var e protocol.ReasoningEffort
+				err = json.Unmarshal([]byte(tc.in), &e)
+			}
+			if err == nil {
+				t.Fatalf("Unmarshal(%s) succeeded; want an error", tc.in)
+			}
+			if msg := err.Error(); !strings.Contains(msg, "unknown reasoning effort "+tc.bad) || !strings.Contains(msg, "none, minimal, low, medium, high, xhigh, max") {
+				t.Errorf("Unmarshal(%s) error %q doesn't name the value and the accepted efforts", tc.in, msg)
 			}
 		})
 	}

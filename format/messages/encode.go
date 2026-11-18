@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/standards-lab/go-ai/format"
@@ -90,6 +91,11 @@ import (
 // output_config.format, {"type":"json_schema","schema"}; plain text, the endpoint's default,
 // sends nothing.
 //
+// The format's Options, the deployment's profile, adjust what goes out. An effort among
+// RefusedEfforts is refused, a declared gap, Declared true, unless Messages lacks it, minimal,
+// which stays the spec's refusal, listed or not. Either effort refusal comes ahead of the
+// format's other refusals.
+//
 // The hints Messages has no form for are dropped, never refused: an image's detail; a reasoning
 // summary's detail, and a summary of no adaptive thinking; ParallelToolCalls false where no tool
 // can be called; text's verbosity; and a JSON-schema format's name, description, and strict flag.
@@ -98,8 +104,8 @@ import (
 // members, the native tier, are merged into the top level, and a member named like one the typed
 // fields set is refused, as is stream, which is always set. The header is set only once the body
 // is encoded, so a refused request adds none.
-func (*Format) EncodeRequest(req *protocol.Request, header http.Header) ([]byte, error) {
-	return encode(req, false, header)
+func (f *Format) EncodeRequest(req *protocol.Request, header http.Header) ([]byte, error) {
+	return f.encode(req, false, header)
 }
 
 // EncodeStreamRequest encodes req as EncodeRequest does, as a streamed request: with stream
@@ -107,14 +113,14 @@ func (*Format) EncodeRequest(req *protocol.Request, header http.Header) ([]byte,
 // a request with no MaxOutputTokens among them, and a Native stream member, which clashes with
 // the stream member the body always sets. It sets the anthropic-version header as EncodeRequest
 // does.
-func (*Format) EncodeStreamRequest(req *protocol.Request, header http.Header) ([]byte, error) {
-	return encode(req, true, header)
+func (f *Format) EncodeStreamRequest(req *protocol.Request, header http.Header) ([]byte, error) {
+	return f.encode(req, true, header)
 }
 
 // encode encodes req, streamed when stream is set, and sets the anthropic-version header once
 // the body is encoded, so a refused request adds none.
-func encode(req *protocol.Request, stream bool, header http.Header) ([]byte, error) {
-	b, err := encodeRequest(req, stream)
+func (f *Format) encode(req *protocol.Request, stream bool, header http.Header) ([]byte, error) {
+	b, err := f.encodeRequest(req, stream)
 	if err != nil {
 		return nil, fmt.Errorf("messages: %w", err)
 	}
@@ -123,8 +129,18 @@ func encode(req *protocol.Request, stream bool, header http.Header) ([]byte, err
 }
 
 // encodeRequest encodes req as EncodeRequest describes, streamed when stream is set.
-func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
-	// The input is encoded first, so a request whose content Messages has no form for is
+func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
+	// The effort is checked first, so a request of an effort Messages lacks, or one the
+	// deployment's profile declares refused, is refused for that effort, whatever else it holds.
+	switch e := req.Reasoning.Effort; {
+	case e == protocol.ReasoningEffortMinimal:
+		return nil, refuse("reasoning effort", string(e),
+			fmt.Sprintf("reasoning effort %s has no Messages form", e))
+	case e != "" && slices.Contains(f.opts.RefusedEfforts, e):
+		return nil, declare("reasoning effort", string(e),
+			fmt.Sprintf("reasoning effort %s is refused by the deployment, as its profile declares", e))
+	}
+	// The input is encoded next, so a request whose content Messages has no form for is
 	// refused for that content, whatever else it lacks.
 	system, err := encodeSystem(req.Instructions, req.Input)
 	if err != nil {
@@ -165,9 +181,6 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	case "":
 	case protocol.ReasoningEffortNone:
 		body.Thinking = &thinking{Type: "disabled"}
-	case protocol.ReasoningEffortMinimal:
-		return nil, refuse("reasoning effort", string(effort),
-			fmt.Sprintf("reasoning effort %s has no Messages form", effort))
 	default:
 		body.Thinking = &thinking{Type: "adaptive"}
 		if req.Reasoning.Summary != "" {
@@ -396,6 +409,13 @@ func encodeTools(tools []protocol.FunctionTool, choice protocol.ToolChoice) ([]t
 // value, of feature, as message says.
 func refuse(feature, value, message string) error {
 	return &format.UnsupportedError{Format: "messages", Feature: feature, Value: value, Message: message}
+}
+
+// declare returns the format's refusal of a request feature the deployment's profile declares a
+// gap: the deployment refuses value, of feature, though Messages has a form for it, as message
+// says.
+func declare(feature, value, message string) error {
+	return &format.UnsupportedError{Format: "messages", Feature: feature, Value: value, Declared: true, Message: message}
 }
 
 // toolChoiceType returns the tool_choice type of a mode: auto as auto, required as any, and none

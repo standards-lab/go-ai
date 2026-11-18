@@ -23,7 +23,7 @@ func encode(t *testing.T, req *protocol.Request) []byte {
 		t.Fatalf("Validate: %v", err)
 	}
 	header := make(http.Header)
-	body, err := messages.New().EncodeRequest(req, header)
+	body, err := messages.New(messages.Options{}).EncodeRequest(req, header)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -36,7 +36,7 @@ func encode(t *testing.T, req *protocol.Request) []byte {
 
 // decode decodes reply as the body of a 2xx reply.
 func decode(reply string) (*protocol.Response, error) {
-	return messages.New().DecodeResponse([]byte(reply))
+	return messages.New(messages.Options{}).DecodeResponse([]byte(reply))
 }
 
 func text(role protocol.Role, s string) protocol.Message {
@@ -294,7 +294,7 @@ func TestEncodeRefuses(t *testing.T) {
 				t.Fatalf("Validate: %v", err)
 			}
 			header := make(http.Header)
-			body, err := messages.New().EncodeRequest(tc.req, header)
+			body, err := messages.New(messages.Options{}).EncodeRequest(tc.req, header)
 			if err == nil {
 				t.Fatalf("EncodeRequest = %s, nil; want an error containing %q", body, tc.want)
 			}
@@ -419,7 +419,7 @@ func TestDecodeRecorded(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.file, func(t *testing.T) {
-			resp, err := messages.New().DecodeResponse(aitest.ReadTestdata(t, tc.file))
+			resp, err := messages.New(messages.Options{}).DecodeResponse(aitest.ReadTestdata(t, tc.file))
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
@@ -657,7 +657,7 @@ func TestDecodeError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			message, typ, code := messages.New().DecodeError([]byte(tc.body))
+			message, typ, code := messages.New(messages.Options{}).DecodeError([]byte(tc.body))
 			if message != tc.message || typ != tc.typ || code != tc.code {
 				t.Errorf("DecodeError = {%q %q %q}, want {%q %q %q}",
 					message, typ, code, tc.message, tc.typ, tc.code)

@@ -45,7 +45,7 @@ func newClient(t *testing.T, base string, opts ai.Options) *ai.Client {
 // refuses it.
 func newClientWith(t *testing.T, base string, hc *http.Client, opts ai.Options) *ai.Client {
 	t.Helper()
-	return newClientFormat(t, base, hc, completions.New(), opts)
+	return newClientFormat(t, base, hc, completions.New(completions.Options{}), opts)
 }
 
 // newClientFormat returns a Client of base speaking wf through hc, failing t if New refuses it.
@@ -78,7 +78,7 @@ func TestNewPanicsOnWiringDefect(t *testing.T) {
 				}
 			}()
 			if tc.wf {
-				_, _ = ai.New("http://h/v1", tc.hc, completions.New(), ai.Options{})
+				_, _ = ai.New("http://h/v1", tc.hc, completions.New(completions.Options{}), ai.Options{})
 			} else {
 				_, _ = ai.New("http://h/v1", tc.hc, nil, ai.Options{})
 			}
@@ -104,7 +104,7 @@ func TestNewRefusesBaseURL(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, err := ai.New(tc.base, http.DefaultClient, completions.New(), ai.Options{})
+			c, err := ai.New(tc.base, http.DefaultClient, completions.New(completions.Options{}), ai.Options{})
 			if err == nil {
 				t.Fatalf("New = %v, nil; want an error containing %q", c, tc.want)
 			}
@@ -120,7 +120,7 @@ func TestNewRefusesHeader(t *testing.T) {
 	for _, name := range []string{"Content-Type", "accept", "AUTHORIZATION"} {
 		t.Run(name, func(t *testing.T) {
 			h := http.Header{name: {"x"}}
-			c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(), ai.Options{Header: h})
+			c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(completions.Options{}), ai.Options{Header: h})
 			want := http.CanonicalHeaderKey(name)
 			if err == nil {
 				t.Fatalf("New = %v, nil; want an error naming %s", c, want)
@@ -148,7 +148,7 @@ func TestNewRefusesUnsendableHeader(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(), ai.Options{Header: tc.header})
+			c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(completions.Options{}), ai.Options{Header: tc.header})
 			if err == nil || !strings.HasPrefix(err.Error(), "ai: ") || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("New = %v, %v; want an error containing %q", c, err, tc.want)
 			}
@@ -283,7 +283,7 @@ func TestGenerateSendsFixedHeaders(t *testing.T) {
 // anthropic-version, to replace a fixed one of the same name, whatever its case.
 func TestGenerateFormatHeaderReplacesFixed(t *testing.T) {
 	srv := aitest.NewServer(t, http.StatusOK, `{"type":"message","role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`)
-	c, err := ai.New(srv.URL, http.DefaultClient, messages.New(), ai.Options{
+	c, err := ai.New(srv.URL, http.DefaultClient, messages.New(messages.Options{}), ai.Options{
 		Header: http.Header{"anthropic-version": {"1999-01-01"}, "x-api-key": {"k"}},
 	})
 	if err != nil {
@@ -551,11 +551,11 @@ func TestGenerateReturnsUnsupportedError(t *testing.T) {
 		want    format.UnsupportedError
 		message string
 	}{
-		{"completions", completions.New(), modeNone,
+		{"completions", completions.New(completions.Options{}), modeNone,
 			format.UnsupportedError{Format: "completions", Feature: "allowed_tools mode", Value: "none"},
 			"ai: generate: completions: tool choice: allowed_tools of mode none has no Chat Completions form"},
 		// hello sets no MaxOutputTokens, which Messages requires.
-		{"messages", messages.New(), hello(),
+		{"messages", messages.New(messages.Options{}), hello(),
 			format.UnsupportedError{Format: "messages", Feature: "max output tokens"},
 			"ai: generate: messages: request has no max output tokens, which Messages requires as max_tokens"},
 		{"responses", responses.New(responses.Options{}), stateful,

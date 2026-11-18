@@ -189,7 +189,7 @@ func TestStreamVLLM(t *testing.T) {
 // TestDecodeErrorVLLM decodes vLLM's 404 body for an unknown model, an OpenAI-style error of a
 // numeric code.
 func TestDecodeErrorVLLM(t *testing.T) {
-	message, typ, code := completions.New().DecodeError([]byte(readTestdata(t, "vllm/not_found.json")))
+	message, typ, code := completions.New(completions.Options{}).DecodeError([]byte(readTestdata(t, "vllm/not_found.json")))
 	const want = "The model `go-ai/no-such-model` does not exist. Valid aliases: openai/gpt-oss-120b."
 	if message != want || typ != "NotFoundError" || code != "404" {
 		t.Errorf("DecodeError = {%q %q %q}, want {%q %q %q}", message, typ, code, want, "NotFoundError", "404")

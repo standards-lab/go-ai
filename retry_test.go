@@ -157,7 +157,7 @@ func TestNewRefusesRetryPolicy(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(), ai.Options{Retry: tc.policy})
+			c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(completions.Options{}), ai.Options{Retry: tc.policy})
 			if err == nil {
 				t.Fatalf("New = %v, nil; want an error containing %q", c, tc.want)
 			}
@@ -172,7 +172,7 @@ func TestNewRefusesRetryPolicy(t *testing.T) {
 		{MaxAttempts: 3, BaseDelay: time.Second, MaxDelay: time.Second},
 		{MaxAttempts: 3, MaxDelay: time.Minute},
 	} {
-		if _, err := ai.New("http://h/v1", http.DefaultClient, completions.New(), ai.Options{Retry: p}); err != nil {
+		if _, err := ai.New("http://h/v1", http.DefaultClient, completions.New(completions.Options{}), ai.Options{Retry: p}); err != nil {
 			t.Errorf("New of policy %+v: %v", p, err)
 		}
 	}

@@ -68,7 +68,7 @@ func TestModelsDecodesList(t *testing.T) {
 // whose own route is elsewhere.
 func TestModelsAnyFormat(t *testing.T) {
 	srv := aitest.NewServer(t, http.StatusOK, modelsReply)
-	c, err := ai.New(srv.URL+"/v1", http.DefaultClient, messages.New(), ai.Options{})
+	c, err := ai.New(srv.URL+"/v1", http.DefaultClient, messages.New(messages.Options{}), ai.Options{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

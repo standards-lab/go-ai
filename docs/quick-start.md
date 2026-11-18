@@ -97,7 +97,7 @@ import (
 
 // newClient returns a client of the endpoint ASK_BASE_URL names.
 func newClient() (*ai.Client, error) {
-	return ai.New(os.Getenv("ASK_BASE_URL"), http.DefaultClient, completions.New(), ai.Options{})
+	return ai.New(os.Getenv("ASK_BASE_URL"), http.DefaultClient, completions.New(completions.Options{}), ai.Options{})
 }
 ```
 
@@ -455,7 +455,7 @@ func newClient() (*ai.Client, error) {
 	transport.ResponseHeaderTimeout = 2 * time.Minute
 	httpClient := &http.Client{Transport: transport}
 
-	return ai.New(os.Getenv("ASK_BASE_URL"), httpClient, completions.New(), ai.Options{
+	return ai.New(os.Getenv("ASK_BASE_URL"), httpClient, completions.New(completions.Options{}), ai.Options{
 		Token: func(context.Context) (string, error) { return os.Getenv("ASK_TOKEN"), nil },
 		Retry: ai.RetryPolicy{
 			MaxAttempts: 4,
@@ -501,10 +501,16 @@ A wire format is the standardized, serialized representation of data that define
 status: completed, 154 tokens
 ```
 
-`messages.New()` sends Anthropic Messages the same way. Messages requires `MaxOutputTokens`, so
-a request without it is refused before anything is sent, with a `*format.UnsupportedError` that
-`errors.As` finds. Each format's package comment lists what it sends, refuses, and drops. The
-[features](features.md#the-formats) document compares them.
+`messages.New(messages.Options{})` sends Anthropic Messages the same way. Messages requires
+`MaxOutputTokens`, so a request without it is refused before anything is sent, with a
+`*format.UnsupportedError` that `errors.As` finds. Each format's package comment lists what it
+sends, refuses, and drops. The [features](features.md#the-formats) document compares them.
+
+Each constructor takes its format's `Options`, a profile whose zero value is the spec. A
+deployment that departs from the spec, such as one that refuses some reasoning efforts, declares
+its gaps there, and the format refuses a request that needs one before sending it. A profile
+binds the format to one deployment, so build one client per deployment and share the
+`*http.Client` among them. The [concepts](concepts.md#profiles) show a profile for each format.
 
 ## 10. Embed passages
 
@@ -584,7 +590,7 @@ import (
 // transcribe transcribes the clip ASK_CLIP names, sending it to the audio model as a chat
 // request, for an endpoint that serves no transcription route.
 func transcribe(ctx context.Context, model string) error {
-	client, err := ai.New(os.Getenv("ASK_BASE_URL"), http.DefaultClient, completions.New(),
+	client, err := ai.New(os.Getenv("ASK_BASE_URL"), http.DefaultClient, completions.New(completions.Options{}),
 		ai.Options{TranscriptionMode: ai.TranscribeChat})
 	if err != nil {
 		return err

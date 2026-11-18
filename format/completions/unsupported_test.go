@@ -75,7 +75,7 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 			"text format", "completions_test.unknownFormat",
 			"completions: text format: text format completions_test.unknownFormat has no Chat Completions form"},
 	}
-	f := completions.New()
+	f := completions.New(completions.Options{})
 	encodings := map[string]func(*protocol.Request, http.Header) ([]byte, error){
 		"EncodeRequest":       f.EncodeRequest,
 		"EncodeStreamRequest": f.EncodeStreamRequest,

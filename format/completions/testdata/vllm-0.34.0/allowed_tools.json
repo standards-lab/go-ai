@@ -1,0 +1,1 @@
+{"error":{"message":"Invalid value for `function`: `None` in `tool_choice`! Correct usage: `{\"type\": \"function\", \"function\": {\"name\": \"my_function\"}}` (parameter=tool_choice.function)","type":"BadRequestError","param":"tool_choice.function","code":400}}

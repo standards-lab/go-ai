@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -67,6 +68,12 @@ import (
 // summary go out as reasoning's effort and summary. The spec's efforts are none, low, medium,
 // high, and xhigh, so minimal and max are refused.
 //
+// The format's Options, the deployment's profile, adjust what goes out. An effort among
+// RefusedEfforts is refused, a declared gap, Declared true, unless the spec lacks it, minimal or
+// max, which stays the spec's refusal. Under NoAllowedTools an allowed_tools choice is narrowed:
+// tools carries only the tools it allows, in the request's order, and tool_choice its mode as a
+// string, whatever the mode.
+//
 // MaxOutputTokens goes out as max_output_tokens, and one below MinMaxOutputTokens, the spec's
 // minimum, is refused. ParallelToolCalls goes out as parallel_tool_calls, true or false; nil
 // sends none, leaving it to the endpoint.
@@ -97,17 +104,20 @@ func (f *Format) encode(req *protocol.Request, stream bool) ([]byte, error) {
 
 // encodeRequest encodes req as EncodeRequest describes, streamed when stream is set.
 func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
+	switch e := req.Reasoning.Effort; {
+	case e == protocol.ReasoningEffortMinimal, e == protocol.ReasoningEffortMax:
+		return nil, refuse("reasoning effort", string(e),
+			fmt.Sprintf("reasoning effort %s has no Open Responses form", e))
+	case e != "" && slices.Contains(f.opts.RefusedEfforts, e):
+		return nil, declare("reasoning effort", string(e),
+			fmt.Sprintf("reasoning effort %s is refused by the deployment, as its profile declares", e))
+	}
 	if err := refuseStateful(req.Native); err != nil {
 		return nil, err
 	}
 	if n := req.MaxOutputTokens; n > 0 && n < MinMaxOutputTokens {
 		return nil, refuse("max output tokens", strconv.Itoa(n),
 			fmt.Sprintf("request's max output tokens %d is below the minimum, %d", n, MinMaxOutputTokens))
-	}
-	switch e := req.Reasoning.Effort; e {
-	case protocol.ReasoningEffortMinimal, protocol.ReasoningEffortMax:
-		return nil, refuse("reasoning effort", string(e),
-			fmt.Sprintf("reasoning effort %s has no Open Responses form", e))
 	}
 	input, err := f.encodeInput(req.Input)
 	if err != nil {
@@ -117,7 +127,11 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	choice, err := encodeToolChoice(req.ToolChoice)
+	tools, choice := req.Tools, req.ToolChoice
+	if allowed, ok := choice.(protocol.AllowedToolChoice); ok && f.opts.NoAllowedTools {
+		tools, choice = narrow(tools, allowed), allowed.Mode
+	}
+	wireChoice, err := encodeToolChoice(choice)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +139,7 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 		Model:             req.Model,
 		Instructions:      req.Instructions,
 		Input:             input,
-		ToolChoice:        choice,
+		ToolChoice:        wireChoice,
 		Text:              text,
 		MaxOutputTokens:   req.MaxOutputTokens,
 		ParallelToolCalls: req.ParallelToolCalls,
@@ -134,7 +148,7 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 		Include:           include,
 		Native:            req.Native,
 	}
-	for _, t := range req.Tools {
+	for _, t := range tools {
 		body.Tools = append(body.Tools, functionTool{
 			Type:        "function",
 			Name:        t.Name,
@@ -174,6 +188,25 @@ func refuseStateful(v jsontext.Value) error {
 // for value, of feature, as message says.
 func refuse(feature, value, message string) error {
 	return &format.UnsupportedError{Format: "responses", Feature: feature, Value: value, Message: message}
+}
+
+// declare returns the format's refusal of a request feature the deployment's profile declares a
+// gap: the deployment refuses value, of feature, though Open Responses has a form for it, as
+// message says.
+func declare(feature, value, message string) error {
+	return &format.UnsupportedError{Format: "responses", Feature: feature, Value: value, Declared: true, Message: message}
+}
+
+// narrow returns the tools allowed lets through, in their order in tools, for a deployment that
+// ignores an allowed_tools choice. A tool allowed names that tools doesn't carry adds none.
+func narrow(tools []protocol.FunctionTool, allowed protocol.AllowedToolChoice) []protocol.FunctionTool {
+	var out []protocol.FunctionTool
+	for _, t := range tools {
+		if slices.ContainsFunc(allowed.Tools, func(c protocol.FunctionToolChoice) bool { return c.Name == t.Name }) {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // encodeInput encodes the input items as EncodeRequest describes.

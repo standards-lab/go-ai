@@ -110,7 +110,7 @@ func TestTranscriptionInstruction(t *testing.T) {
 }
 
 func TestNewRefusesTranscriptionMode(t *testing.T) {
-	c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(), ai.Options{TranscriptionMode: 2})
+	c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(completions.Options{}), ai.Options{TranscriptionMode: 2})
 	if err == nil || !strings.Contains(err.Error(), "unknown transcription mode 2") || !strings.HasPrefix(err.Error(), "ai: ") {
 		t.Errorf("New = %v, %v; want an error naming the unknown transcription mode", c, err)
 	}
@@ -318,9 +318,9 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 				TranscriptionMode: ai.TranscribeChat,
 				Token:             func(context.Context) (string, error) { called = true; return "", nil },
 			}
-			var wireFormat format.Format = completions.New()
+			var wireFormat format.Format = completions.New(completions.Options{})
 			if tc.messages {
-				wireFormat = messages.New()
+				wireFormat = messages.New(messages.Options{})
 			}
 			c, err := ai.New(srv.URL, http.DefaultClient, wireFormat, opts)
 			if err != nil {
