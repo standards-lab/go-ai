@@ -1,5 +1,7 @@
 package responses
 
+import "github.com/standards-lab/go-ai/format"
+
 // Options adjusts the format to an endpoint that departs from the spec. Its zero value is the
 // spec's form, which an endpoint that follows the spec takes as it is.
 type Options struct {
@@ -29,4 +31,9 @@ func New(opts Options) *Format {
 // "http://localhost:8080/v1".
 func (*Format) Route() string {
 	return "responses"
+}
+
+// EventStream is format.SSE: Open Responses streams its reply as server-sent events.
+func (*Format) EventStream() format.EventStream {
+	return format.SSE
 }

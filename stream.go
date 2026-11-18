@@ -8,15 +8,17 @@ import (
 	"iter"
 	"net/http"
 
-	"github.com/standards-lab/go-ai/internal/sse"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
 // GenerateStream streams req's response as the spec's streaming events, which a
 // protocol.Accumulator folds into the Response Generate would return. The sequence is lazy:
 // nothing is validated, encoded, or sent until it is ranged, and each range sends a new request.
-// It asks for text/event-stream and reads the events as they arrive, inside the range loop, with
-// no goroutine; breaking out of the loop closes the reply's body.
+// It asks, in its Accept header, for the media type of the format's EventStream, such as
+// format.SSE's text/event-stream, and reads the reply only through that EventStream's reader,
+// whatever Content-Type the reply names, handing each event to the format's StreamDecoder. It
+// reads the events as they arrive, inside the range loop, with no goroutine; breaking out of the
+// loop closes the reply's body.
 //
 // Each pair holds an event or an error, never both. The events run from
 // protocol.ResponseCreated to one terminal event, after which the sequence ends. A failure the
@@ -45,8 +47,8 @@ import (
 // starts: until a 2xx reply arrives, its first byte unread. A stream once started is never sent
 // again; its error ends the sequence as above.
 //
-// Comments, such as llama.cpp's ping, a ":" line every 30 seconds, are no events and change
-// nothing, except that their bytes reset the idle bound.
+// What the EventStream reads as no event, such as llama.cpp's ping under SSE, a ":" comment line
+// every 30 seconds, changes nothing, except that its bytes reset the idle bound.
 func (c *Client) GenerateStream(ctx context.Context, req *protocol.Request) iter.Seq2[protocol.Event, error] {
 	return func(yield func(protocol.Event, error) bool) {
 		if err := c.stream(ctx, req, yield); err != nil {
@@ -71,8 +73,9 @@ func (c *Client) stream(ctx context.Context, req *protocol.Request, yield func(p
 	// the caller's cancel below: the request's being done may be the bound's doing.
 	reqCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	stream := c.format.EventStream()
 	resp, err := c.send(reqCtx, http.MethodPost, c.format.Route(), fixedBody(header, body), "application/json",
-		"text/event-stream", c.format.DecodeError)
+		stream.MediaType(), c.format.DecodeError)
 	if err != nil {
 		return err
 	}
@@ -94,7 +97,7 @@ func (c *Client) stream(ctx context.Context, req *protocol.Request, yield func(p
 		}
 		return false, nil
 	}
-	events, decoder := sse.NewDecoder(reply), c.format.NewStreamDecoder()
+	events, decoder := stream.NewReader(reply), c.format.NewStreamDecoder()
 	for {
 		e, err := events.Next()
 		if errors.Is(err, io.EOF) {
@@ -112,9 +115,7 @@ func (c *Client) stream(ctx context.Context, req *protocol.Request, yield func(p
 		if err != nil {
 			return readError(ctx, err)
 		}
-		// The decoder takes the data alone: a format that names its events carries the name in
-		// the data too, so the event field is the framing's and isn't passed.
-		made, err := decoder.Decode([]byte(e.Data))
+		made, err := decoder.Decode(e)
 		switch over, ctxErr := emit(made); {
 		case ctxErr != nil:
 			return ctxErr

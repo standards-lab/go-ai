@@ -78,6 +78,7 @@
 //   - [Format.DecodeResponse] decodes a response resource into a response: messages,
 //     reasoning, and function calls, with their ids and statuses the server's.
 //   - [Format.EncodeStreamRequest] encodes a request as EncodeRequest does, with stream true.
+//   - [Format.EventStream] is the framing its replies stream in, format.SSE.
 //   - [Format.NewStreamDecoder] returns a decoder of a streamed reply into the protocol's
 //     streaming events, whose folded Response is DecodeResponse's of the terminal response, an
 //     item of no status there taking its output_item.done's.

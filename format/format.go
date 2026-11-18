@@ -32,6 +32,10 @@ type Format interface {
 	// encodes it for an unstreamed one, with the members that ask its API to stream the reply.
 	// It refuses what EncodeRequest refuses, and a Native member that clashes with those.
 	EncodeStreamRequest(req *protocol.Request, header http.Header) ([]byte, error)
+	// EventStream is the framing the format's API streams a reply in, such as SSE. The client
+	// asks for its media type in a streamed request's Accept header, and reads the reply only
+	// through its reader, handing each event to the StreamDecoder.
+	EventStream() EventStream
 	// NewStreamDecoder returns a decoder for the reply to one streamed request. The client
 	// calls it once per stream, so the decoder's state is that stream's alone.
 	NewStreamDecoder() StreamDecoder
@@ -42,21 +46,26 @@ type Format interface {
 
 // StreamDecoder turns the events of one streamed reply into the protocol's streaming events: a
 // stream opens with protocol.ResponseCreated and closes with one terminal event, whose Response
-// holds the finished output and the usage. It is framing-neutral: the client reads the reply's
-// framing, such as server-sent events, and hands the decoder each event's data alone. A format
-// that names its events carries the name in the data as well, as Open Responses requires its
-// event field to match the type in the event's body and Anthropic Messages puts a type in every
-// data body, and Chat Completions names none; so the decoder reads an event's type, where its
-// format has one, from the data. It serves one stream, and isn't safe for concurrent use.
+// holds the finished output and the usage. It is framing-neutral: the client reads the reply
+// through the Format's EventStream and hands the decoder each WireEvent, the framing's name for
+// the event and its payload. A format that names its events in the payload reads the name from
+// there, as Open Responses requires its event field to match the type in the event's body and
+// Anthropic Messages puts a type in every data body, and Chat Completions names none; such a
+// decoder needn't read the WireEvent's Type. It serves one stream, and isn't safe for
+// concurrent use.
+//
+// An exception the endpoint reports in the stream, such as an error frame, reaches the decoder
+// as an event like any other, never as an error from the WireEventReader, and the decoder
+// closes the stream with protocol.ErrorEvent and then protocol.ResponseFailed.
 type StreamDecoder interface {
-	// Decode decodes data, the stream's next event's, and returns the protocol events it
-	// makes, which may be none. An error frame, the endpoint's report in the stream that the
-	// response failed, is no error: it closes the stream as the spec has it, with the error
-	// event, protocol.ErrorEvent, and then the terminal protocol.ResponseFailed, its Response
-	// failed, holding the error and the output made before the frame. A chunk the format can't
-	// decode is an error, after which the stream is broken; with it, Decode returns the events
-	// it made before the error, which the client yields ahead of it.
-	Decode(data []byte) ([]protocol.Event, error)
+	// Decode decodes e, the stream's next event, and returns the protocol events it makes,
+	// which may be none. An error frame, the endpoint's report in the stream that the response
+	// failed, is no error: it closes the stream as the spec has it, with the error event,
+	// protocol.ErrorEvent, and then the terminal protocol.ResponseFailed, its Response failed,
+	// holding the error and the output made before the frame. A chunk the format can't decode
+	// is an error, after which the stream is broken; with it, Decode returns the events it made
+	// before the error, which the client yields ahead of it.
+	Decode(e WireEvent) ([]protocol.Event, error)
 	// End is told the stream has ended, and returns the events that close it. A stream that
 	// ended before it was complete is an error matching io.ErrUnexpectedEOF.
 	End() ([]protocol.Event, error)

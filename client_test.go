@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/standards-lab/go-ai"
+	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/format/completions"
 	"github.com/standards-lab/go-ai/format/messages"
 	"github.com/standards-lab/go-ai/internal/aitest"
@@ -43,7 +44,13 @@ func newClient(t *testing.T, base string, opts ai.Options) *ai.Client {
 // refuses it.
 func newClientWith(t *testing.T, base string, hc *http.Client, opts ai.Options) *ai.Client {
 	t.Helper()
-	c, err := ai.New(base, hc, completions.New(), opts)
+	return newClientFormat(t, base, hc, completions.New(), opts)
+}
+
+// newClientFormat returns a Client of base speaking wf through hc, failing t if New refuses it.
+func newClientFormat(t *testing.T, base string, hc *http.Client, wf format.Format, opts ai.Options) *ai.Client {
+	t.Helper()
+	c, err := ai.New(base, hc, wf, opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

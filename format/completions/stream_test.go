@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/format/completions"
 	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/internal/sse"
@@ -29,8 +30,9 @@ type streamResult struct {
 // end. It stops at the first error.
 func decodeStream(t *testing.T, body string) streamResult {
 	t.Helper()
-	decoder := completions.New().NewStreamDecoder()
-	events := sse.NewDecoder(strings.NewReader(body))
+	wf := completions.New()
+	decoder := wf.NewStreamDecoder()
+	events := wf.EventStream().NewReader(strings.NewReader(body))
 	var r streamResult
 	for {
 		e, err := events.Next()
@@ -41,9 +43,9 @@ func decodeStream(t *testing.T, body string) streamResult {
 			return r
 		}
 		if err != nil {
-			t.Fatalf("sse: %v", err)
+			t.Fatalf("read event: %v", err)
 		}
-		made, err := decoder.Decode([]byte(e.Data))
+		made, err := decoder.Decode(e)
 		r.events = append(r.events, made...)
 		if err != nil {
 			r.err = err
@@ -976,7 +978,7 @@ func TestStreamEnd(t *testing.T) {
 func TestStreamEndMakesNothingAfterTheTerminalEvent(t *testing.T) {
 	decoder := completions.New().NewStreamDecoder()
 	for _, data := range []string{delta(`{"content":"Paris"}`, "stop"), "[DONE]"} {
-		if _, err := decoder.Decode([]byte(data)); err != nil {
+		if _, err := decoder.Decode(format.WireEvent{Data: []byte(data)}); err != nil {
 			t.Fatalf("Decode(%s): %v", data, err)
 		}
 	}
@@ -1018,14 +1020,14 @@ func TestStreamRefusesChunk(t *testing.T) {
 			decoder := completions.New().NewStreamDecoder()
 			var err error
 			for _, c := range tc.chunks {
-				if _, err = decoder.Decode([]byte(c)); err != nil {
+				if _, err = decoder.Decode(format.WireEvent{Data: []byte(c)}); err != nil {
 					break
 				}
 			}
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Decode error = %v, want one containing %q", err, tc.want)
 			}
-			if _, err := decoder.Decode([]byte(text)); err == nil {
+			if _, err := decoder.Decode(format.WireEvent{Data: []byte(text)}); err == nil {
 				t.Error("Decode after an error = nil, want the stream broken")
 			}
 		})
@@ -1141,11 +1143,11 @@ func TestStreamErrorFrame(t *testing.T) {
 
 			decoder := completions.New().NewStreamDecoder()
 			for _, c := range tc.chunks {
-				if _, err := decoder.Decode([]byte(c)); err != nil {
+				if _, err := decoder.Decode(format.WireEvent{Data: []byte(c)}); err != nil {
 					t.Fatalf("Decode: %v", err)
 				}
 			}
-			if events, err := decoder.Decode([]byte(text)); err == nil || len(events) > 0 {
+			if events, err := decoder.Decode(format.WireEvent{Data: []byte(text)}); err == nil || len(events) > 0 {
 				t.Errorf("Decode after the error frame = %v, %v; want no events and the stream ended", events, err)
 			}
 			if events, err := decoder.End(); err != nil || len(events) > 0 {
@@ -1159,7 +1161,7 @@ func TestStreamErrorFrame(t *testing.T) {
 // io.ErrUnexpectedEOF, reported as a chunk the format can't decode, not as a stream that ended
 // early.
 func TestStreamDecodeErrorIsNoEndOfStream(t *testing.T) {
-	_, err := completions.New().NewStreamDecoder().Decode([]byte(`{"choices":`))
+	_, err := completions.New().NewStreamDecoder().Decode(format.WireEvent{Data: []byte(`{"choices":`)})
 	if err == nil || !strings.Contains(err.Error(), "decode chunk") || errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Errorf("Decode error = %v, want a decode error that doesn't match io.ErrUnexpectedEOF", err)
 	}
@@ -1168,7 +1170,7 @@ func TestStreamDecodeErrorIsNoEndOfStream(t *testing.T) {
 // TestStreamReturnsEventsBeforeAnError wants the events a chunk made before its error: the
 // first chunk opens the stream before it is found not to be JSON.
 func TestStreamReturnsEventsBeforeAnError(t *testing.T) {
-	events, err := completions.New().NewStreamDecoder().Decode([]byte("not JSON"))
+	events, err := completions.New().NewStreamDecoder().Decode(format.WireEvent{Data: []byte("not JSON")})
 	if err == nil {
 		t.Fatal("Decode = nil error, want one")
 	}

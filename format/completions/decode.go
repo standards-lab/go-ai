@@ -343,11 +343,12 @@ const (
 	partRefusal
 )
 
-// Decode decodes one event of the stream, as NewStreamDecoder describes. With an error, the
-// events it returns are those it made before it.
-func (d *streamDecoder) Decode(data []byte) ([]protocol.Event, error) {
+// Decode decodes one event of the stream, as NewStreamDecoder describes, from its data alone:
+// the format names its events, where it does, in the data. With an error, the events it returns
+// are those it made before it.
+func (d *streamDecoder) Decode(e format.WireEvent) ([]protocol.Event, error) {
 	d.events = nil
-	if err := d.decode(data); err != nil {
+	if err := d.decode(e.Data); err != nil {
 		d.ended = true
 		return d.events, fmt.Errorf("completions: stream: %w", err)
 	}

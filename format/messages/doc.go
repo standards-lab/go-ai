@@ -45,6 +45,7 @@
 //   - [Format.DecodeResponse] decodes a Messages reply into a response: reasoning, messages, and
 //     function calls.
 //   - [Format.EncodeStreamRequest] encodes a request as EncodeRequest does, with stream true.
+//   - [Format.EventStream] is the framing its replies stream in, format.SSE.
 //   - [Format.NewStreamDecoder] returns a decoder of one streamed reply's events into the
 //     protocol's streaming events, whose folded Response is DecodeResponse's for the same reply.
 //   - [Format.DecodeError] decodes an Anthropic or an OpenAI-style error body.

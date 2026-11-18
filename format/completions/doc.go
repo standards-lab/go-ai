@@ -43,6 +43,7 @@
 //   - [Format.EncodeRequest] encodes a request as a Chat Completions body.
 //   - [Format.DecodeResponse] decodes a Chat Completions reply into a response.
 //   - [Format.EncodeStreamRequest] encodes a request as a streamed Chat Completions body.
+//   - [Format.EventStream] is the framing its replies stream in, format.SSE.
 //   - [Format.NewStreamDecoder] returns a decoder turning one streamed reply's chunks into the
 //     protocol's streaming events.
 //   - [Format.DecodeError] decodes an OpenAI-style error body.

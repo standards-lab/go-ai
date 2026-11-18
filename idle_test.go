@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/standards-lab/go-ai"
+	"github.com/standards-lab/go-ai/format"
+	"github.com/standards-lab/go-ai/format/completions"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -65,68 +67,76 @@ func (b *paced) Close() error {
 	return nil
 }
 
-// pacedClient returns a Client whose transport answers with a paced body of parts, and the
-// body it last answered with.
-func pacedClient(t *testing.T, opts ai.Options, hang bool, parts ...part) (*ai.Client, func() *paced) {
+// pacedClient returns a Client speaking wf whose transport answers with a paced body of parts,
+// and the body it last answered with.
+func pacedClient(t *testing.T, wf format.Format, opts ai.Options, hang bool, parts ...part) (*ai.Client, func() *paced) {
 	t.Helper()
 	var b *paced
-	c := newClientWith(t, "http://router/v1", &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+	c := newClientFormat(t, "http://router/v1", &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
 		b = &paced{parts: append([]part(nil), parts...), hang: hang, ctx: r.Context()}
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: b, Request: r}, nil
-	})}, opts)
+	})}, wf, opts)
 	return c, func() *paced { return b }
 }
 
 // TestStreamIdleTimeout has the stream stall, before its first byte and after its first events,
 // and wants it ended once a read has waited the bound: one error, matching io.ErrUnexpectedEOF
 // and os.ErrDeadlineExceeded and not the caller's context, after the events before it, which
-// fold to the partial Response, and the body closed.
+// fold to the partial Response, and the body closed. It holds under each framing: the bound is
+// the client's, whatever event stream reads the body.
 func TestStreamIdleTimeout(t *testing.T) {
 	cases := []struct {
-		name  string
-		parts []part
-		// stalled is when the stall began; want the partial Response, nil for no events.
+		name string
+		// chunks are sent after stalled, before the stall that ends the stream; want is the
+		// partial Response, nil for no events.
+		chunks  []string
 		stalled time.Duration
 		want    *protocol.Response
 	}{
 		{"before the first byte", nil, 0, nil},
-		{"after the first events", []part{{after: 3 * time.Second, text: eventStream(streamed[:3]...)}}, 3 * time.Second, partial("Paris")},
+		{"after the first events", streamed[:3], 3 * time.Second, partial("Paris")},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				c, body := pacedClient(t, ai.Options{StreamIdleTimeout: idleLimit}, true, tc.parts...)
-				ctx := t.Context()
-				start := time.Now()
-				events, resp, errs := collect(t, c.GenerateStream(ctx, hello()))
-				if waited := time.Since(start); waited != tc.stalled+idleLimit {
-					t.Errorf("ended after %v, want %v", waited, tc.stalled+idleLimit)
+	for _, fr := range framings {
+		for _, tc := range cases {
+			t.Run(fr.name+"/"+tc.name, func(t *testing.T) {
+				var parts []part
+				if tc.chunks != nil {
+					parts = []part{{after: tc.stalled, text: fr.encode(tc.chunks...)}}
 				}
-				if len(errs) != 1 {
-					t.Fatalf("GenerateStream errors = %v, want one", errs)
-				}
-				err := errs[0]
-				if !errors.Is(err, io.ErrUnexpectedEOF) || !errors.Is(err, os.ErrDeadlineExceeded) {
-					t.Errorf("error = %v, want it to match io.ErrUnexpectedEOF and os.ErrDeadlineExceeded", err)
-				}
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
-					t.Errorf("error = %v, ctx %v; want neither the caller's context", err, ctx.Err())
-				}
-				if !strings.Contains(err.Error(), "stream idle timeout (5s)") {
-					t.Errorf("error = %q, want it to name the bound", err)
-				}
-				if tc.want == nil {
-					if len(events) != 0 {
-						t.Errorf("%d events, want none", len(events))
+				synctest.Test(t, func(t *testing.T) {
+					c, body := pacedClient(t, fr.format(), ai.Options{StreamIdleTimeout: idleLimit}, true, parts...)
+					ctx := t.Context()
+					start := time.Now()
+					events, resp, errs := collect(t, c.GenerateStream(ctx, hello()))
+					if waited := time.Since(start); waited != tc.stalled+idleLimit {
+						t.Errorf("ended after %v, want %v", waited, tc.stalled+idleLimit)
 					}
-				} else if !reflect.DeepEqual(resp, tc.want) {
-					t.Errorf("Response = %#v\nwant       %#v", resp, tc.want)
-				}
-				if !body().closed.Load() {
-					t.Error("the body is open after the sequence ended")
-				}
+					if len(errs) != 1 {
+						t.Fatalf("GenerateStream errors = %v, want one", errs)
+					}
+					err := errs[0]
+					if !errors.Is(err, io.ErrUnexpectedEOF) || !errors.Is(err, os.ErrDeadlineExceeded) {
+						t.Errorf("error = %v, want it to match io.ErrUnexpectedEOF and os.ErrDeadlineExceeded", err)
+					}
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+						t.Errorf("error = %v, ctx %v; want neither the caller's context", err, ctx.Err())
+					}
+					if !strings.Contains(err.Error(), "stream idle timeout (5s)") {
+						t.Errorf("error = %q, want it to name the bound", err)
+					}
+					if tc.want == nil {
+						if len(events) != 0 {
+							t.Errorf("%d events, want none", len(events))
+						}
+					} else if !reflect.DeepEqual(resp, tc.want) {
+						t.Errorf("Response = %#v\nwant       %#v", resp, tc.want)
+					}
+					if !body().closed.Load() {
+						t.Error("the body is open after the sequence ended")
+					}
+				})
 			})
-		})
+		}
 	}
 }
 
@@ -144,7 +154,7 @@ func TestStreamIdleTimeoutResetByBytes(t *testing.T) {
 		for _, chunk := range streamed[2:] {
 			parts = append(parts, part{after: gap, text: eventStream(chunk)})
 		}
-		c, _ := pacedClient(t, ai.Options{StreamIdleTimeout: idleLimit}, false, parts...)
+		c, _ := pacedClient(t, completions.New(), ai.Options{StreamIdleTimeout: idleLimit}, false, parts...)
 		var acc protocol.Accumulator
 		for e, err := range c.GenerateStream(t.Context(), hello()) {
 			if err != nil {
@@ -167,7 +177,7 @@ func TestStreamIdleTimeoutZero(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), time.Hour)
 		defer cancel()
-		c, _ := pacedClient(t, ai.Options{}, true, part{text: eventStream(streamed[:3]...)})
+		c, _ := pacedClient(t, completions.New(), ai.Options{}, true, part{text: eventStream(streamed[:3]...)})
 		start := time.Now()
 		_, _, errs := collect(t, c.GenerateStream(ctx, hello()))
 		if len(errs) != 1 || !errors.Is(errs[0], context.DeadlineExceeded) {
