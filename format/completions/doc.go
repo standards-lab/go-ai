@@ -8,12 +8,14 @@
 // assistant items joined into one assistant message of reasoning_content, content, and
 // tool_calls, the tools and tool choice, reasoning's effort as reasoning_effort, text's format
 // as response_format and its verbosity as verbosity, MaxOutputTokens as max_completion_tokens,
-// and audio input as its own input_audio part. Native's members, the native tier, are merged
+// ParallelToolCalls, when set, as parallel_tool_calls, and audio input as its own input_audio
+// part. Native's members, the native tier, are merged
 // into the body's top level.
 //
 // It refuses, before anything is sent, an allowed tool choice of mode none, which Chat
 // Completions' allowed_tools has no form for, and a Native member that clashes with one the
-// typed fields set, stream and stream_options among them.
+// typed fields set, stream and stream_options among them, and parallel_tool_calls when
+// ParallelToolCalls is set.
 //
 // It drops the hint Chat Completions has no form for, never refusing it: reasoning's summary. It
 // drops a reasoning item whose encrypted_content isn't its own envelope, and a run of reasoning
@@ -30,9 +32,12 @@
 // becomes a reasoning item ahead of the message, read from either name; and the
 // finish_reason gives the status, only the last item taking an incomplete one; the usage's
 // reasoning tokens are read from completion_tokens_details or, when a server gives them at the
-// usage's top level instead, from there. A stream's tool call fragments, which may interleave,
+// usage's top level instead, from there, and its cached input tokens from
+// prompt_tokens_details; the reply's id and model become the response's, a stream's on
+// response.created and its terminal response alike. A stream's tool call fragments, which may interleave,
 // are assembled by index; a chunk carrying no id and no choices, as some endpoints send ahead of
-// the reply, claims nothing about it, and neither sets nor checks the stream's id; and an error
+// the reply, claims nothing about it, and neither sets nor checks the stream's id and model,
+// response.created waiting for the chunk that does; and an error
 // frame ends the stream with the error event and response.failed.
 //
 // Its exported identifiers:

@@ -51,7 +51,8 @@ import (
 // allowed set of mode none has no Chat Completions form, whose allowed_tools modes are auto and
 // required, and is refused. Reasoning's effort goes out as reasoning_effort, each of the
 // protocol's seven by its own name, and MaxOutputTokens as max_completion_tokens, any positive
-// bound as it is.
+// bound as it is. ParallelToolCalls goes out as parallel_tool_calls, true or false; nil sends
+// none, leaving it to the endpoint.
 //
 // The hints Chat Completions has no form for are dropped, never refused: reasoning's summary.
 //
@@ -60,8 +61,9 @@ import (
 // with description and strict when set. Text's verbosity goes out as verbosity.
 // The request is unstreamed, sent with stream false; EncodeStreamRequest streams it.
 // Native's members, the native tier, are merged into the top level, and a member named like one
-// the typed fields set is refused, as are stream, which is always set, and stream_options,
-// which the streamed request sets. It adds no headers.
+// the typed fields set is refused, parallel_tool_calls among them when ParallelToolCalls is set,
+// as are stream, which is always set, and stream_options, which the streamed request sets. It
+// adds no headers.
 func (*Format) EncodeRequest(req *protocol.Request, _ http.Header) ([]byte, error) {
 	return encodeRequest(req, false)
 }
@@ -81,6 +83,7 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 		Model:               req.Model,
 		ReasoningEffort:     string(req.Reasoning.Effort),
 		MaxCompletionTokens: req.MaxOutputTokens,
+		ParallelToolCalls:   req.ParallelToolCalls,
 		Verbosity:           string(req.Text.Verbosity),
 		Stream:              stream,
 		Native:              req.Native,

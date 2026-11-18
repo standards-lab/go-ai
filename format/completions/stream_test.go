@@ -262,14 +262,30 @@ func streamCallIDs(t *testing.T, body string) []string {
 	}
 }
 
+// assertCreated fails t unless events open with response.created bearing the reply's id and
+// model, want's.
+func assertCreated(t *testing.T, events []protocol.Event, want *protocol.Response) {
+	t.Helper()
+	created, ok := events[0].(protocol.ResponseCreated)
+	if !ok {
+		t.Fatalf("first event = %#v, want response.created", events[0])
+	}
+	if created.Response.ID != want.ID || created.Response.Model != want.Model {
+		t.Errorf("response.created ID, Model = %q, %q; want %q, %q", created.Response.ID, created.Response.Model, want.ID, want.Model)
+	}
+}
+
 // TestStreamRecorded translates the recorded router streams to events, and folds them to the
-// Response DecodeResponse gives for the same reply unstreamed, item ids included.
+// Response DecodeResponse gives for the same reply unstreamed, item ids, id, and model included.
+// The cached prompt tokens are pinned from the stream: llama.cpp's cache held another share of
+// the prompt for the stream than for the unstreamed send.
 func TestStreamRecorded(t *testing.T) {
 	cases := []struct {
-		name  string
-		trace string
+		name   string
+		cached int
+		trace  string
 	}{
-		{"text", `
+		{"text", 0, `
 			0 response.created in_progress
 			1 response.output_item.added 0 protocol.Reasoning{ID:"chatcmpl-NL7ZS1BCe0E5im0oLhUHyZ2JRMCqBgq7/0", Status:"in_progress", Content:[]protocol.ReasoningText(nil), Summary:[]protocol.SummaryText(nil), EncryptedContent:""}
 			2 response.content_part.added 0 0 chatcmpl-NL7ZS1BCe0E5im0oLhUHyZ2JRMCqBgq7/0 protocol.ReasoningText{Text:""}
@@ -288,7 +304,7 @@ func TestStreamRecorded(t *testing.T) {
 			24 response.content_part.done 1 0 chatcmpl-NL7ZS1BCe0E5im0oLhUHyZ2JRMCqBgq7/1 protocol.OutputText{Text:"Paris, Lyon, Marseille"}
 			25 response.output_item.done 1 protocol.Message{ID:"chatcmpl-NL7ZS1BCe0E5im0oLhUHyZ2JRMCqBgq7/1", Status:"completed", Role:"assistant", Content:[]protocol.ContentPart{protocol.OutputText{Text:"Paris, Lyon, Marseille"}}}
 			26 response.completed 2 items`},
-		{"length", `
+		{"length", 7, `
 			0 response.created in_progress
 			1 response.output_item.added 0 protocol.Message{ID:"chatcmpl-Ua3L4FAciVzBKIrsejypEGgyaReDN4Rk/0", Status:"in_progress", Role:"assistant", Content:[]protocol.ContentPart(nil)}
 			2 response.content_part.added 0 0 chatcmpl-Ua3L4FAciVzBKIrsejypEGgyaReDN4Rk/0 protocol.OutputText{Text:""}
@@ -304,7 +320,7 @@ func TestStreamRecorded(t *testing.T) {
 			12 response.content_part.done 0 0 chatcmpl-Ua3L4FAciVzBKIrsejypEGgyaReDN4Rk/0 protocol.OutputText{Text:"1, 2, 3,"}
 			13 response.output_item.done 0 protocol.Message{ID:"chatcmpl-Ua3L4FAciVzBKIrsejypEGgyaReDN4Rk/0", Status:"incomplete", Role:"assistant", Content:[]protocol.ContentPart{protocol.OutputText{Text:"1, 2, 3,"}}}
 			14 response.incomplete 1 items`},
-		{"tool_call", `
+		{"tool_call", 0, `
 			0 response.created in_progress
 			1 response.output_item.added 0 protocol.Reasoning{ID:"chatcmpl-fbwrSmHus4NqdExvtVzLfY0BV9kduppP/0", Status:"in_progress", Content:[]protocol.ReasoningText(nil), Summary:[]protocol.SummaryText(nil), EncryptedContent:""}
 			2 response.content_part.added 0 0 chatcmpl-fbwrSmHus4NqdExvtVzLfY0BV9kduppP/0 protocol.ReasoningText{Text:""}
@@ -324,7 +340,7 @@ func TestStreamRecorded(t *testing.T) {
 			23 response.function_call_arguments.done 1 chatcmpl-fbwrSmHus4NqdExvtVzLfY0BV9kduppP/1 "{\n  \"city\": \"Paris\"\n}"
 			24 response.output_item.done 1 protocol.FunctionCall{ID:"chatcmpl-fbwrSmHus4NqdExvtVzLfY0BV9kduppP/1", Status:"completed", CallID:"LsrzvhpPKdbtJyriZMr6ivjrWBgmWA3j", Name:"get_weather", Arguments:"{\n  \"city\": \"Paris\"\n}"}
 			25 response.completed 2 items`},
-		{"parallel_tool_calls", `
+		{"parallel_tool_calls", 94, `
 			0 response.created in_progress
 			1 response.output_item.added 0 protocol.Reasoning{ID:"chatcmpl-SDOdqBEtCPhaKm5xDbwNCDkOz758MHkS/0", Status:"in_progress", Content:[]protocol.ReasoningText(nil), Summary:[]protocol.SummaryText(nil), EncryptedContent:""}
 			2 response.content_part.added 0 0 chatcmpl-SDOdqBEtCPhaKm5xDbwNCDkOz758MHkS/0 protocol.ReasoningText{Text:""}
@@ -366,20 +382,23 @@ func TestStreamRecorded(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
+			want.Usage.InputTokensDetails.CachedTokens = tc.cached
+			assertCreated(t, r.events, want)
 			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 		})
 	}
 }
 
 // TestStreamUsage wants the usage of the chunk that carries it, after the finish_reason, in
-// the terminal event's response.
+// the terminal event's response, its cached prompt tokens included.
 func TestStreamUsage(t *testing.T) {
-	r := decodeStream(t, readTestdata(t, "text.sse"))
+	r := decodeStream(t, readTestdata(t, "parallel_tool_calls.sse"))
 	completed, ok := r.events[len(r.events)-1].(protocol.ResponseCompleted)
 	if !ok {
 		t.Fatalf("last event = %#v, want response.completed", r.events[len(r.events)-1])
 	}
-	want := protocol.Usage{InputTokens: 78, OutputTokens: 25, TotalTokens: 103}
+	want := protocol.Usage{InputTokens: 99, OutputTokens: 128, TotalTokens: 227,
+		InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 94}}
 	if completed.Response.Usage != want {
 		t.Errorf("Usage = %+v, want %+v", completed.Response.Usage, want)
 	}
@@ -899,6 +918,75 @@ func TestStreamChunkOfNoIDNorChoices(t *testing.T) {
 	}
 }
 
+// TestStreamIDAndModel wants response.created and the terminal response to bear the reply's id
+// and model, those of the first chunk that claims the reply. A leading chunk of no id and no
+// choices claims nothing, so it makes no event: response.created comes at the chunk after it,
+// still first, bearing that chunk's id and model, and the events after it are numbered as they
+// would be without the leading chunk. The model isn't checked against later chunks'.
+func TestStreamIDAndModel(t *testing.T) {
+	const filter = `{"choices":[],"created":0,"id":"","model":"","object":"","prompt_filter_results":[{"prompt_index":0}]}`
+	withModel := func(chunk, model string) string {
+		return strings.Replace(chunk, `"id":"chatcmpl-1",`, `"id":"chatcmpl-1","model":"`+model+`",`, 1)
+	}
+	text, stop := withModel(delta(`{"content":"Paris"}`, ""), "m-1"), withModel(delta(`{}`, "stop"), "m-1")
+	const trace = `
+		0 response.created in_progress
+		1 response.output_item.added 0 protocol.Message{ID:"chatcmpl-1/0", Status:"in_progress", Role:"assistant", Content:[]protocol.ContentPart(nil)}
+		2 response.content_part.added 0 0 chatcmpl-1/0 protocol.OutputText{Text:""}
+		3 response.output_text.delta 0 0 chatcmpl-1/0 "Paris"
+		4 response.output_text.done 0 0 chatcmpl-1/0 "Paris"
+		5 response.content_part.done 0 0 chatcmpl-1/0 protocol.OutputText{Text:"Paris"}
+		6 response.output_item.done 0 protocol.Message{ID:"chatcmpl-1/0", Status:"completed", Role:"assistant", Content:[]protocol.ContentPart{protocol.OutputText{Text:"Paris"}}}
+		7 response.completed 1 items`
+	cases := []struct {
+		name   string
+		chunks []string
+	}{
+		{"every chunk", []string{text, stop, "[DONE]"}},
+		{"after a leading chunk of no id and no choices", []string{filter, filter, text, stop, "[DONE]"}},
+		{"a later chunk of another model", []string{text, withModel(delta(`{}`, "stop"), "m-2"), "[DONE]"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := decodeStream(t, stream(tc.chunks...))
+			if r.err != nil {
+				t.Fatalf("stream error: %v", r.err)
+			}
+			assertTrace(t, r.events, trace)
+			want, err := decode(`{"id":"chatcmpl-1","model":"m-1","choices":[{"message":{"content":"Paris"},"finish_reason":"stop"}]}`)
+			if err != nil {
+				t.Fatalf("DecodeResponse: %v", err)
+			}
+			assertCreated(t, r.events, want)
+			completed := r.events[len(r.events)-1].(protocol.ResponseCompleted)
+			aitest.AssertResponse(t, completed.Response, want)
+			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
+		})
+	}
+
+	// A stream of nothing but chunks of no id and no choices still opens before it reports
+	// itself cut short, bearing no id or model; an empty stream makes nothing.
+	r := decodeStream(t, stream(filter))
+	if !errors.Is(r.err, io.ErrUnexpectedEOF) {
+		t.Errorf("stream error = %v, want io.ErrUnexpectedEOF", r.err)
+	}
+	assertTrace(t, r.events, "0 response.created in_progress")
+	assertCreated(t, r.events, &protocol.Response{})
+	if r := decodeStream(t, ""); len(r.events) > 0 {
+		t.Errorf("empty stream made %v, want nothing", r.events)
+	}
+
+	// An error frame's response.failed bears the stream's id and model.
+	r = decodeStream(t, stream(filter, text, `{"error":{"message":"model unloaded"}}`))
+	failed, ok := r.events[len(r.events)-1].(protocol.ResponseFailed)
+	if !ok {
+		t.Fatalf("last event = %#v, want response.failed", r.events[len(r.events)-1])
+	}
+	if failed.Response.ID != "chatcmpl-1" || failed.Response.Model != "m-1" {
+		t.Errorf("response.failed ID, Model = %q, %q; want %q, %q", failed.Response.ID, failed.Response.Model, "chatcmpl-1", "m-1")
+	}
+}
+
 // TestStreamChunkOfNoIDWithChoices wants a chunk of no id that carries choices held to the
 // stream's id as before: first, it sets the stream's id, empty, so a later chunk of an id is of
 // another reply; after a chunk of an id, it is of another reply.
@@ -1038,8 +1126,8 @@ func TestStreamRefusesChunk(t *testing.T) {
 // mid-stream, to close the stream as the spec has it: the error event of the frame's type, code,
 // message, and param, then response.failed, its response failed, its error the frame's code and
 // message, holding the output made before the frame, the item open at it in progress with what
-// it had, which is what the Accumulator held just before the frame. The frame alone carries no
-// id; it comes as the first event, after response.created, or after chunks of an id, in each
+// it had, which is what the Accumulator held just before the frame, and bearing the stream's id.
+// The frame alone carries no id; it comes as the first event, after response.created, or after chunks of an id, in each
 // shape an OpenAI-style error body takes, and with each kind of item open. An event after it is
 // an error, and End makes nothing.
 func TestStreamErrorFrame(t *testing.T) {
@@ -1128,6 +1216,7 @@ func TestStreamErrorFrame(t *testing.T) {
 				t.Fatalf("last event = %#v, want response.failed", r.events[n-1])
 			}
 			want := &protocol.Response{
+				ID:     streamID(t, stream(tc.chunks...)),
 				Output: tc.output,
 				Status: protocol.StatusFailed,
 				Error:  &protocol.ResponseError{Code: tc.payload.Code, Message: tc.payload.Message},

@@ -20,6 +20,10 @@ type request struct {
 	// alike, as aliases of n_predict; max_completion_tokens is the name OpenAI keeps, having
 	// deprecated max_tokens.
 	MaxCompletionTokens int `json:"max_completion_tokens,omitzero"`
+	// ParallelToolCalls carries parallel_tool_calls, true or false, omitted when the request
+	// leaves it to the endpoint, so a Native parallel_tool_calls member clashes with it only
+	// when it is set.
+	ParallelToolCalls *bool `json:"parallel_tool_calls,omitzero"`
 	// Stream is always sent, true for a streamed request and false otherwise, so a Native
 	// stream member clashes with it in both.
 	Stream bool `json:"stream"`
@@ -162,7 +166,9 @@ type refusalPart struct {
 // either.
 type response struct {
 	// ID is the reply's id, such as chatcmpl-abc, from which the format derives its items' ids.
-	ID      string `json:"id"`
+	ID string `json:"id"`
+	// Model is the model that answered, as the endpoint names it.
+	Model   string `json:"model"`
 	Choices []struct {
 		Message struct {
 			Content          string     `json:"content"`
@@ -179,11 +185,15 @@ type response struct {
 // usage is a reply's token counts, in a response body or a stream's chunk. The reasoning tokens
 // come under completion_tokens_details, as OpenAI gives them, or, from some servers, at the
 // usage's top level beside completion_tokens; each is a pointer, nil when its member is absent or
-// null, so that a count of 0 given under completion_tokens_details still counts as given.
+// null, so that a count of 0 given under completion_tokens_details still counts as given. The
+// cached prompt tokens come under prompt_tokens_details, which some servers send as null.
 type usage struct {
-	PromptTokens            int  `json:"prompt_tokens"`
-	CompletionTokens        int  `json:"completion_tokens"`
-	TotalTokens             int  `json:"total_tokens"`
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	TotalTokens         int `json:"total_tokens"`
+	PromptTokensDetails struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
 	ReasoningTokens         *int `json:"reasoning_tokens"`
 	CompletionTokensDetails struct {
 		ReasoningTokens *int `json:"reasoning_tokens"`
@@ -197,8 +207,10 @@ type usage struct {
 // an OpenAI-style error body in place of a chunk. A delta's reasoning comes as ReasoningContent
 // or as Reasoning, as a response's does.
 type chunk struct {
-	// ID is the reply's id, which every chunk of the stream repeats.
+	// ID is the reply's id, and Model the model that answered, which every chunk of the stream
+	// repeats.
 	ID      string `json:"id"`
+	Model   string `json:"model"`
 	Choices []struct {
 		Index int `json:"index"`
 		Delta struct {

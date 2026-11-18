@@ -43,6 +43,14 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 		{"native clash", req(func(r *protocol.Request) { r.Native = jsontext.Value(`{"model":"other"}`) }),
 			"native member", "model",
 			"completions: native member model clashes with a member the request sets"},
+		{"native parallel_tool_calls beside ParallelToolCalls true", req(func(r *protocol.Request) {
+			r.ParallelToolCalls, r.Native = new(true), jsontext.Value(`{"parallel_tool_calls":true}`)
+		}), "native member", "parallel_tool_calls",
+			"completions: native member parallel_tool_calls clashes with a member the request sets"},
+		{"native parallel_tool_calls beside ParallelToolCalls false", req(func(r *protocol.Request) {
+			r.ParallelToolCalls, r.Native = new(false), jsontext.Value(`{"parallel_tool_calls":true}`)
+		}), "native member", "parallel_tool_calls",
+			"completions: native member parallel_tool_calls clashes with a member the request sets"},
 		{"input item", req(func(r *protocol.Request) { r.Input = []protocol.Item{unknownItem{user}} }),
 			"input item", "completions_test.unknownItem",
 			"completions: input 0: item completions_test.unknownItem has no Chat Completions form"},
