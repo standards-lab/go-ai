@@ -32,4 +32,42 @@
 // as a cloud account's whole catalog: its scenarios then send to that model without listing. The
 // model is no secret, and is read apart from the credentials. Every role runs the models
 // scenario, which wants exactly one model listed, or at least one when AI_<ROLE>_MODEL is set.
+//
+// Each role may also give its deployment's profile in AI_<ROLE>_PROFILE, such as
+// AI_AGENT_PROFILE: a JSON object keyed by format name, completions, messages, or responses, each
+// member that format's Options under their json names, the shape infer's --profile and
+// INFER_PROFILE take. Each scenario builds its format with the role's member, or the format's
+// zero Options, its spec's form, when the member is absent or the variable unset, so unset is
+// the spec everywhere. It is decoded strictly, with encoding/json/v2 and
+// json.RejectUnknownMembers: an unknown format name or field, a Go field name, or a value a field
+// refuses fails each scenario of the role naming the variable. A request the profile refuses
+// before sending, a *format.UnsupportedError of Declared true, skips its scenario, naming the
+// variable, the format, and the gap, its Feature and Value: the deployment can't serve it, so
+// there is nothing to assert. A refusal of the spec's own, Declared false, still fails. The skip
+// is the one rule of skipDeclared, which wraps every scenario's format. The reading of the
+// profile and the skip are untagged, so the unit tier tests them.
+//
+// The agent row's vLLM 0.34.0, serving gpt-oss-120b, is described by this profile, for example:
+//
+//	AI_AGENT_PROFILE='{"completions":{"refused_efforts":["none","minimal","xhigh","max"],"no_allowed_tools":true},"responses":{"refused_efforts":["none","xhigh"],"no_allowed_tools":true,"resend_reasoning_text":true},"messages":{"refused_efforts":["none","xhigh","max"]}}'
+//
+// Each field is backed by a recording of that deployment, in format/<fmt>/testdata/vllm-0.34.0,
+// whose README tells each:
+//
+//   - completions refused_efforts: effort_none.json, effort_minimal.json, effort_xhigh.json, and
+//     effort_max.json, each a 400;
+//   - completions no_allowed_tools: allowed_tools.json, a 400 of tool_choice.function;
+//   - responses refused_efforts: effort_none.json and effort_xhigh.json, each a 400;
+//   - responses no_allowed_tools: allowed_tools.json, a 200 calling a tool outside the allowed
+//     set;
+//   - responses resend_reasoning_text: reasoning_text.json, a reasoning item of text and null
+//     encrypted_content;
+//   - messages refused_efforts: effort_none.json, a 200 that reasons under thinking disabled,
+//     and effort_xhigh.json and effort_max.json, each a 400.
+//
+// On that row, the Open Responses round trips, TestFunctionCallRoundTrip/responses,
+// TestReasoningRoundTrip/responses, and TestStreamReasoningRoundTrip/responses, need
+// resend_reasoning_text, as vLLM reads the reasoning sent back from its text, and are expected to
+// fail under the zero profile. Nothing reads this example, and go-ai ships no preset: the profile
+// is the caller's to give.
 package integration

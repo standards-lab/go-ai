@@ -46,10 +46,29 @@ done
 # separated by newlines, such as AI_AGENT_TOKEN and AI_AGENT_HEADER; unset, none is sent, and no
 # failing scenario prints a token or header value. Each role may also name its model in
 # AI_<ROLE>_MODEL, such as AI_AGENT_MODEL, for an endpoint that lists more than one; unset, a
-# scenario sends to the one model the endpoint lists. A scenario whose variable is unset skips, so
-# with none set the run skips whole and passes. It runs verbose, so the log lists each scenario
-# passed or skipped, with the variable a skip wants. It never starts a server, and no CI job runs
-# it.
+# scenario sends to the one model the endpoint lists. Each role may also give its deployment's
+# profile in AI_<ROLE>_PROFILE, the shape infer's --profile takes: a JSON object keyed by
+# completions, messages, or responses, each member that go-ai format's Options under their json
+# names, decoded strictly, a malformed one failing the role's scenarios naming the variable. Unset,
+# or a member absent, is the format's zero Options, its spec. go-ai's tier builds each format with
+# the role's member, and infer's passes the profile as INFER_PROFILE. A scenario whose request the
+# profile refuses before sending, a declared gap, skips naming it; a refusal of the spec's own
+# still fails. For example, the agent row's vLLM 0.34.0 (gpt-oss-120b), each field backed by a
+# recording in format/<fmt>/testdata/vllm-0.34.0, whose README tells it:
+#   AI_AGENT_PROFILE='{"completions":{"refused_efforts":["none","minimal","xhigh","max"],"no_allowed_tools":true},"responses":{"refused_efforts":["none","xhigh"],"no_allowed_tools":true,"resend_reasoning_text":true},"messages":{"refused_efforts":["none","xhigh","max"]}}'
+#   completions refused_efforts: effort_none.json, effort_minimal.json, effort_xhigh.json, effort_max.json
+#   completions no_allowed_tools: allowed_tools.json
+#   responses refused_efforts: effort_none.json, effort_xhigh.json
+#   responses no_allowed_tools: allowed_tools.json
+#   responses resend_reasoning_text: reasoning_text.json
+#   messages refused_efforts: effort_none.json, effort_xhigh.json, effort_max.json
+# On that row the Open Responses round trips, TestFunctionCallRoundTrip, TestReasoningRoundTrip,
+# and TestStreamReasoningRoundTrip through responses, need resend_reasoning_text and are expected
+# to fail under the zero profile. Nothing reads this example; go-ai ships no preset. Each tier's
+# package doc, integration/doc.go and tools/infer/integration/doc.go, tells it in full. A
+# scenario whose variable is unset skips, so with none set the run skips whole and passes. It runs
+# verbose, so the log lists each scenario passed or skipped, with the variable a skip wants. It
+# never starts a server, and no CI job runs it.
 [tasks.integration]
 description = "Run the integration tier against the endpoints the AI_*_BASE_URL variables name"
 run = '''

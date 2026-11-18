@@ -46,7 +46,7 @@ func TestImageDescription(t *testing.T) {
 // extension, go-ai:input_audio, which the spec has no part for, and wants the endpoint to refuse
 // it with an *APIError of 400 carrying its message.
 func TestAudioInResponsesRefused(t *testing.T) {
-	c, model := endpoint(t, audio, openResponses.new(), ai.Options{})
+	c, model := endpoint(t, audio, openResponses, ai.Options{})
 	_, err := c.Generate(requestContext(t), &protocol.Request{
 		Model: model,
 		Input: []protocol.Item{protocol.Message{Role: protocol.RoleUser, Content: []protocol.ContentPart{
