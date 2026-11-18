@@ -39,7 +39,8 @@
 //     events.
 //   - [Client.Embed] sends an [EmbeddingRequest]'s batch as one request and returns its
 //     [Embeddings], each vector placed by its reply index, counted by [EmbeddingUsage].
-//   - [Client.Models] lists the endpoint's models, each a [Model].
+//   - [Client.Models] lists the endpoint's models, each a [Model]: its id, and its list entry
+//     as the endpoint sent it.
 //   - [Client.Transcribe] sends a [TranscriptionRequest]'s clip and returns its
 //     [Transcription], counted by [TranscriptionUsage].
 //   - [TranscriptionMode] is how Transcribe transcribes: [TranscribeRoute], the endpoint's

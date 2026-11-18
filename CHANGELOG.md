@@ -5,6 +5,14 @@ All notable changes to `github.com/standards-lab/go-ai` are documented here. The
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). This changelog covers the base module
 only; `tools/infer` keeps its own.
 
+## [v0.3.0] - 2026-11-18
+
+### Added
+
+- `ai.Model.Native`, each entry of the endpoint's model list as the endpoint sent it, the whole
+  JSON object, id and all, so a caller can read members go-ai has no field for, such as vLLM's
+  `root` and `max_model_len`, or llama.cpp's router's `status`.
+
 ## [v0.2.0] - 2026-11-18
 
 This release conforms each format to its own spec: a format declares the framing its replies
@@ -211,6 +219,7 @@ one.
 - The release workflow, which makes a GitHub release from `CHANGELOG.md` for a `v*` tag and from
   `tools/infer/CHANGELOG.md` for a `tools/infer/v*` tag.
 
+[v0.3.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.3.0
 [v0.2.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.2.0
 [v0.1.1]: https://github.com/standards-lab/go-ai/releases/tag/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.1.0

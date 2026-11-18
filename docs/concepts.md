@@ -193,7 +193,9 @@ option it can't use is an error.
 The client has five operations. `Generate` and `GenerateStream` go through the format.
 `Embed`, `Models`, and route-mode `Transcribe` go to the OpenAI-compatible routes
 (`embeddings`, `models`, and `audio/transcriptions`) whatever the format, because the engines
-serve those routes beside every format's own.
+serve those routes beside every format's own. Each `Model` that `Models` returns carries its
+`ID` and, as `Native`, its list entry as the endpoint sent it, for the members go-ai has no
+field for.
 
 ## Streaming
 
