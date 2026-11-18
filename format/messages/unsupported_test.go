@@ -31,6 +31,8 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 	audio := protocol.InputAudio{Data: []byte("RIFF"), Format: protocol.AudioFormatWAV}
 	textFormat := ask(user)
 	textFormat.Text.Format = unknownFormat{}
+	minimal := ask(user)
+	minimal.Reasoning.Effort = protocol.ReasoningEffortMinimal
 	choice := ask(user)
 	choice.Tools = []protocol.FunctionTool{{Name: "f"}}
 	choice.ToolChoice = unknownChoice{protocol.FunctionToolChoice{Name: "f"}}
@@ -44,6 +46,9 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 		{"no max output tokens", &protocol.Request{Model: "m", Input: []protocol.Item{user}},
 			"max output tokens", "",
 			"messages: request has no max output tokens, which Messages requires as max_tokens"},
+		{"reasoning effort minimal", minimal,
+			"reasoning effort", "minimal",
+			"messages: reasoning effort minimal has no Messages form"},
 		{"native clash", withNative(ask(user), `{"max_tokens":8}`),
 			"native member", "max_tokens",
 			"messages: native member max_tokens clashes with a member the request sets"},

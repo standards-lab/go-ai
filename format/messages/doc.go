@@ -13,9 +13,9 @@
 // Native's members, the native tier, are merged into the body's top level.
 //
 // It refuses, before anything is sent and before it sets a header, a request with no
-// MaxOutputTokens, as Messages requires max_tokens; audio input, which has no Messages form; an
-// image data URL that isn't base64 or has no media type; and a Native member that clashes with
-// one the typed fields set, stream among them.
+// MaxOutputTokens, as Messages requires max_tokens; a minimal reasoning effort, which Messages
+// lacks; audio input, which has no Messages form; an image data URL that isn't base64 or has no
+// media type; and a Native member that clashes with one the typed fields set, stream among them.
 //
 // It drops the hints Messages has no form for, never refusing them: an image's detail;
 // reasoning's summary; text's verbosity; and a JSON-schema text format's name, description, and

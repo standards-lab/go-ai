@@ -17,7 +17,8 @@ import (
 // EncodeRequest encodes req, which the client has validated, as a Messages request body, and
 // sets the anthropic-version header to the version the format speaks, 2026-10-21. MaxOutputTokens
 // goes out as max_tokens, which Messages requires, so a request with no MaxOutputTokens is
-// refused. Instructions go out as the top-level system string, and the input items as messages:
+// refused; any positive MaxOutputTokens goes out as it is. Instructions go out as the top-level
+// system string, and the input items as messages:
 //
 //	user message          a user message of text and image blocks
 //	system, developer     a system message of text blocks, where it stands in the conversation
@@ -67,8 +68,9 @@ import (
 // {"type":"tool","name"}. Messages has no allowed-tools choice, so an allowed_tools choice sends
 // only the tools it allows, in the request's order, with its mode mapped as a mode is.
 //
-// Reasoning's effort none goes out as thinking {"type":"disabled"}, and any other as thinking
-// {"type":"adaptive"} with output_config.effort of the same name. Text's JSON-schema format goes
+// Reasoning's effort none goes out as thinking {"type":"disabled"}, and low, medium, high, xhigh,
+// and max as thinking {"type":"adaptive"} with output_config.effort of the same name, the
+// spec's efforts. Messages has no minimal effort, so minimal is refused. Text's JSON-schema format goes
 // out as output_config.format, {"type":"json_schema","schema"}; plain text, the endpoint's
 // default, sends nothing.
 //
@@ -130,6 +132,9 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	case "":
 	case protocol.ReasoningEffortNone:
 		body.Thinking = &thinking{Type: "disabled"}
+	case protocol.ReasoningEffortMinimal:
+		return nil, refuse("reasoning effort", string(effort),
+			fmt.Sprintf("reasoning effort %s has no Messages form", effort))
 	default:
 		body.Thinking = &thinking{Type: "adaptive"}
 		config.Effort = string(effort)

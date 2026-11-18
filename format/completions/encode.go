@@ -49,8 +49,9 @@ import (
 // string, a named function as {"type":"function","function":{"name"}}, and an allowed set as
 // {"type":"allowed_tools","allowed_tools":{"mode","tools"}}, its tools named the same way. An
 // allowed set of mode none has no Chat Completions form, whose allowed_tools modes are auto and
-// required, and is refused. Reasoning's effort goes out as reasoning_effort, and MaxOutputTokens
-// as max_completion_tokens.
+// required, and is refused. Reasoning's effort goes out as reasoning_effort, each of the
+// protocol's seven by its own name, and MaxOutputTokens as max_completion_tokens, any positive
+// bound as it is.
 //
 // The hints Chat Completions has no form for are dropped, never refused: reasoning's summary.
 //

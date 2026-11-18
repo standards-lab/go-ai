@@ -54,7 +54,7 @@ func TestGenerateRefusesBeforeTheToken(t *testing.T) {
 	called := false
 	c := newClient(t, srv.URL, func(context.Context) (string, error) { called = true; return "secret", nil })
 	req := ask(text(protocol.RoleUser, "hi"))
-	req.MaxOutputTokens = protocol.MinMaxOutputTokens - 1
+	req.MaxOutputTokens = -1
 	if _, err := c.Generate(t.Context(), req); err == nil {
 		t.Fatal("Generate = nil error, want the request refused")
 	}

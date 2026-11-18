@@ -55,17 +55,18 @@
 //     [VerbosityMedium], or [VerbosityHigh].
 //   - [ReasoningParam] configures the model's reasoning: its effort and its summary.
 //   - [ReasoningEffort] is how much the model reasons: [ReasoningEffortNone],
-//     [ReasoningEffortLow], [ReasoningEffortMedium], [ReasoningEffortHigh], or
-//     [ReasoningEffortXHigh].
+//     [ReasoningEffortMinimal], [ReasoningEffortLow], [ReasoningEffortMedium],
+//     [ReasoningEffortHigh], [ReasoningEffortXHigh], or [ReasoningEffortMax].
 //   - [ReasoningSummary] is how detailed a summary of its reasoning the model gives:
 //     [ReasoningSummaryAuto], [ReasoningSummaryConcise], or [ReasoningSummaryDetailed].
-//   - [MinMaxOutputTokens] is the least nonzero bound a request's MaxOutputTokens takes, 16.
 //   - [Request.Validate] refuses a request the model can't describe.
-//   - [Response] is a model's response: output, status, error, and usage.
+//   - [Response] is a model's response: its id and model, output, status, error, and usage.
 //   - [IncompleteDetails] says why a response is incomplete.
-//   - [IncompleteReason] is that reason, [ReasonMaxOutputTokens] or [ReasonContentFilter].
+//   - [IncompleteReason] is that reason, [ReasonMaxOutputTokens], [ReasonContentFilter], or
+//     [ReasonContextWindow].
 //   - [ResponseError] is the error a failed response holds: code and message.
 //   - [Usage] counts a request's tokens.
+//   - [InputTokensDetails] breaks the input tokens down.
 //   - [OutputTokensDetails] breaks the output tokens down.
 //   - [Status] is a response's or item's status, [StatusInProgress], [StatusCompleted],
 //     [StatusIncomplete], or [StatusFailed].

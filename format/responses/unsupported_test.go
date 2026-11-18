@@ -27,6 +27,13 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 	reasoningText := protocol.ReasoningText{Text: "hm"}
 	textFormat := ask(user)
 	textFormat.Text.Format = unknownFormat{}
+	effort := func(e protocol.ReasoningEffort) *protocol.Request {
+		r := ask(user)
+		r.Reasoning.Effort = e
+		return r
+	}
+	capped := ask(user)
+	capped.MaxOutputTokens = responses.MinMaxOutputTokens - 1
 	cases := []struct {
 		name    string
 		req     *protocol.Request
@@ -55,6 +62,15 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 		{"tool choice", withTools(unknownChoice{protocol.FunctionToolChoice{Name: "f"}}, protocol.FunctionTool{Name: "f"}),
 			"tool choice", "responses_test.unknownChoice",
 			"responses: tool choice responses_test.unknownChoice has no Open Responses form"},
+		{"max output tokens below the spec's minimum", capped,
+			"max output tokens", "15",
+			"responses: request's max output tokens 15 is below the minimum, 16"},
+		{"reasoning effort minimal", effort(protocol.ReasoningEffortMinimal),
+			"reasoning effort", "minimal",
+			"responses: reasoning effort minimal has no Open Responses form"},
+		{"reasoning effort max", effort(protocol.ReasoningEffortMax),
+			"reasoning effort", "max",
+			"responses: reasoning effort max has no Open Responses form"},
 		{"text format", textFormat,
 			"text format", "responses_test.unknownFormat",
 			"responses: text format responses_test.unknownFormat has no Open Responses form"},

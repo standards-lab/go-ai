@@ -65,6 +65,50 @@ func TestAccumulatorFoldsTerminalResponse(t *testing.T) {
 	}
 }
 
+// TestAccumulatorIDAndModel wants the reply's ID and Model, which the stream's responses bear,
+// on the folded Response: the created Response's while the stream is open, and the terminal
+// Response's after it, or the created Response's where the terminal one leaves them empty.
+func TestAccumulatorIDAndModel(t *testing.T) {
+	cases := []struct {
+		name              string
+		created, terminal protocol.Response
+		wantID, wantModel string
+	}{
+		{"both name them", protocol.Response{ID: "resp_1", Model: "m-1"}, protocol.Response{ID: "resp_1", Model: "m-1"},
+			"resp_1", "m-1"},
+		{"the terminal response's win", protocol.Response{ID: "resp_1", Model: "m"}, protocol.Response{ID: "resp_2", Model: "m-2"},
+			"resp_2", "m-2"},
+		{"the created response's where the terminal leaves them empty", protocol.Response{ID: "resp_1", Model: "m-1"},
+			protocol.Response{}, "resp_1", "m-1"},
+		{"the terminal response's alone", protocol.Response{}, protocol.Response{ID: "resp_2", Model: "m-2"},
+			"resp_2", "m-2"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			events := textStream()
+			created := events[0].(protocol.ResponseCreated)
+			r := *created.Response
+			r.ID, r.Model = tc.created.ID, tc.created.Model
+			created.Response = &r
+			events[0] = created
+			var acc protocol.Accumulator
+			add(t, &acc, events[:1])
+			if got := acc.Response(); got.ID != tc.created.ID || got.Model != tc.created.Model {
+				t.Errorf("open Response ID, Model = %q, %q; want %q, %q", got.ID, got.Model, tc.created.ID, tc.created.Model)
+			}
+			completed := events[len(events)-1].(protocol.ResponseCompleted)
+			end := *completed.Response
+			end.ID, end.Model = tc.terminal.ID, tc.terminal.Model
+			completed.Response = &end
+			events[len(events)-1] = completed
+			add(t, &acc, events[1:])
+			if got := acc.Response(); got.ID != tc.wantID || got.Model != tc.wantModel {
+				t.Errorf("folded Response ID, Model = %q, %q; want %q, %q", got.ID, got.Model, tc.wantID, tc.wantModel)
+			}
+		})
+	}
+}
+
 // TestAccumulatorPartial wants the response folded so far before the terminal event: done
 // parts and items as done, and open ones in progress with their text so far.
 func TestAccumulatorPartial(t *testing.T) {

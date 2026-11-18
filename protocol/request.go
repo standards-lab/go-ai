@@ -27,9 +27,13 @@ type Request struct {
 	// verbosity. Its zero value leaves both to the endpoint.
 	Text TextParam
 	// MaxOutputTokens bounds the tokens the model generates, reasoning included. Zero leaves
-	// the bound to the endpoint; otherwise it is at least MinMaxOutputTokens, the spec's
-	// minimum.
+	// the bound to the endpoint, and a negative bound is refused. The least positive bound is
+	// each format's: its spec may set a minimum, which the format refuses a bound below before
+	// anything is sent.
 	MaxOutputTokens int
+	// ParallelToolCalls says whether the model may call several of Tools in one turn. Nil
+	// leaves it to the host's default.
+	ParallelToolCalls *bool
 	// Native is the native tier: a JSON object whose members are merged into the top level of
 	// the wire body as they are, for a feature of the endpoint the model doesn't cover, such
 	// as a sampling parameter. It is outside the standard model, so its members mean what the
@@ -37,10 +41,6 @@ type Request struct {
 	// refused.
 	Native jsontext.Value
 }
-
-// MinMaxOutputTokens is the least nonzero MaxOutputTokens a request takes, the spec's minimum
-// for max_output_tokens.
-const MinMaxOutputTokens = 16
 
 // ReasoningParam configures a reasoning model's reasoning: the spec's reasoning parameter.
 type ReasoningParam struct {
@@ -55,18 +55,32 @@ type ReasoningParam struct {
 // and use more output tokens.
 type ReasoningEffort string
 
-// The efforts a ReasoningParam takes.
+// The efforts a ReasoningParam takes, least first. An effort is the protocol's when an
+// implemented format's spec defines it, and each names the specs that do: the Open Responses
+// spec's reasoning.effort, OpenAI Chat Completions' reasoning_effort, and Anthropic Messages'
+// output_config.effort. A format refuses an effort its own spec lacks, before anything is sent.
 const (
-	// ReasoningEffortNone asks the model not to reason.
+	// ReasoningEffortNone asks the model not to reason. Open Responses' reasoning.effort and
+	// Chat Completions' reasoning_effort define it.
 	ReasoningEffortNone ReasoningEffort = "none"
-	// ReasoningEffortLow asks for little reasoning.
+	// ReasoningEffortMinimal asks for the least reasoning short of none. Chat Completions'
+	// reasoning_effort defines it.
+	ReasoningEffortMinimal ReasoningEffort = "minimal"
+	// ReasoningEffortLow asks for little reasoning. Open Responses' reasoning.effort, Chat
+	// Completions' reasoning_effort, and Messages' effort define it.
 	ReasoningEffortLow ReasoningEffort = "low"
-	// ReasoningEffortMedium asks for a moderate amount of reasoning.
+	// ReasoningEffortMedium asks for a moderate amount of reasoning. Open Responses'
+	// reasoning.effort, Chat Completions' reasoning_effort, and Messages' effort define it.
 	ReasoningEffortMedium ReasoningEffort = "medium"
-	// ReasoningEffortHigh asks for thorough reasoning.
+	// ReasoningEffortHigh asks for thorough reasoning. Open Responses' reasoning.effort, Chat
+	// Completions' reasoning_effort, and Messages' effort define it.
 	ReasoningEffortHigh ReasoningEffort = "high"
-	// ReasoningEffortXHigh asks for the most reasoning the model gives.
+	// ReasoningEffortXHigh asks for more reasoning than high. Open Responses'
+	// reasoning.effort, Chat Completions' reasoning_effort, and Messages' effort define it.
 	ReasoningEffortXHigh ReasoningEffort = "xhigh"
+	// ReasoningEffortMax asks for the most reasoning the model gives. Messages' effort
+	// defines it.
+	ReasoningEffortMax ReasoningEffort = "max"
 )
 
 // ReasoningSummary is how detailed a summary of its reasoning a model gives, alongside the
@@ -87,8 +101,7 @@ const (
 // request before sending it; a client validates every request before anything is sent. It
 // refuses:
 //
-//   - nil, no model, no input, or a MaxOutputTokens that is negative or below
-//     MinMaxOutputTokens without being zero
+//   - nil, no model, no input, or a negative MaxOutputTokens
 //   - an item, content part, tool choice, or text format that isn't one of this package's by
 //     value (a *Message is refused)
 //   - a message with an unknown role or no content, or a part its role doesn't take
@@ -101,7 +114,8 @@ const (
 //     parameters that aren't a JSON object
 //   - a tool choice of an unknown mode, naming a function the request doesn't declare, or of
 //     allowed_tools with no tools
-//   - a reasoning effort, a reasoning summary, or a verbosity the spec doesn't define
+//   - a reasoning effort none of the efforts above, or a reasoning summary or a verbosity the
+//     spec doesn't define
 //   - a json_schema format with no name, a name the spec doesn't allow, or a schema that isn't
 //     a JSON object
 //   - a Native that isn't a JSON object with unique member names
@@ -127,11 +141,10 @@ func (r *Request) validate() error {
 		return errors.New("request has no input")
 	case r.MaxOutputTokens < 0:
 		return fmt.Errorf("request's max output tokens %d is negative", r.MaxOutputTokens)
-	case r.MaxOutputTokens > 0 && r.MaxOutputTokens < MinMaxOutputTokens:
-		return fmt.Errorf("request's max output tokens %d is below the minimum, %d", r.MaxOutputTokens, MinMaxOutputTokens)
 	}
 	switch r.Reasoning.Effort {
-	case "", ReasoningEffortNone, ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh, ReasoningEffortXHigh:
+	case "", ReasoningEffortNone, ReasoningEffortMinimal, ReasoningEffortLow, ReasoningEffortMedium,
+		ReasoningEffortHigh, ReasoningEffortXHigh, ReasoningEffortMax:
 	default:
 		return fmt.Errorf("request has unknown reasoning effort %q", r.Reasoning.Effort)
 	}

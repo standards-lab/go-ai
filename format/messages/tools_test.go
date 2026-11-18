@@ -280,6 +280,9 @@ func TestEncodeOptions(t *testing.T) {
 		{"effort xhigh", func(r *protocol.Request) {
 			r.Reasoning.Effort = protocol.ReasoningEffortXHigh
 		}, `"thinking":{"type":"adaptive"},"output_config":{"effort":"xhigh"}`},
+		{"effort max", func(r *protocol.Request) {
+			r.Reasoning.Effort = protocol.ReasoningEffortMax
+		}, `"thinking":{"type":"adaptive"},"output_config":{"effort":"max"}`},
 		{"a JSON schema as output_config.format, its name, description, and strict dropped", func(r *protocol.Request) {
 			r.Text.Format = protocol.JSONSchemaFormat{Name: "capital", Description: "A capital.", Schema: schema, Strict: true}
 		}, `"output_config":{"format":{"type":"json_schema","schema":` + string(schema) + `}}`},
@@ -311,4 +314,13 @@ func TestEncodeOptions(t *testing.T) {
 			aitest.AssertJSON(t, encode(t, req), want+"}")
 		})
 	}
+}
+
+// TestEncodeBoundOfOne wants any positive MaxOutputTokens sent as max_tokens, Messages having no
+// minimum above zero.
+func TestEncodeBoundOfOne(t *testing.T) {
+	req := ask(text(protocol.RoleUser, "q"))
+	req.MaxOutputTokens = 1
+	aitest.AssertJSON(t, encode(t, req),
+		`{"model":"m","max_tokens":1,"stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"q"}]}]}`)
 }

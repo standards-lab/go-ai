@@ -2,6 +2,11 @@ package protocol
 
 // Response is a model's response: Open Responses' response object, in its stateless subset.
 type Response struct {
+	// ID is the reply's id, as the endpoint reports it, and empty when it reports none.
+	ID string
+	// Model is the model that answered, as the endpoint reports it, and empty when it reports
+	// none. It may differ from the request's Model, such as a dated version of an alias.
+	Model string
 	// Output is what the model produced, in order.
 	Output []Item
 	// Status is StatusCompleted, or StatusIncomplete when the model stopped early. A streamed
@@ -42,6 +47,10 @@ const (
 	ReasonMaxOutputTokens IncompleteReason = "max_output_tokens"
 	// ReasonContentFilter is a response stopped by the endpoint's content filter.
 	ReasonContentFilter IncompleteReason = "content_filter"
+	// ReasonContextWindow is a response cut off because the input and output together filled
+	// the model's context window, before the output token bound. The spec defines no reason
+	// for it, so it is a client extension under go-ai's slug.
+	ReasonContextWindow IncompleteReason = "go-ai:context_window"
 )
 
 // Usage counts the tokens a request used, as the endpoint reports them.
@@ -52,8 +61,17 @@ type Usage struct {
 	OutputTokens int
 	// TotalTokens counts input and output tokens together.
 	TotalTokens int
+	// InputTokensDetails breaks InputTokens down.
+	InputTokensDetails InputTokensDetails
 	// OutputTokensDetails breaks OutputTokens down.
 	OutputTokensDetails OutputTokensDetails
+}
+
+// InputTokensDetails breaks a request's input tokens down.
+type InputTokensDetails struct {
+	// CachedTokens counts the input tokens served from the endpoint's cache, when the endpoint
+	// reports them.
+	CachedTokens int
 }
 
 // OutputTokensDetails breaks a response's output tokens down.

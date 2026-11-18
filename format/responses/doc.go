@@ -34,9 +34,10 @@
 // part: the content part {"type":"go-ai:input_audio","data","format"}, its data the
 // clip's bytes in standard base64 and its format wav or mp3.
 //
-// It refuses, before anything is sent, a Native member that clashes with one the typed fields
-// set, stream, store, and include among them, and a Native previous_response_id or background,
-// as above.
+// It refuses, before anything is sent, a MaxOutputTokens below MinMaxOutputTokens, the spec's
+// minimum of 16; a reasoning effort the spec lacks, minimal or max; a Native member that clashes
+// with one the typed fields set, stream, store, and include among them; and a Native
+// previous_response_id or background, as above.
 //
 // The spec has a form for every hint the protocol carries, so the format drops none: an image's
 // detail, reasoning's summary, text's verbosity, and a JSON-schema format's name, description,
@@ -71,6 +72,7 @@
 //
 //   - [Format] is the format, a format.Format.
 //   - [Options] adjusts the format to an endpoint that departs from the spec.
+//   - [MinMaxOutputTokens] is the least positive MaxOutputTokens it sends, the spec's 16.
 //   - [New] returns the format.
 //   - [Format.Route] is the route it posts to, responses.
 //   - [Format.EncodeRequest] encodes a request as a create-response body: model, instructions,

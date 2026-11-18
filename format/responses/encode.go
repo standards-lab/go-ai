@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/standards-lab/go-ai/format"
@@ -63,7 +64,11 @@ import (
 // The tool choice goes out as tool_choice: a mode as its string, auto, none, or required; a
 // named function as {"type":"function","name"}; and an allowed set as
 // {"type":"allowed_tools","tools","mode"}, its tools named the same way. Reasoning's effort and
-// summary go out as reasoning's effort and summary.
+// summary go out as reasoning's effort and summary. The spec's efforts are none, low, medium,
+// high, and xhigh, so minimal and max are refused.
+//
+// MaxOutputTokens goes out as max_output_tokens, and one below MinMaxOutputTokens, the spec's
+// minimum, is refused.
 //
 // Native's members, the native tier, are merged into the top level, and a member named like one
 // the typed fields set is refused, as are stream, store, and include, which are always set.
@@ -92,6 +97,15 @@ func (f *Format) encode(req *protocol.Request, stream bool) ([]byte, error) {
 func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	if err := refuseStateful(req.Native); err != nil {
 		return nil, err
+	}
+	if n := req.MaxOutputTokens; n > 0 && n < MinMaxOutputTokens {
+		return nil, refuse("max output tokens", strconv.Itoa(n),
+			fmt.Sprintf("request's max output tokens %d is below the minimum, %d", n, MinMaxOutputTokens))
+	}
+	switch e := req.Reasoning.Effort; e {
+	case protocol.ReasoningEffortMinimal, protocol.ReasoningEffortMax:
+		return nil, refuse("reasoning effort", string(e),
+			fmt.Sprintf("reasoning effort %s has no Open Responses form", e))
 	}
 	input, err := f.encodeInput(req.Input)
 	if err != nil {
@@ -135,6 +149,10 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 	}
 	return b, err
 }
+
+// MinMaxOutputTokens is the least positive MaxOutputTokens the format sends, the spec's minimum
+// for max_output_tokens. EncodeRequest refuses a request whose bound is below it.
+const MinMaxOutputTokens = 16
 
 // refuseStateful refuses a Native, which the client has validated, that has a
 // previous_response_id or background member, each of which asks the endpoint to keep state, as
