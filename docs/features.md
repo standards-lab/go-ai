@@ -132,11 +132,13 @@ bound again.
 ### Errors
 
 Every error a call returns is prefixed with its operation, such as `ai: generate:`, and wraps
-its cause. Two causes are typed, matched with `errors.As`:
+its cause. Three causes are typed, matched with `errors.As`:
 
 - `*ai.APIError` is any non-2xx reply. It carries `Status`, the endpoint's `Message`, `Type`,
   and `Code`, the raw `Body`, and `RetryAfter`, the wait the reply asked for.
 - `*ai.IncompleteTranscriptError` is chat-mode transcription's incomplete reply.
+- `*format.UnsupportedError` is a format's refusal of a request feature, before anything is
+  sent: its `Format`, `Feature`, and `Value`.
 
 ## protocol: the model
 
@@ -149,9 +151,10 @@ its cause. Two causes are typed, matched with `errors.As`:
 | `Input` | The conversation, oldest item first. At least one item. |
 | `Tools` | `FunctionTool`s the model may call: a name, a description, a JSON Schema of the arguments, and `Strict`. |
 | `ToolChoice` | `ToolChoiceAuto`, `ToolChoiceNone`, `ToolChoiceRequired`, a `FunctionToolChoice` naming one function, or an `AllowedToolChoice` narrowing the set. Nil leaves it to the endpoint. |
-| `Reasoning` | `Effort` (`none`, `low`, `medium`, `high`, `xhigh`) and `Summary`. Empty leaves both to the endpoint. |
+| `Reasoning` | `Effort` (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`) and `Summary`. Empty leaves both to the endpoint. A format refuses an effort its spec lacks. |
 | `Text` | `Format`, plain text or a `JSONSchemaFormat`, and `Verbosity`. |
-| `MaxOutputTokens` | The most tokens generated, reasoning included. Zero leaves it to the endpoint; otherwise at least 16 (`MinMaxOutputTokens`). |
+| `MaxOutputTokens` | The most tokens generated, reasoning included. Zero leaves it to the endpoint, and a negative bound is refused. The least positive bound is each format's. |
+| `ParallelToolCalls` | Whether the model may call several tools in one turn. Nil leaves it to the endpoint. |
 | `Native` | A raw JSON object merged into the body's top level, for engine parameters the spec doesn't cover. |
 
 `Request.Validate` refuses a request the model can't describe. The client calls it before
@@ -176,10 +179,12 @@ anything is sent.
 
 ### Responses
 
-A `Response` holds `Output`, a `Status` (`completed`, `incomplete`, `failed`, or
-`in_progress`), `IncompleteDetails` with a `Reason` such as `max_output_tokens`, an `Error` for
-a failed response, and `Usage`: `InputTokens`, `OutputTokens`, `TotalTokens`, and
-`OutputTokensDetails.ReasoningTokens`.
+A `Response` holds the reply's `ID` and the `Model` that answered, as the endpoint reports them,
+`Output`, a `Status` (`completed`, `incomplete`, `failed`, or `in_progress`),
+`IncompleteDetails` with a `Reason` (`max_output_tokens`, `content_filter`, or
+`go-ai:context_window`, a client extension for a reply cut off by the model's context window),
+an `Error` for a failed response, and `Usage`: `InputTokens`, `OutputTokens`, `TotalTokens`,
+`InputTokensDetails.CachedTokens`, and `OutputTokensDetails.ReasoningTokens`.
 
 ### Streaming events and the accumulator
 
@@ -199,10 +204,12 @@ sends, refuses, drops, and normalizes. In short:
 | --- | --- | --- | --- |
 | API | OpenAI Chat Completions | Anthropic Messages, version 2026-10-21 | Open Responses, spec 2026-04-24 |
 | Route | `chat/completions` | `messages` | `responses` |
-| Instructions | a leading system message | the top-level `system` | `instructions` |
-| `MaxOutputTokens` | `max_completion_tokens` | `max_tokens`, required | `max_output_tokens` |
+| Instructions | a leading system message | the top-level `system`, with the system and developer messages that lead the input; a later one is refused | `instructions` |
+| `MaxOutputTokens` | `max_completion_tokens`, any | `max_tokens`, required | `max_output_tokens`, at least 16 (`responses.MinMaxOutputTokens`) |
+| Reasoning effort | all seven as `reasoning_effort` | `output_config.effort`; `minimal` refused | `reasoning.effort`; `minimal` and `max` refused |
+| `ParallelToolCalls` | `parallel_tool_calls` | false as `tool_choice`'s `disable_parallel_tool_use` | `parallel_tool_calls` |
 | Audio input | its own `input_audio` part | refused | the `go-ai:input_audio` extension |
-| Hints dropped | a reasoning summary request | an image's detail, a reasoning summary, verbosity, and a JSON schema's name, description, and strict flag | nothing |
+| Hints dropped | a reasoning summary request | an image's detail, a reasoning summary's detail, verbosity, and a JSON schema's name, description, and strict flag | nothing |
 | Item ids | derived from the reply's id | derived from the reply's id | the server's |
 
 `responses.Options` adjusts the Open Responses format to an endpoint that departs from the
@@ -212,13 +219,23 @@ gives no encrypted content. The zero value is the spec's form.
 Every Open Responses request is stateless. It sends `store: false`, and a `Native`
 `previous_response_id` or `background` is refused.
 
-All three decode an OpenAI-style error body, and `messages` also decodes Anthropic's.
+A format refuses a request before anything is sent or any token is fetched, and each refusal
+is a `*format.UnsupportedError`, matched with `errors.As`, naming the `Format`, the `Feature`
+refused, and its `Value`.
+
+All three stream their replies as server-sent events, `format.SSE`, and decode an OpenAI-style
+error body, and `messages` also decodes Anthropic's.
 
 ## format: the contract
 
 `format.Format` is the interface a format meets: its route, request encoding, reply decoding,
-stream decoding, and error decoding. `format.DecodeOpenAIError` decodes the OpenAI-style error
-body most endpoints return. A new format is a package that implements the interface, and a
+its event stream, stream decoding, and error decoding. A `format.EventStream` is the framing a
+streamed reply arrives in: the media type the client asks for in its Accept header, and a reader
+of the reply's `WireEvent`s, each the framing's `Type` and its `Data`. The client reads a stream
+only through it, never by the reply's Content-Type, and hands each event to the format's
+`StreamDecoder`; `format.SSE` is the server-sent event stream. `format.UnsupportedError` is a
+format's refusal. `format.DecodeOpenAIError` decodes the OpenAI-style error body most endpoints
+return. A new format is a package that implements the interface, and a
 caller uses it by passing it to `ai.New`.
 
 ## integration: the live tier

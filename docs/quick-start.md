@@ -502,7 +502,8 @@ status: completed, 154 tokens
 ```
 
 `messages.New()` sends Anthropic Messages the same way. Messages requires `MaxOutputTokens`, so
-a request without it is refused before anything is sent. Each format's package comment lists
+a request without it is refused before anything is sent, with a `*format.UnsupportedError` that
+`errors.As` finds. Each format's package comment lists
 what it sends, refuses, and drops. The [features](features.md#the-formats) document compares
 them.
 

@@ -29,7 +29,7 @@ The library's vocabulary, grouped by the layer each term belongs to. The
   Completions, Anthropic Messages, or Open Responses.
 - **Route**: the path a format posts to under the API root, such as `chat/completions`.
 - **Refuse**: fail a request before anything is sent, because the format can't send something
-  it needs.
+  it needs. The error is a `*format.UnsupportedError`.
 - **Drop**: leave out a hint the format's API has no form for, with no error.
 - **Normalize**: reshape a reply into the spec's model, such as deriving item ids an API doesn't
   give.
@@ -54,6 +54,8 @@ The library's vocabulary, grouped by the layer each term belongs to. The
 
 ## Streaming
 
+- **Event stream**: the framing a format's API streams a reply in, a `format.EventStream`, such
+  as `format.SSE`, the server-sent events all three formats use.
 - **Streaming event**: one of the spec's events in a streamed reply, such as
   `OutputTextDelta`.
 - **Terminal event**: the event that ends a stream: `ResponseCompleted`, `ResponseIncomplete`,

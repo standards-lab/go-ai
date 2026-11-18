@@ -24,6 +24,9 @@ review, `context/design.md`.
 - `architecture/standards/go-elemental/principles/baseline-standards.md`: `protocol` is Open
   Responses in its stateless subset, under the spec's names and no wider, and a client extension
   carries go-ai's slug, `go-ai`.
+- `architecture/standards/go-elemental/principles/baseline-standards.md`: a reasoning effort joins
+  `protocol` when an implemented format's spec defines it, and a format refuses an effort its own
+  spec lacks with a `*format.UnsupportedError` before anything is sent.
 - `architecture/principles/service-tiers.md`, "Native": a native engine parameter goes through the
   request's raw-JSON `Native` field, documented as native tier, never as a typed field.
 - `architecture/standards/go-elemental/principles/construction-and-execution.md`: `ai.New`'s

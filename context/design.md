@@ -153,7 +153,13 @@ of layers' surface to go-ai's.
 24. **The SSE decoder implements the whole standard, including a reconnection time nothing reads**
     (`internal/sse/sse.go`, `Decoder.Retry`). Against `principles/minimal-footprint.md`.
     **dropped**: `Decoder.Retry`, since the client never reconnects. The rest of the decoder is
-    kept.
+    kept. **changed** beside it: the client no longer names the framing. A `format.Format` declares
+    its `EventStream`, the media type a streamed request asks for in its Accept header and a reader
+    of the reply's `WireEvent`s, its type and its data, and the client reads a reply only through
+    it, never by its Content-Type. `format.SSE` is the one `EventStream`, over the decoder, which
+    stays internal, and every format streams in it; a framing a later format needs is its own
+    `EventStream`, with no change to the client. An exception the endpoint reports in the stream
+    reaches the `StreamDecoder` as an event, as finding 18 has it.
 
 ### Protocol and formats
 
@@ -161,7 +167,13 @@ of layers' surface to go-ai's.
     with a native tier in `Native`** (`protocol`; the spike's third client rule). Against
     `principles/service-tiers.md`, "Standard" and "Native", and `baseline-standards.md`. **kept**:
     the standard tier is the external standard and no wider, and a native engine parameter stays raw
-    JSON, never a typed field.
+    JSON, never a typed field. **changed** for the reasoning effort alone: the formats' specs name
+    efforts Open Responses lacks, so an effort joins the protocol when an implemented format's spec
+    defines it, each effort citing the specs that do, and a format refuses an effort its own spec
+    lacks. The efforts are none, minimal, low, medium, high, xhigh, and max: Chat Completions sends
+    all seven, Open Responses refuses minimal and max, and Messages refuses minimal. A reply cut off
+    by the model's context window, which Messages reports and the spec has no reason for, is the
+    client extension `go-ai:context_window`.
 26. **The protocol carries more than either caller uses**: function tools, tool choice, the
     reasoning round trip, reasoning's summary, verbosity, image detail, audio input, and the refusal
     events (`protocol`; each format). Against layers, "What neither caller uses", and ai-strategy,
@@ -170,19 +182,32 @@ of layers' surface to go-ai's.
     answer", item 1).
 27. **`Validate` refuses a `MaxOutputTokens` of 1 through 15 whatever the format**
     (`protocol/request.go`, `MinMaxOutputTokens`). Against `principles/service-tiers.md`,
-    "Standard". **kept**: 16 is the spec's minimum, and the same request must be valid in every
-    format.
+    "Standard". **changed**: 16 is Open Responses' minimum for `max_output_tokens`, not Chat
+    Completions' or Messages', so a protocol-wide minimum refused a cap two of the formats' specs
+    allow. The minimum is each format's: `Validate` refuses only a negative cap,
+    `responses.MinMaxOutputTokens` is 16 and the Open Responses format refuses a cap below it,
+    Messages sends any positive cap and still requires one, and Chat Completions sends any.
 28. **`format.Format` is the one contract, and `format` also holds the OpenAI-style error decoder
     the root uses** (`format/format.go`, `format/error.go`). Against `principles/service-tiers.md`,
     "Providers are adapters behind one interface". **kept**: the contract sits in the library,
-    outside the root, so a format never imports the client.
+    outside the root, so a format never imports the client. **changed** beside it: `format` also
+    holds what the formats share of the contract, the `EventStream` a format streams in
+    (finding 24) and `UnsupportedError`, the one type of every refusal a format makes before
+    anything is sent: its format, the feature refused and its value, and whether the gap is the
+    spec's or one a deployment declares, matched with `errors.As` through the format's and the
+    client's wrapping. Each refusal kept its message.
 29. **`responses.New(opts Options)` takes one options struct whose zero value is the spec's form**
     (`format/responses/format.go`). Against `construction-and-execution.md`, "The rule". **kept**:
     it already has the rule's shape.
 30. **`format/messages` refuses a request with no `MaxOutputTokens` and one with audio input, and
     drops the hints it has no form for** (`format/messages/encode.go`, `doc.go`). Against
     `principles/validation-first.md`. **kept**: what would change the request's meaning is refused
-    before anything is sent, and a hint is advice.
+    before anything is sent, and a hint is advice. **changed** beside it: Messages has no system
+    message, only the top-level `system`, so the system and developer messages that lead the input
+    go out there, after the instructions, and one after the conversation has begun is refused
+    rather than sent in place as a system message, which the spec doesn't define; the minimal
+    effort is refused too (finding 25). A reasoning summary, once dropped, goes out as adaptive
+    thinking's display `summarized`.
 31. **The formats' package documentation and the README record what one build of llama.cpp's router
     drops and departs from** (`format/messages/doc.go`, `format/responses/doc.go`, `README.md`).
     Against `tests-and-docs.md`, "doc.go and godoc": the package comment describes the package's
@@ -202,7 +227,9 @@ of layers' surface to go-ai's.
     a JSON object with unique members before anything is sent, and a member that clashes with one
     the request sets is refused by name rather than overriding it silently. The package is
     internal because none of the three layers may import another, and the tier stays off go-ai's
-    surface.
+    surface. `Marshal` reports a clash as a `ClashError` naming the member, which each format
+    refuses as its own `UnsupportedError` (finding 28): `native` can't import `format`, as
+    `protocol` imports `native`.
 
 ### Embeddings, transcription, and models
 
@@ -553,24 +580,25 @@ client extension's wire type carries go-ai's slug, `go-ai` (finding 4).
 package protocol // import "github.com/standards-lab/go-ai/protocol"
 
 type Request struct {
-    Model           string
-    Instructions    string
-    Input           []Item
-    Tools           []FunctionTool
-    ToolChoice      ToolChoice     // ToolChoiceMode, FunctionToolChoice, or AllowedToolChoice
-    Reasoning       ReasoningParam
-    Text            TextParam
-    MaxOutputTokens int            // 0, or at least MinMaxOutputTokens
-    Native          jsontext.Value // the native tier, merged into the body's top level
+    Model             string
+    Instructions      string
+    Input             []Item
+    Tools             []FunctionTool
+    ToolChoice        ToolChoice     // ToolChoiceMode, FunctionToolChoice, or AllowedToolChoice
+    Reasoning         ReasoningParam
+    Text              TextParam
+    MaxOutputTokens   int            // 0 leaves it to the endpoint; the least positive is each format's
+    ParallelToolCalls *bool          // nil leaves it to the endpoint
+    Native            jsontext.Value // the native tier, merged into the body's top level
 }
-const MinMaxOutputTokens = 16
 func (r *Request) Validate() error
 
 type ReasoningParam struct {
     Effort  ReasoningEffort
     Summary ReasoningSummary
 }
-type ReasoningEffort string  // ReasoningEffortNone, Low, Medium, High, XHigh
+// An effort is the protocol's when an implemented format's spec defines it (finding 25).
+type ReasoningEffort string  // ReasoningEffortNone, Minimal, Low, Medium, High, XHigh, Max
 type ReasoningSummary string // ReasoningSummaryAuto, Concise, Detailed
 type TextParam struct {
     Format    TextFormat // PlainTextFormat or JSONSchemaFormat
@@ -644,6 +672,7 @@ type AllowedToolChoice struct {
 }
 
 type Response struct {
+    ID, Model         string // the reply's, as the endpoint reports them
     Output            []Item
     Status            Status
     IncompleteDetails *IncompleteDetails
@@ -651,12 +680,14 @@ type Response struct {
     Usage             Usage
 }
 type IncompleteDetails struct{ Reason IncompleteReason }
-type IncompleteReason string // ReasonMaxOutputTokens, ReasonContentFilter
+type IncompleteReason string // ReasonMaxOutputTokens, ReasonContentFilter, ReasonContextWindow
 type ResponseError struct{ Code, Message string }
 type Usage struct {
     InputTokens, OutputTokens, TotalTokens int
+    InputTokensDetails                     InputTokensDetails
     OutputTokensDetails                    OutputTokensDetails
 }
+type InputTokensDetails struct{ CachedTokens int }
 type OutputTokensDetails struct{ ReasoningTokens int }
 
 // Event is the closed set of streaming events, each carrying its SequenceNumber.
@@ -718,14 +749,34 @@ type Format interface {
     EncodeRequest(req *protocol.Request, header http.Header) ([]byte, error)
     DecodeResponse(body []byte) (*protocol.Response, error)
     EncodeStreamRequest(req *protocol.Request, header http.Header) ([]byte, error)
+    EventStream() EventStream // the framing its replies stream in (finding 24)
     NewStreamDecoder() StreamDecoder
     DecodeError(body []byte) (message, typ, code string)
 }
-// StreamDecoder turns one stream's event data into protocol events; it serves one stream.
+// StreamDecoder turns one stream's events into protocol events; it serves one stream.
 type StreamDecoder interface {
-    Decode(data []byte) ([]protocol.Event, error)
+    Decode(e WireEvent) ([]protocol.Event, error)
     End() ([]protocol.Event, error)
 }
+// WireEvent is one event as its framing delivers it: under SSE, its event field and its data.
+type WireEvent struct {
+    Type string
+    Data []byte
+}
+type WireEventReader interface{ Next() (WireEvent, error) } // io.EOF at the body's clean end
+type EventStream interface {
+    MediaType() string // the Accept a streamed request sends
+    NewReader(body io.Reader) WireEventReader
+}
+var SSE EventStream // text/event-stream, over internal/sse
+// UnsupportedError is a format's refusal of a request feature, before anything is sent
+// (finding 28). Declared is false for a gap in the format's spec.
+type UnsupportedError struct {
+    Format, Feature, Value string
+    Declared               bool
+    Message                string
+}
+func (e *UnsupportedError) Error() string
 // DecodeOpenAIError decodes {"error": {"message", "type", "code"}}, for the OpenAI routes.
 func DecodeOpenAIError(body []byte) (message, typ, code string)
 
@@ -738,7 +789,8 @@ func New() *Format
 package messages // import "github.com/standards-lab/go-ai/format/messages"
 type Format struct{}
 // New is Anthropic Messages, on "messages", sending its anthropic-version header. It refuses a
-// request with no MaxOutputTokens or with audio input, and drops the hints it has no form for.
+// request with no MaxOutputTokens, with audio input, with the minimal effort, or with a system or
+// developer message after the conversation has begun, and drops the hints it has no form for.
 func New() *Format
 
 package responses // import "github.com/standards-lab/go-ai/format/responses"
@@ -749,6 +801,9 @@ type Options struct {
 }
 type Format struct{ /* unexported */ }
 func New(opts Options) *Format // Open Responses, on "responses"
+// MinMaxOutputTokens is the spec's least max_output_tokens, below which the format refuses a
+// MaxOutputTokens (finding 27). It refuses the minimal and max efforts, which the spec lacks.
+const MinMaxOutputTokens = 16
 ```
 
 ## Modules
@@ -1034,12 +1089,20 @@ What the review rules out, one line each with its reason, cited as the sections 
 - **An idle bound on by default, as go-storage's `ReadIdleTimeout` is.** go-ai sets no policy, so
   the zero `StreamIdleTimeout` sets none (decision 7; finding 9).
 - **`sse.Decoder.Retry`.** The client never reconnects, so nothing reads it (finding 24).
+- **SSE hard-coded in the client, or a framing chosen by the reply's Content-Type.** The framing
+  is the format's to declare, and a reply's Content-Type doesn't bind the client; the client
+  reads only through the format's `EventStream` (finding 24).
 - **A typed field for a native engine parameter.** The standard tier is the external standard and
   no wider; a native parameter stays raw JSON in `Native` (finding 25).
 - **A protocol trimmed to what the processing layer uses.** The client's scope is chat with tools
   and reasoning, each proven against set A (finding 26).
-- **A `MaxOutputTokens` minimum per format.** The same request must be valid in every format, so
-  the spec's 16 holds for all (finding 27).
+- **One `MaxOutputTokens` minimum for every format.** 16 is Open Responses' minimum alone, and
+  holding every format to it refused caps Chat Completions and Messages allow (finding 27).
+- **Reasoning efforts limited to Open Responses'.** Chat Completions' minimal and Messages' max
+  would reach no model; an effort joins when an implemented format's spec defines it, and a
+  format refuses one its spec lacks (finding 25).
+- **Refusals as untyped errors.** A caller could tell a format's refusal from a failure only by
+  its text; `format.UnsupportedError` names the format and the feature (finding 28).
 - **A router build's account in a format's package comment.** The package comment describes the
   API; the account moves to the testdata READMEs (finding 31).
 - **One set of usage names across embeddings, transcription, and generation.** Each usage type

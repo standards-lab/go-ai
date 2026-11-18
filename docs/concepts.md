@@ -98,7 +98,9 @@ The same request is valid in every format, but not every API can say everything.
 handles each gap in one of three ways, and its package comment lists which:
 
 - It **refuses** what it can't send and the request needs, before anything is sent. Messages
-  refuses audio input and a request with no `MaxOutputTokens`.
+  refuses audio input and a request with no `MaxOutputTokens`, and Open Responses a reasoning
+  effort its spec lacks. Each refusal is a `*format.UnsupportedError`, which `errors.As` finds,
+  naming the format and the feature.
 - It **drops** a hint its API has no form for. Chat Completions drops a reasoning summary
   request.
 - It **normalizes** the reply to the spec's model. Chat Completions gives no item ids, so the
@@ -145,6 +147,10 @@ for event, err := range client.GenerateStream(ctx, req) {
 }
 resp := acc.Response()
 ```
+
+Each format declares the **event stream** its API streams in, the server-sent events of
+`format.SSE` for all three. The client asks for that stream's media type and reads the reply
+through it, and the format's decoder turns each event into the spec's.
 
 The **accumulator** folds the events into the `Response` that `Generate` would have returned.
 After a break, it holds what arrived so far.

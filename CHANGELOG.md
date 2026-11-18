@@ -7,6 +7,76 @@ only; `tools/infer` keeps its own.
 
 ## [Unreleased]
 
+This release conforms each format to its own spec: a format declares the framing its replies
+stream in, types every refusal it makes before sending, and sends or refuses each reasoning effort
+and token cap as its spec has it.
+
+### Added
+
+- `format.EventStream`, the framing a streamed reply arrives in: its media type and a
+  `WireEventReader` of a body's `WireEvent`s, each the framing's `Type` and its `Data`.
+  `format.SSE` is the server-sent event stream, the one every format here streams in.
+- `format.UnsupportedError`, the type of every refusal a format makes while it encodes a request,
+  before anything is sent or any token is fetched, matched with `errors.As` through the format's
+  and the client's wrapping. It names the `Format`, the refused `Feature` and its `Value`, and
+  whether the refusal is of a gap a deployment declares (`Declared`) or of one the format's spec
+  has (`Declared` false, every refusal so far). Each refusal's message is unchanged.
+- The reasoning efforts `protocol.ReasoningEffortMinimal` and `protocol.ReasoningEffortMax`. An
+  effort is the protocol's when an implemented format's spec defines it. Chat Completions sends
+  all seven as `reasoning_effort`; Open Responses refuses `minimal` and `max`, and Messages
+  `minimal`, which their specs lack. Messages sends `max` as `output_config.effort` with adaptive
+  thinking.
+- `responses.MinMaxOutputTokens`, 16, the Open Responses spec's least `max_output_tokens`, below
+  which the format refuses a `MaxOutputTokens`.
+- `protocol.Request.ParallelToolCalls`, whether the model may call several tools in one turn; nil
+  leaves it to the endpoint. Chat Completions and Open Responses send it as
+  `parallel_tool_calls`, and Messages sends false as `tool_choice`'s
+  `disable_parallel_tool_use`. A `Native` member that would set the same is refused as a clash.
+- `protocol.Response.ID` and `Model`, the reply's id and the model that answered, decoded by
+  every format, whole and streamed; the `Accumulator` keeps the created response's where the
+  terminal one leaves them empty.
+- `protocol.Usage.InputTokensDetails.CachedTokens`, the input tokens served from the endpoint's
+  cache, read from Chat Completions' `prompt_tokens_details`, Open Responses'
+  `input_tokens_details`, and Messages' `cache_read_input_tokens`.
+- `protocol.ReasonContextWindow`, `go-ai:context_window`, a reply cut off by the model's context
+  window, a client extension the spec defines no reason for. Messages reports its
+  `model_context_window_exceeded` stop reason as it.
+
+### Changed
+
+- **Breaking:** `format.Format` requires `EventStream`. The client asks for its media type in a
+  streamed request's Accept header and reads the reply only through its reader, never reading the
+  reply's Content-Type; it no longer hard-codes server-sent events.
+- **Breaking:** `format.StreamDecoder.Decode` takes a `format.WireEvent` in place of the event's
+  data alone. An exception the endpoint reports in the stream reaches the decoder as an event,
+  which closes the stream with `protocol.ErrorEvent` and then `protocol.ResponseFailed`.
+- **Breaking:** the token-cap minimum is each format's. `Request.Validate` refuses only a
+  negative `MaxOutputTokens`, no longer one of 1 to 15; Open Responses refuses a cap below its
+  spec's 16 as an `UnsupportedError` prefixed `responses:`, Messages sends any positive cap and
+  still requires one, and Chat Completions sends any.
+- **Breaking:** `format/messages` sends the system and developer messages that lead the input in
+  the top-level `system`, after the instructions, and refuses one after the conversation has
+  begun, which Messages has no place for, where it sent each as a system message where it stood.
+- **Breaking:** a format's refusal is a `*format.UnsupportedError`, a `Native` member's clash
+  among them, as the feature `native member`. A caller that matched a refusal by its text
+  still can; one that matched the protocol's refusal of a cap of 1 to 15 gets the Open Responses
+  format's instead.
+- `format/messages` sends a reasoning summary as adaptive thinking's display `summarized`, where
+  it dropped the summary, and reads `thinking_tokens` as reasoning tokens.
+- `format/messages` accepts several `message_delta` events in a stream, keeping the last
+  stop_reason given and each cumulative usage count, so the last item's status waits for
+  `message_stop`.
+- `format/completions` makes `response.created` at the first chunk that claims the reply, or at
+  the stream's end, so it bears the reply's id and model past a leading chunk of no id and no
+  choices.
+
+### Fixed
+
+- `format/responses` skips a reply's output item of a type the protocol has no form for, such as
+  a hosted tool's call, and a message's content part that isn't an output part, whole and
+  streamed, where it failed the decode. The items and parts after them take the indexes they
+  would have without them.
+
 ## [v0.1.1] - 2026-11-17
 
 This release fixes two stream decoders that rejected Azure AI Foundry's streams, and reads the
