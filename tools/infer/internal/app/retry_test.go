@@ -15,19 +15,25 @@ import (
 	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
 )
 
-// The retry policy is zero, go-ai's default of no retry, when unset; each
-// field is its variable's when set, and its root flag's when given,
-// wherever on the command line, even given empty.
+// The retry policy is infer's default, three attempts, a 500ms base delay,
+// and a 30s most delay, when unset; each field is its variable's when set,
+// and its root flag's when given, wherever on the command line. Given
+// empty, a flag or variable is unset, so its field is the default. The
+// default base delay is capped at a most delay given below it, but not at
+// a negative one, which ai.New refuses.
 func TestRetryPolicy_FlagOverVariable(t *testing.T) {
-	vars := map[string]string{"INFER_RETRIES": "3", "INFER_RETRY_BASE_DELAY": "100ms", "INFER_RETRY_MAX_DELAY": "2s"}
-	fromVars := ai.RetryPolicy{MaxAttempts: 3, BaseDelay: 100 * time.Millisecond, MaxDelay: 2 * time.Second}
+	vars := map[string]string{"INFER_RETRIES": "4", "INFER_RETRY_BASE_DELAY": "100ms", "INFER_RETRY_MAX_DELAY": "2s"}
+	fromVars := ai.RetryPolicy{MaxAttempts: 4, BaseDelay: 100 * time.Millisecond, MaxDelay: 2 * time.Second}
+	defaults := ai.RetryPolicy{MaxAttempts: 3, BaseDelay: 500 * time.Millisecond, MaxDelay: 30 * time.Second}
 	for _, tc := range []struct {
 		name string
 		env  map[string]string
 		args []string
 		want ai.RetryPolicy
 	}{
-		{"unset", nil, []string{"probe"}, ai.RetryPolicy{}},
+		{"unset", nil, []string{"probe"}, defaults},
+		{"variables given empty", map[string]string{"INFER_RETRIES": "", "INFER_RETRY_BASE_DELAY": "", "INFER_RETRY_MAX_DELAY": ""},
+			[]string{"probe"}, defaults},
 		{"variables", vars, []string{"probe"}, fromVars},
 		{"flags before the command", vars, []string{"--retries", "5", "--retry-base-delay", "1s", "--retry-max-delay", "1m", "probe"},
 			ai.RetryPolicy{MaxAttempts: 5, BaseDelay: time.Second, MaxDelay: time.Minute}},
@@ -35,9 +41,17 @@ func TestRetryPolicy_FlagOverVariable(t *testing.T) {
 			ai.RetryPolicy{MaxAttempts: 4, BaseDelay: 200 * time.Millisecond, MaxDelay: 3 * time.Second}},
 		{"one flag over its variable", vars, []string{"probe", "--retries", "1"},
 			ai.RetryPolicy{MaxAttempts: 1, BaseDelay: 100 * time.Millisecond, MaxDelay: 2 * time.Second}},
-		{"flags given empty", vars, []string{"probe", "--retries=", "--retry-base-delay=", "--retry-max-delay="}, ai.RetryPolicy{}},
+		{"flags given empty", vars, []string{"probe", "--retries=", "--retry-base-delay=", "--retry-max-delay="}, defaults},
 		{"flag over an unparsable variable", map[string]string{"INFER_RETRIES": "many"}, []string{"probe", "--retries", "2"},
-			ai.RetryPolicy{MaxAttempts: 2}},
+			ai.RetryPolicy{MaxAttempts: 2, BaseDelay: 500 * time.Millisecond, MaxDelay: 30 * time.Second}},
+		{"one attempt", nil, []string{"probe", "--retries", "1"},
+			ai.RetryPolicy{MaxAttempts: 1, BaseDelay: 500 * time.Millisecond, MaxDelay: 30 * time.Second}},
+		{"most delay below the default base delay", nil, []string{"probe", "--retry-max-delay", "100ms"},
+			ai.RetryPolicy{MaxAttempts: 3, BaseDelay: 100 * time.Millisecond, MaxDelay: 100 * time.Millisecond}},
+		{"zero most delay", map[string]string{"INFER_RETRY_MAX_DELAY": "0s"}, []string{"probe"},
+			ai.RetryPolicy{MaxAttempts: 3, MaxDelay: 0}},
+		{"base delay given above a most delay", nil, []string{"probe", "--retry-base-delay", "1s", "--retry-max-delay", "100ms"},
+			ai.RetryPolicy{MaxAttempts: 3, BaseDelay: time.Second, MaxDelay: 100 * time.Millisecond}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t, tc.env)
@@ -91,8 +105,8 @@ func serveRetry(t *testing.T, failures int, retryAfter string) *retryEndpoint {
 
 // With retries set, a 503 with Retry-After, then a 200, succeeds after the
 // wait: the second attempt arrives no sooner than the Retry-After's second
-// after the first, which a retry that ignored it, under a base delay of
-// zero, would send at once.
+// after the first, which a retry that ignored it, under the default base
+// delay of 500ms, would send sooner.
 func TestRetries_WaitForRetryAfter(t *testing.T) {
 	e := serveRetry(t, 1, "1")
 
@@ -111,19 +125,69 @@ func TestRetries_WaitForRetryAfter(t *testing.T) {
 	}
 }
 
-// With no retries set, one 503 is the run's failure, exit 1, after one
-// request, whatever its Retry-After.
-func TestRetries_NoneWhenUnset(t *testing.T) {
-	e := serveRetry(t, 1, "0")
+// With nothing set, infer retries under its default policy: a 503 then a
+// 200 succeeds after two requests, and three 503s are the run's failure,
+// exit 1, after three requests, the default's attempts. Each 503's
+// Retry-After of 0 replaces the default backoff, so the test waits for
+// nothing.
+func TestRetries_Default(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		failures int
+		code     int
+		requests int
+	}{
+		{"one 503", 1, process.ExitOK, 2},
+		{"three 503s", 3, process.ExitFailure, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := serveRetry(t, tc.failures, "0")
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_RETRY_MAX_DELAY": "1s"}, "models")
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
 
-	wantCode(t, r, process.ExitFailure)
-	if !strings.HasPrefix(r.stderr, "infer models: ") || !strings.Contains(r.stderr, "503") {
-		t.Errorf("stderr = %q, want one infer models error naming the 503", r.stderr)
+			wantCode(t, r, tc.code)
+			if tc.code == process.ExitOK && r.stdout != "agent\n" {
+				t.Errorf("stdout = %q, want %q", r.stdout, "agent\n")
+			}
+			if tc.code == process.ExitFailure && (!strings.HasPrefix(r.stderr, "infer models: ") || !strings.Contains(r.stderr, "503")) {
+				t.Errorf("stderr = %q, want one infer models error naming the 503", r.stderr)
+			}
+			if n := len(e.Requests()); n != tc.requests {
+				t.Errorf("endpoint received %d requests, want %d", n, tc.requests)
+			}
+		})
 	}
-	if n := len(e.Requests()); n != 1 {
-		t.Errorf("endpoint received %d requests, want 1", n)
+}
+
+// An attempt count given wins over the default: --retries 1, or 0, sends
+// once, and one 503 is the run's failure, exit 1; INFER_RETRIES 2 sends
+// twice against three 503s.
+func TestRetries_GivenOverDefault(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		env      map[string]string
+		args     []string
+		requests int
+	}{
+		{"--retries 1", nil, []string{"--retries", "1"}, 1},
+		{"--retries 0", nil, []string{"--retries", "0"}, 1},
+		{"INFER_RETRIES 2", map[string]string{"INFER_RETRIES": "2"}, nil, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := serveRetry(t, 3, "0")
+			env := map[string]string{"INFER_BASE_URL": e.URL}
+			maps.Copy(env, tc.env)
+
+			r := runApp(t, env, append([]string{"models"}, tc.args...)...)
+
+			wantCode(t, r, process.ExitFailure)
+			if !strings.HasPrefix(r.stderr, "infer models: ") || !strings.Contains(r.stderr, "503") {
+				t.Errorf("stderr = %q, want one infer models error naming the 503", r.stderr)
+			}
+			if n := len(e.Requests()); n != tc.requests {
+				t.Errorf("endpoint received %d requests, want %d", n, tc.requests)
+			}
+		})
 	}
 }
 
@@ -214,9 +278,9 @@ func TestRetryRefusals(t *testing.T) {
 			want: "client: --retry-base-delay (INFER_RETRY_BASE_DELAY) and --retry-max-delay (INFER_RETRY_MAX_DELAY): ai: retry policy's base delay is above its most delay",
 		},
 		{
-			name: "base delay without a most delay",
-			args: []string{"models", "--retry-base-delay", "1s"},
-			want: "client: --retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long",
+			name: "base delay above the default most delay",
+			args: []string{"models", "--retry-base-delay", "1m"},
+			want: "client: --retry-base-delay (INFER_RETRY_BASE_DELAY) and --retry-max-delay (INFER_RETRY_MAX_DELAY): ai: retry policy's base delay is above its most delay",
 		},
 		{
 			name: "base delay with a zero most delay",

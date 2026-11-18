@@ -322,10 +322,10 @@ func refusesAudio(err error) bool {
 // the attempt count alone; the most delay alone; and the base delay under
 // the longest most delay. A base delay above the most delay is refused in
 // neither of the last two alone, only together, so a policy refused when no
-// field is names both delays. When the most delay is unset, or zero, in
-// that case, the refusal says the base delay needs one rather than repeat
-// go-ai's "above its most delay", which reads as though a most delay were
-// given; go-ai has still refused it. Only a refused New calls it, so the
+// field is names both delays. When the most delay is zero in that case,
+// the refusal says the base delay needs one at least as long, which says
+// what to change, rather than repeat go-ai's "above its most delay"; go-ai
+// has still refused it. A most delay left unset is the default, never zero. Only a refused New calls it, so the
 // probes cost nothing in a run that builds.
 func settingsRefusal(base string, wireFormat format.Format, opts ai.Options, err error) error {
 	refuses := func(base string, o ai.Options) bool {
@@ -363,43 +363,68 @@ func settingsRefusal(base string, wireFormat format.Format, opts ai.Options, err
 	return cli.Usagef("%s: %w", strings.Join(names, " and "), err)
 }
 
+// The retry policy's defaults, each the setting when neither its flag nor
+// its variable is given, or either is given empty: three attempts, the
+// first wait at most half a second, doubling, and no wait, nor any
+// Retry-After honored, longer than half a minute. go-ai's zero policy
+// retries nothing, which suits a library; infer is run by hand and by
+// scripts against endpoints that shed load, where a transient 503 should
+// not end the run.
+const (
+	defaultRetries        = 3
+	defaultRetryBaseDelay = 500 * time.Millisecond
+	defaultRetryMaxDelay  = 30 * time.Second
+)
+
 // newRetryPolicy returns the retry policy node's constructor: the policy
 // --retries, --retry-base-delay, and --retry-max-delay set, each over its
-// variable as [newSetting] resolves it, and each zero when neither is
-// given, go-ai's default, which retries nothing. A value that doesn't
-// parse, a count as a whole number and each delay as a Go duration, is a
-// usage error naming the flag and its variable. The node checks nothing
-// else: ai.New refuses a negative or inverted policy, in [buildClient].
+// variable as [newSetting] resolves it, and each its default when neither
+// is given, or either is given empty. The default base delay is capped at
+// a most delay given below it, so --retry-max-delay alone, such as 100ms,
+// is a working policy rather than an inverted one; a base delay given
+// above the default most delay is not raised to, and ai.New refuses it,
+// naming both. A value that doesn't parse, a count as a whole number and
+// each delay as a Go duration, is a usage error naming the flag and its
+// variable. The node checks nothing else: ai.New refuses a negative or
+// inverted policy, in [buildClient].
 func newRetryPolicy(flags *rootFlags) func(*graph.Scope) (ai.RetryPolicy, error) {
 	return func(s *graph.Scope) (ai.RetryPolicy, error) {
-		var p ai.RetryPolicy
-		var err error
-		if p.MaxAttempts, err = parseRootSetting(s, flags, "retries", parseCount); err != nil {
+		p := ai.RetryPolicy{MaxAttempts: defaultRetries, BaseDelay: defaultRetryBaseDelay, MaxDelay: defaultRetryMaxDelay}
+		if _, err := parseRootSetting(s, flags, "retries", parseCount, &p.MaxAttempts); err != nil {
 			return p, err
 		}
-		if p.BaseDelay, err = parseRootSetting(s, flags, "retry-base-delay", time.ParseDuration); err != nil {
+		baseGiven, err := parseRootSetting(s, flags, "retry-base-delay", time.ParseDuration, &p.BaseDelay)
+		if err != nil {
 			return p, err
 		}
-		p.MaxDelay, err = parseRootSetting(s, flags, "retry-max-delay", time.ParseDuration)
-		return p, err
+		if _, err := parseRootSetting(s, flags, "retry-max-delay", time.ParseDuration, &p.MaxDelay); err != nil {
+			return p, err
+		}
+		// A negative most delay is left to ai.New to refuse, naming it
+		// alone, rather than carried into the default base delay.
+		if !baseGiven && p.MaxDelay >= 0 {
+			p.BaseDelay = min(p.BaseDelay, p.MaxDelay)
+		}
+		return p, nil
 	}
 }
 
-// parseRootSetting returns the root flag name's setting, resolved by
-// [newSetting] with no default, parsed by parse; an empty setting is T's
-// zero value, and one parse refuses is a usage error naming the flag and
-// its variable.
-func parseRootSetting[T any](s *graph.Scope, flags *rootFlags, name string, parse func(string) (T, error)) (T, error) {
-	var zero T
-	v, err := newSetting(flags, name, "")(s)
-	if err != nil || v == "" {
-		return zero, err
+// parseRootSetting sets *v to the root flag name's setting, resolved by
+// [newSetting] with no default, parsed by parse, and reports whether the
+// setting was given: an empty setting leaves *v, its default, as it is,
+// and one parse refuses is a usage error naming the flag and its
+// variable.
+func parseRootSetting[T any](s *graph.Scope, flags *rootFlags, name string, parse func(string) (T, error), v *T) (bool, error) {
+	setting, err := newSetting(flags, name, "")(s)
+	if err != nil || setting == "" {
+		return false, err
 	}
-	t, err := parse(v)
+	t, err := parse(setting)
 	if err != nil {
-		return zero, cli.Usagef("%s: %w", flagAndVar(name), err)
+		return false, cli.Usagef("%s: %w", flagAndVar(name), err)
 	}
-	return t, nil
+	*v = t
+	return true, nil
 }
 
 // parseCount parses a whole number, such as a count of attempts.
@@ -500,11 +525,11 @@ func bindRootFlags(fs *flag.FlagSet) *rootFlags {
 	fs.String("model", "", "the model the request names"+env("model"))
 	fs.String("profile", "", "the deployment's profile, a `JSON` object keyed by format name, each member that format's options, "+
 		`such as {"responses":{"refused_efforts":["none"]}}; unset or empty is each format's spec`+env("profile"))
-	fs.String("retries", "", "the most attempts of each request, an `int` that counts the first, so 3 retries twice, "+
-		"when the endpoint answers 408, 429, 502, 503, or 504 or the connection fails; 0 or 1 retries nothing"+env("retries"))
-	fs.String("retry-base-delay", "", "the longest wait before the first retry, a `duration` such as 500ms, doubling for each retry after it; "+
-		"at most --retry-max-delay"+env("retry-base-delay"))
-	fs.String("retry-max-delay", "", "the longest wait between attempts, a `duration` such as 30s, and the longest Retry-After waited for; "+
+	fs.String("retries", strconv.Itoa(defaultRetries), "the most attempts of each request, an `int` that counts the first, so 3 retries twice, "+
+		"when the endpoint answers 408, 429, 502, 503, or 504 or the connection fails; 0 or 1 sends once"+env("retries"))
+	fs.String("retry-base-delay", defaultRetryBaseDelay.String(), "the longest wait before the first retry, a `duration`, doubling for each retry after it; "+
+		"at most --retry-max-delay, and the default at most a --retry-max-delay given below it"+env("retry-base-delay"))
+	fs.String("retry-max-delay", defaultRetryMaxDelay.String(), "the longest wait between attempts, a `duration`, and the longest Retry-After waited for; "+
 		"a longer Retry-After ends the retries"+env("retry-max-delay"))
 	return &rootFlags{fs: fs}
 }

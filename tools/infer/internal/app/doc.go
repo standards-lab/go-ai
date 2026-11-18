@@ -45,18 +45,20 @@
 // transcribe, whose requests a profile changes, read it, so a malformed
 // one fails neither models nor embed.
 //
-// The root flags --retries, --retry-base-delay, and --retry-max-delay, over
-// INFER_RETRIES, INFER_RETRY_BASE_DELAY, and INFER_RETRY_MAX_DELAY, set
-// go-ai's retry policy for every command: --retries is the most attempts
-// of a request, the first included, and unset retries nothing. Each is a
-// string flag, parsed in its node, whose help names the type it is parsed
-// as, int or duration, as chat's --idle-timeout's does. A missing base URL, an unknown format, a retry
+// The root flags --retries, --retry-base-delay, and --retry-max-delay,
+// over INFER_RETRIES, INFER_RETRY_BASE_DELAY, and INFER_RETRY_MAX_DELAY,
+// set go-ai's retry policy for every command: --retries is the most
+// attempts of a request, the first included, so 1 or 0 sends once. Unset
+// or empty, each is infer's default, shown in help: 3 attempts, a 500ms
+// base delay, and a 30s max delay, the default base delay capped at a max
+// delay given below it. Each is a string flag, parsed in its node, whose
+// help names the type it is parsed as, int or duration, as chat's
+// --idle-timeout's does. A missing base URL, an unknown format, a retry
 // setting that doesn't parse, or a base URL or retry policy go-ai's New
 // refuses is a usage error, exit 2, naming the flag and its variable,
-// before any request. A base delay above zero with no max delay, or a
-// zero one, is refused as needing one: "--retry-base-delay
-// (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY)
-// at least as long".
+// before any request. A base delay above zero with a zero max delay is
+// refused as needing one: "--retry-base-delay (INFER_RETRY_BASE_DELAY)
+// needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long".
 //
 // With no model set, a command that sends to a model lists the endpoint's
 // models first and sends to the one listed; none, or several, exits 1,

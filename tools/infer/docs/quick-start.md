@@ -268,7 +268,9 @@ $ wc -l vectors.jsonl
 
 ## 10. Retry and bound a stream
 
-Retry is off by default. A working policy sets all three flags:
+infer retries by default: each request is sent at most three times. Before each retry, infer
+waits a random time up to 500ms, doubling each time, never above 30s. Each flag overrides its
+default alone:
 
 ```text
 $ infer --retries 3 --retry-base-delay 500ms --retry-max-delay 10s chat "Say hello in five words."
@@ -278,8 +280,8 @@ usage: 73 input tokens, 149 output tokens (132 reasoning), 222 total tokens
 reasoning items: 1
 ```
 
-That sends each request at most three times. Before each retry, infer waits a random time up to
-500ms, doubling each time, never above 10s.
+That keeps the default attempts and base delay and waits never above 10s. `--retries 1` sends
+each request once.
 
 `--idle-timeout` ends a streamed chat that sends nothing for that long. Set it well above the
 model's time to start answering, such as `--idle-timeout 30s`.
@@ -308,7 +310,8 @@ command's usage line, left out below.
 | `client: INFER_HEADER: ai: Options.Header names Authorization, which the Client sets` | Put the token in `INFER_TOKEN`. Keep `INFER_HEADER` for headers such as `api-key`. The value is never echoed. |
 | `client: INFER_HEADER line 1 has no colon: each line is "Name: value"` | Write each header as `Name: value`. |
 | `client: --retries (INFER_RETRIES): ai: retry policy has a negative attempt count` | Use 0 or more. |
-| `client: --retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long` | Set `--retry-max-delay`, such as `10s`. |
+| `client: --retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long` | The max delay is `0`. Raise it to the base delay or more, or leave it unset for `30s`. |
+| `client: --retry-base-delay (INFER_RETRY_BASE_DELAY) and --retry-max-delay (INFER_RETRY_MAX_DELAY): ai: retry policy's base delay is above its most delay` | Lower `--retry-base-delay`, or raise `--retry-max-delay`, whose default is `30s`. |
 
 ### Refused past the command line (exit 1)
 

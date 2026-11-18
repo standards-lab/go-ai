@@ -46,9 +46,9 @@ empty. Root flags work before or after the command.
 | `--format` | `INFER_FORMAT` | `completions` | every command but `version` |
 | `--model` | `INFER_MODEL` | the one model the endpoint lists | chat, embed, transcribe |
 | `--profile` | `INFER_PROFILE` | none: each format's spec | chat, transcribe |
-| `--retries` | `INFER_RETRIES` | `0`: no retry | every command but `version` |
-| `--retry-base-delay` | `INFER_RETRY_BASE_DELAY` | `0` | every command but `version` |
-| `--retry-max-delay` | `INFER_RETRY_MAX_DELAY` | `0` | every command but `version` |
+| `--retries` | `INFER_RETRIES` | `3` attempts | every command but `version` |
+| `--retry-base-delay` | `INFER_RETRY_BASE_DELAY` | `500ms`, at most `--retry-max-delay` | every command but `version` |
+| `--retry-max-delay` | `INFER_RETRY_MAX_DELAY` | `30s` | every command but `version` |
 | `--idle-timeout` | `INFER_IDLE_TIMEOUT` | `0`: no bound | chat |
 | `--mode` | `INFER_TRANSCRIPTION_MODE` | `route` | transcribe |
 | | `INFER_TOKEN` | none | every command but `version` |
@@ -102,18 +102,22 @@ and asks for `--model`.
 
 ### Retries
 
-Retry is off until `--retries` is above 1. The three flags set go-ai's
+infer retries by default: each request is sent at most 3 times, the first wait at most 500ms,
+doubling, and no wait longer than 30s. The three flags set go-ai's
 [retry policy](../../docs/features.md#retries), which says what is retried and how long each wait
 is:
 
-- `--retries` is `MaxAttempts`. It counts every attempt, so `3` retries twice.
+- `--retries` is `MaxAttempts`. It counts every attempt, so `3` retries twice, and `1` or `0`
+  sends once.
 - `--retry-base-delay` is `BaseDelay`, the cap on the first wait, which doubles for each retry.
 - `--retry-max-delay` is `MaxDelay`, the cap on every wait and the longest Retry-After waited for.
 
-Set all three:
+Each flag overrides its default alone. A `--retry-max-delay` below 500ms caps the default base
+delay at it; a `--retry-base-delay` above 30s needs a `--retry-max-delay` at least as long.
 
 ```sh
-infer --retries 3 --retry-base-delay 500ms --retry-max-delay 10s chat "Say hello."
+infer --retries 1 chat "Say hello."                 # send once, no retry
+infer --retries 5 --retry-max-delay 10s chat "Say hello."
 ```
 
 ## chat

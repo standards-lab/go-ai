@@ -1071,11 +1071,14 @@ nothing.
 
 **Retry and the idle bound are flags over variables too.** The root flags `--retries`,
 `--retry-base-delay`, and `--retry-max-delay`, over `INFER_RETRIES`, `INFER_RETRY_BASE_DELAY`,
-and `INFER_RETRY_MAX_DELAY`, set `ai.RetryPolicy` for every command; unset, the policy is go-ai's
-zero value and retries nothing (finding 7). `chat`'s `--idle-timeout`, over `INFER_IDLE_TIMEOUT`,
+and `INFER_RETRY_MAX_DELAY`, set `ai.RetryPolicy` for every command. Unlike go-ai's zero value,
+which retries nothing (finding 7), infer retries by default: each setting unset or empty is 3
+attempts, a 500ms base delay, and a 30s max delay, and each given overrides its default alone;
+`--retries 1` sends once. The default base delay is capped at a max delay given below it, so
+`--retry-max-delay` alone is a working policy. `chat`'s `--idle-timeout`, over `INFER_IDLE_TIMEOUT`,
 sets `Options.StreamIdleTimeout` (the surface section, decision 7). A negative, inverted, or
 unparsable value is a usage error, exit 2, naming the flag and its variable; `ai.New` is the
-authority on what it refuses. A base delay above zero with the max delay unset or zero, which
+authority on what it refuses. A base delay above zero with the max delay zero, which
 `ai.New` refuses as "above its most delay", gets a message that says what to change:
 `--retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at
 least as long`. Each of these four flags is a string flag that its node parses, and its usage
@@ -1084,8 +1087,8 @@ in place of `string`: `--retries int`, and `duration` for the delays and the tim
 transcription mode and the idle bound each belong to one command, so each reaches a client node
 of its own, the transcriber and the chat client, built by the same constructor as the client the
 other commands share: no other command reads their variables, and an unknown mode never refuses
-a chat. With `--retry-max-delay` unset, a Retry-After above zero ends the retries at once, as
-`MaxDelay` caps every wait (finding 13), so a working policy sets all three.
+a chat. A Retry-After above `--retry-max-delay` ends the retries at once, as `MaxDelay` caps
+every wait (finding 13).
 
 **Two test tiers.** The unit tier runs the App in-process against loopback `httptest` endpoints,
 with `infer`'s own fixtures in `internal/apptest`, never go-ai's internal helpers, and asserts

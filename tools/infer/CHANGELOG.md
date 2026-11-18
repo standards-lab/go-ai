@@ -46,6 +46,11 @@ go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
   `(reasoning not reported)` only when it reports none and the reply holds a reasoning item, in
   any format. Otherwise it prints no parenthesis, where it printed `(0 reasoning)`, or `(reasoning
   not reported)` for every `messages` reply.
+- Retries by default: 3 attempts, 500ms base, 30s most; `--retries 1` sends once. Each of
+  `--retries`, `--retry-base-delay`, and `--retry-max-delay`, and its variable, unset or empty
+  is its default, shown in help, where each was zero and infer retried nothing. A
+  `--retry-max-delay` below 500ms caps the default base delay at it, so `--retry-max-delay`
+  alone is a working policy.
 
 ## [v0.1.0] - 2026-11-13
 
