@@ -135,6 +135,19 @@ func TestModels_Empty(t *testing.T) {
 	}
 }
 
+// ModelEntries answers GET /v1/models with each entry as written, in
+// order; any other request is 404.
+func TestModelEntries_Reply(t *testing.T) {
+	e := apptest.Serve(t, apptest.ModelEntries(`{"id":"agent","root":"r"}`, `{"id":"vision"}`))
+
+	if got, want := get(t, e.URL+"/models", ""), `{"object":"list","data":[{"id":"agent","root":"r"},{"id":"vision"}]}`; got != want {
+		t.Errorf("reply = %s, want %s", got, want)
+	}
+	if status, _, _ := post(t, e.URL+"/models"); status != http.StatusNotFound {
+		t.Errorf("POST /v1/models = %d, want 404", status)
+	}
+}
+
 // get GETs url with the Authorization header auth, when it isn't empty, and
 // returns the reply's body.
 func get(t *testing.T, url, auth string) string {

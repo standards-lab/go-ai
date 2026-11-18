@@ -73,13 +73,12 @@ func modelsCommand(n *Nodes) *cli.Command {
 // only some endpoints send.
 func modelRoot(m ai.Model) string {
 	var entry struct {
-		Root any `json:"root"`
+		Root string `json:"root"`
 	}
 	if err := jsonv2.Unmarshal(m.Native, &entry); err != nil {
 		return ""
 	}
-	root, _ := entry.Root.(string)
-	return root
+	return entry.Root
 }
 
 // resolveModel returns the model a request to client names: model, the

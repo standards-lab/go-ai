@@ -141,31 +141,36 @@ func Serve(t testing.TB, h http.Handler) *Endpoint {
 func (e *Endpoint) Requests() []Request { return e.requests.Log() }
 
 // Models returns a handler that answers GET /v1/models with the
-// OpenAI-compatible model list of ids, in order, and any other request
-// with 404.
+// OpenAI-compatible model list of ids, in order, each entry its id and
+// object alone, and any other request with 404.
 func Models(ids ...string) http.Handler {
-	type model struct {
-		ID     string `json:"id"`
-		Object string `json:"object"`
+	entries := make([]string, len(ids))
+	for i, id := range ids {
+		entry, err := json.Marshal(struct {
+			ID     string `json:"id"`
+			Object string `json:"object"`
+		}{ID: id, Object: "model"})
+		if err != nil {
+			panic(err) // two strings always marshal
+		}
+		entries[i] = string(entry)
 	}
-	list := struct {
-		Object string  `json:"object"`
-		Data   []model `json:"data"`
-	}{Object: "list", Data: []model{}}
-	for _, id := range ids {
-		list.Data = append(list.Data, model{ID: id, Object: "model"})
-	}
-	body, err := json.Marshal(list)
-	if err != nil {
-		panic(err) // a list of strings always marshals
-	}
+	return ModelEntries(entries...)
+}
+
+// ModelEntries returns a handler that answers GET /v1/models with the
+// OpenAI-compatible model list of entries, in order, each written as
+// given, as an endpoint that sends more than an entry's id does, such as
+// vLLM, and any other request with 404.
+func ModelEntries(entries ...string) http.Handler {
+	body := `{"object":"list","data":[` + strings.Join(entries, ",") + `]}`
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
+		_, _ = io.WriteString(w, body)
 	})
 }
 

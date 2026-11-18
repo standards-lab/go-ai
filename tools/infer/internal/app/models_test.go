@@ -35,21 +35,11 @@ func TestModels_WritesEachID(t *testing.T) {
 	}
 }
 
-// listing returns a handler that answers the models route with a list of
-// entries, each written as given, as an endpoint that sends more than an
-// entry's id does, such as vLLM.
-func listing(entries ...string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"object":"list","data":[` + strings.Join(entries, ",") + `]}`))
-	})
-}
-
 // An entry with a non-empty string root, as vLLM lists a served alias, is
 // written as its ID, a tab, and its root; an id-only entry beside it is
 // written as its ID alone.
 func TestModels_WritesEachRoot(t *testing.T) {
-	e := apptest.Serve(t, listing(
+	e := apptest.Serve(t, apptest.ModelEntries(
 		`{"id":"agent","object":"model","owned_by":"vllm","root":"openai/gpt-oss-120b","parent":null,"max_model_len":131072}`,
 		`{"id":"vision","object":"model"}`,
 	))
@@ -75,7 +65,7 @@ func TestModels_NoStringRoot(t *testing.T) {
 		{"object", `{"name":"openai/gpt-oss-120b"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := apptest.Serve(t, listing(`{"id":"agent","object":"model","root":`+tc.root+`}`))
+			e := apptest.Serve(t, apptest.ModelEntries(`{"id":"agent","object":"model","root":`+tc.root+`}`))
 
 			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
 
