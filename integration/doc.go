@@ -66,8 +66,8 @@
 //     and effort_xhigh.json and effort_max.json, each a 400.
 //
 // On that row, the Open Responses round trips, TestFunctionCallRoundTrip/responses,
-// TestReasoningRoundTrip/responses, and TestStreamReasoningRoundTrip/responses, need
-// resend_reasoning_text, as vLLM reads the reasoning sent back from its text, and are expected to
-// fail under the zero profile. Nothing reads this example, and go-ai ships no preset: the profile
-// is the caller's to give.
+// TestReasoningRoundTrip/responses, and TestStreamReasoningRoundTrip/responses, pass under this
+// profile and under the zero profile alike (vLLM 0.34.0, 2026-11-18): they don't depend on the
+// reasoning sent back. Nothing reads this example, and go-ai ships no preset: the profile is the
+// caller's to give.
 package integration

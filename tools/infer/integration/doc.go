@@ -82,9 +82,9 @@
 //
 // On that row, go-ai's Open Responses round trips, TestFunctionCallRoundTrip,
 // TestReasoningRoundTrip, and TestStreamReasoningRoundTrip, each through
-// responses, need resend_reasoning_text and are expected to fail under the
-// zero profile. Nothing reads this example, and go-ai ships no preset: the
-// profile is the caller's to give.
+// responses, pass under this profile and under the zero profile alike
+// (vLLM 0.34.0, 2026-11-18). Nothing reads this example, and go-ai ships no
+// preset: the profile is the caller's to give.
 //
 // The scenarios are:
 //
