@@ -25,16 +25,29 @@ func Has(v jsontext.Value, name string) bool {
 
 // Marshal encodes body, a wire body whose Native field is embedded in its top level, as JSON. A
 // Native member named like one body's typed fields set is a duplicate name, which it reports as
-// a clash naming the member. body's Native must be Valid, or a repeated member within it is
+// a *ClashError naming the member. body's Native must be Valid, or a repeated member within it is
 // reported as a clash too.
 func Marshal(body any) ([]byte, error) {
 	b, err := json.Marshal(body)
 	if err != nil {
 		var se *jsontext.SyntacticError
 		if errors.As(err, &se) && errors.Is(se.Err, jsontext.ErrDuplicateName) {
-			return nil, fmt.Errorf("native member %s clashes with a member the request sets", se.JSONPointer.LastToken())
+			return nil, &ClashError{Member: se.JSONPointer.LastToken()}
 		}
 		return nil, fmt.Errorf("encode request: %w", err)
 	}
 	return b, nil
+}
+
+// ClashError is a Native member named like one a wire body's typed fields set, which Marshal
+// refuses. A format reports it as its own refusal of the member; this package can't, as protocol,
+// which the format package imports, imports it.
+type ClashError struct {
+	// Member is the clashing member's name.
+	Member string
+}
+
+// Error names the clashing member.
+func (e *ClashError) Error() string {
+	return fmt.Sprintf("native member %s clashes with a member the request sets", e.Member)
 }

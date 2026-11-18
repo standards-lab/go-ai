@@ -24,7 +24,7 @@ type Format interface {
 	// level. It may add the format's own headers to header, such as a version header its API
 	// requires; the client sets Content-Type, Accept, and Authorization itself. It refuses an
 	// item the format can't express and a Native member that clashes with a member req's
-	// typed fields set.
+	// typed fields set. Each refusal of a request feature is an *UnsupportedError, wrapped.
 	EncodeRequest(req *protocol.Request, header http.Header) ([]byte, error)
 	// DecodeResponse decodes the body of a 2xx reply into a Response.
 	DecodeResponse(body []byte) (*protocol.Response, error)

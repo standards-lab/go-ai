@@ -21,5 +21,6 @@
 //   - [WireEventReader] reads a streamed reply's events, one per call.
 //   - [EventStream] is a streamed reply's framing: its media type and its reader.
 //   - [SSE] is the server-sent event stream, the EventStream of every format here.
+//   - [UnsupportedError] is a format's refusal of a request feature, before anything is sent.
 //   - [DecodeOpenAIError] decodes an OpenAI-style error body's message, type, and code.
 package format

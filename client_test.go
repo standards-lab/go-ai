@@ -15,6 +15,7 @@ import (
 	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/format/completions"
 	"github.com/standards-lab/go-ai/format/messages"
+	"github.com/standards-lab/go-ai/format/responses"
 	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
@@ -523,6 +524,58 @@ func TestGenerateRefusesInvalidRequest(t *testing.T) {
 			}
 			if called {
 				t.Error("the token source was called")
+			}
+			if n := len(srv.Requests()); n != 0 {
+				t.Errorf("server received %d requests, want 0", n)
+			}
+		})
+	}
+}
+
+// TestGenerateReturnsUnsupportedError wants a request each format refuses refused through the
+// Client with the format's *format.UnsupportedError, its message the format's under the
+// Client's prefix, before the token source is called or anything is sent.
+func TestGenerateReturnsUnsupportedError(t *testing.T) {
+	modeNone := hello()
+	modeNone.Tools = []protocol.FunctionTool{{Name: "get_time"}}
+	modeNone.ToolChoice = protocol.AllowedToolChoice{
+		Tools: []protocol.FunctionToolChoice{{Name: "get_time"}},
+		Mode:  protocol.ToolChoiceNone,
+	}
+	stateful := hello()
+	stateful.Native = []byte(`{"previous_response_id":"resp_1"}`)
+	cases := []struct {
+		name    string
+		format  format.Format
+		req     *protocol.Request
+		want    format.UnsupportedError
+		message string
+	}{
+		{"completions", completions.New(), modeNone,
+			format.UnsupportedError{Format: "completions", Feature: "allowed_tools mode", Value: "none"},
+			"ai: generate: completions: tool choice: allowed_tools of mode none has no Chat Completions form"},
+		// hello sets no MaxOutputTokens, which Messages requires.
+		{"messages", messages.New(), hello(),
+			format.UnsupportedError{Format: "messages", Feature: "max output tokens"},
+			"ai: generate: messages: request has no max output tokens, which Messages requires as max_tokens"},
+		{"responses", responses.New(responses.Options{}), stateful,
+			format.UnsupportedError{Format: "responses", Feature: "native member", Value: "previous_response_id"},
+			"ai: generate: responses: native member previous_response_id asks the endpoint to keep state, which a stateless request never does"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := aitest.NewServer(t, http.StatusOK, okReply)
+			calls := 0
+			c := newClientFormat(t, srv.URL, http.DefaultClient, tc.format, ai.Options{
+				Token: func(context.Context) (string, error) { calls++; return "secret", nil },
+			})
+			resp, err := c.Generate(t.Context(), tc.req)
+			if err == nil {
+				t.Fatalf("Generate = %v, nil; want %q", resp, tc.message)
+			}
+			aitest.AssertUnsupported(t, err, tc.want, tc.message)
+			if calls != 0 {
+				t.Errorf("token source called %d times, want 0", calls)
 			}
 			if n := len(srv.Requests()); n != 0 {
 				t.Errorf("server received %d requests, want 0", n)

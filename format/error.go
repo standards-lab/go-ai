@@ -3,7 +3,43 @@ package format
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
 )
+
+// UnsupportedError is a format's refusal of a request it can't send: a feature of the request
+// that its wire format, or the deployment it targets, has no form for. The format refuses it
+// while it encodes the request, so a refusal happens before anything is sent or any token is
+// fetched. It is returned as a pointer, wrapped in the format's and the client's context, so
+// errors.As finds it through every layer.
+type UnsupportedError struct {
+	// Format names the wire format that refused the request, as its errors are prefixed:
+	// completions, messages, or responses.
+	Format string
+	// Feature names the request feature refused, such as "tool choice", "text format",
+	// "input item", "content part", or "native member".
+	Feature string
+	// Value is the refused value, such as the Go type of a tool choice or the name of a native
+	// member, and empty when the refusal is of a feature's absence or there is no value to name.
+	Value string
+	// Declared is true when the refusal is of a gap the deployment's profile declares, and false
+	// when it is of a feature the wire format's spec has no form for.
+	Declared bool
+	// Message is the refusal's account, which Error returns. When it is empty, Error builds one
+	// from the other fields.
+	Message string
+}
+
+// Error returns the refusal's Message or, when it has none, an account of its Format, Feature,
+// and Value. It names no position in the request; the format's wrapping does.
+func (e *UnsupportedError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	if e.Value == "" {
+		return fmt.Sprintf("%s has no %s form", e.Feature, e.Format)
+	}
+	return fmt.Sprintf("%s %s has no %s form", e.Feature, e.Value, e.Format)
+}
 
 // DecodeOpenAIError decodes an OpenAI-style error body, {"error": {"message", "type", "code"}},
 // where code is a string or a number, and returns its message, type, and code. An error that is

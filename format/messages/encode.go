@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/internal/native"
 	"github.com/standards-lab/go-ai/protocol"
 )
@@ -111,7 +112,7 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 		return nil, err
 	}
 	if req.MaxOutputTokens == 0 {
-		return nil, errors.New("request has no max output tokens, which Messages requires as max_tokens")
+		return nil, refuse("max output tokens", "", "request has no max output tokens, which Messages requires as max_tokens")
 	}
 	body := request{
 		Model:     req.Model,
@@ -138,12 +139,16 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	case protocol.JSONSchemaFormat:
 		config.Format = &outputFormat{Type: "json_schema", Schema: f.Schema}
 	default:
-		return nil, fmt.Errorf("text format %T has no Messages form", f)
+		return nil, refuse("text format", fmt.Sprintf("%T", f), fmt.Sprintf("text format %T has no Messages form", f))
 	}
 	if config != (outputConfig{}) {
 		body.OutputConfig = &config
 	}
-	return native.Marshal(body)
+	b, err := native.Marshal(body)
+	if clash, ok := errors.AsType[*native.ClashError](err); ok {
+		return nil, refuse("native member", clash.Member, clash.Error())
+	}
+	return b, err
 }
 
 // encodeInput encodes the input items as messages, joining each user turn into one user message
@@ -220,7 +225,8 @@ func encodeInput(items []protocol.Item) ([]message, error) {
 			run, reasoning = -1, nil
 			results = append(results, b)
 		default:
-			return nil, fmt.Errorf("input %d: item %T has no Messages form", i, it)
+			return nil, fmt.Errorf("input %d: %w", i, refuse("input item", fmt.Sprintf("%T", it),
+				fmt.Sprintf("item %T has no Messages form", it)))
 		}
 	}
 	closeTurn()
@@ -286,7 +292,7 @@ func encodeTools(tools []protocol.FunctionTool, choice protocol.ToolChoice) ([]t
 			allowed[f.Name] = true
 		}
 	default:
-		return nil, nil, fmt.Errorf("tool choice %T has no Messages form", c)
+		return nil, nil, refuse("tool choice", fmt.Sprintf("%T", c), fmt.Sprintf("tool choice %T has no Messages form", c))
 	}
 	var out []tool
 	for _, t := range tools {
@@ -300,6 +306,12 @@ func encodeTools(tools []protocol.FunctionTool, choice protocol.ToolChoice) ([]t
 		out = append(out, tool{Name: t.Name, Description: t.Description, InputSchema: schema, Strict: t.Strict})
 	}
 	return out, wire, nil
+}
+
+// refuse returns the format's refusal of a request feature, the spec's: Messages has no form for
+// value, of feature, as message says.
+func refuse(feature, value, message string) error {
+	return &format.UnsupportedError{Format: "messages", Feature: feature, Value: value, Message: message}
 }
 
 // toolChoiceType returns the tool_choice type of a mode: auto as auto, required as any, and none
@@ -331,7 +343,8 @@ func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 			}
 			b = imageBlock{Type: "image", Source: source}
 		default:
-			return nil, fmt.Errorf("content %d: part %T has no Messages form", i, p)
+			return nil, fmt.Errorf("content %d: %w", i, refuse("content part", fmt.Sprintf("%T", p),
+				fmt.Sprintf("part %T has no Messages form", p)))
 		}
 		blocks = append(blocks, b)
 	}
@@ -340,7 +353,8 @@ func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 
 // encodeImageSource returns the image source of an input_image's URL: a base64 source for a
 // base64 data URL, data:<media type>;base64,<data>, and a url source for any other URL. A data
-// URL that isn't base64, or has no media type, is an error.
+// URL that isn't base64, or has no media type, is refused, as a base64 source needs both; one of
+// no data is malformed, an error but not a refusal.
 func encodeImageSource(url string) (imageSource, error) {
 	rest, ok := strings.CutPrefix(url, "data:")
 	if !ok {
@@ -352,13 +366,14 @@ func encodeImageSource(url string) (imageSource, error) {
 	}
 	mediaType, ok := strings.CutSuffix(meta, ";base64")
 	if !ok {
-		return imageSource{}, errors.New("image data URL isn't base64, as a base64 source requires")
+		return imageSource{}, refuse("image data URL encoding", "", "image data URL isn't base64, as a base64 source requires")
 	}
 	// A media type's parameters, such as a charset, precede ;base64; the source takes the type
 	// alone.
 	mediaType, _, _ = strings.Cut(mediaType, ";")
 	if mediaType == "" {
-		return imageSource{}, errors.New("image data URL has no media type, which a base64 source requires")
+		return imageSource{}, refuse("image data URL media type", "",
+			"image data URL has no media type, which a base64 source requires")
 	}
 	return imageSource{Type: "base64", MediaType: mediaType, Data: data}, nil
 }

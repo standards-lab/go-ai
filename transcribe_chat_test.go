@@ -336,6 +336,12 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.want) || !strings.HasPrefix(err.Error(), "ai: transcribe: ") {
 				t.Errorf("Transcribe error = %q, want it to start ai: transcribe: and contain %q", err, tc.want)
 			}
+			if tc.messages {
+				// The format's refusal of the audio is its typed one, through the Client.
+				aitest.AssertUnsupported(t, err, format.UnsupportedError{
+					Format: "messages", Feature: "content part", Value: "protocol.InputAudio",
+				}, "ai: transcribe: "+tc.want)
+			}
 			if called {
 				t.Error("the token source was called")
 			}

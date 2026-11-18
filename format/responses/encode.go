@@ -4,10 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/internal/native"
 	"github.com/standards-lab/go-ai/protocol"
 )
@@ -127,7 +129,11 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 	if r := req.Reasoning; r != (protocol.ReasoningParam{}) {
 		body.Reasoning = &reasoningParam{Effort: string(r.Effort), Summary: string(r.Summary)}
 	}
-	return native.Marshal(body)
+	b, err := native.Marshal(body)
+	if clash, ok := errors.AsType[*native.ClashError](err); ok {
+		return nil, refuse("native member", clash.Member, clash.Error())
+	}
+	return b, err
 }
 
 // refuseStateful refuses a Native, which the client has validated, that has a
@@ -136,10 +142,17 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 func refuseStateful(v jsontext.Value) error {
 	for _, name := range []string{"previous_response_id", "background"} {
 		if native.Has(v, name) {
-			return fmt.Errorf("native member %s asks the endpoint to keep state, which a stateless request never does", name)
+			return refuse("native member", name,
+				fmt.Sprintf("native member %s asks the endpoint to keep state, which a stateless request never does", name))
 		}
 	}
 	return nil
+}
+
+// refuse returns the format's refusal of a request feature, the spec's: the format has no form
+// for value, of feature, as message says.
+func refuse(feature, value, message string) error {
+	return &format.UnsupportedError{Format: "responses", Feature: feature, Value: value, Message: message}
 }
 
 // encodeInput encodes the input items as EncodeRequest describes.
@@ -188,7 +201,8 @@ func (f *Format) encodeInput(items []protocol.Item) ([]any, error) {
 			}
 			w = o
 		default:
-			return nil, fmt.Errorf("input %d: item %T has no Open Responses form", i, it)
+			return nil, fmt.Errorf("input %d: %w", i, refuse("input item", fmt.Sprintf("%T", it),
+				fmt.Sprintf("item %T has no Open Responses form", it)))
 		}
 		reasoning = nil
 		out = append(out, w)
@@ -258,7 +272,7 @@ func encodeToolChoice(tc protocol.ToolChoice) (any, error) {
 		}
 		return w, nil
 	default:
-		return nil, fmt.Errorf("tool choice %T has no Open Responses form", tc)
+		return nil, refuse("tool choice", fmt.Sprintf("%T", tc), fmt.Sprintf("tool choice %T has no Open Responses form", tc))
 	}
 }
 
@@ -279,7 +293,8 @@ func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 		case protocol.Refusal:
 			w = refusalPart{Type: "refusal", Refusal: p.Refusal}
 		default:
-			return nil, fmt.Errorf("content %d: part %T has no Open Responses form", i, p)
+			return nil, fmt.Errorf("content %d: %w", i, refuse("content part", fmt.Sprintf("%T", p),
+				fmt.Sprintf("part %T has no Open Responses form", p)))
 		}
 		out = append(out, w)
 	}
@@ -302,7 +317,7 @@ func encodeText(t protocol.TextParam) (*textParam, error) {
 			Strict:      f.Strict,
 		}
 	default:
-		return nil, fmt.Errorf("text format %T has no Open Responses form", f)
+		return nil, refuse("text format", fmt.Sprintf("%T", f), fmt.Sprintf("text format %T has no Open Responses form", f))
 	}
 	w.Verbosity = string(t.Verbosity)
 	if w == (textParam{}) {
