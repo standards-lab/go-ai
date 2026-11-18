@@ -199,10 +199,10 @@ func event(typ, members string) string {
 	return `{"type":"` + typ + `",` + members + `}`
 }
 
-// The events and items of a stream of response resp_1, in the router's shape: no
+// The events and items of a stream of response resp_1, of model m-1, in the router's shape: no
 // sequence_number, output_index, or content_index.
 const (
-	created    = `{"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress"}}`
+	created    = `{"type":"response.created","response":{"id":"resp_1","object":"response","model":"m-1","status":"in_progress"}}`
 	inProgress = `{"type":"response.in_progress","response":{"id":"resp_1","object":"response","status":"in_progress"}}`
 
 	rsAdded  = `{"type":"reasoning","id":"rs_1","summary":[],"content":[],"encrypted_content":"","status":"in_progress"}`
@@ -212,7 +212,7 @@ const (
 	fcAdded  = `{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":"","status":"in_progress"}`
 	fcDone   = `{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Paris\"}","status":"completed"}`
 
-	usageJSON = `"usage":{"input_tokens":7,"output_tokens":5,"total_tokens":12,"output_tokens_details":{"reasoning_tokens":2}}`
+	usageJSON = `"usage":{"input_tokens":7,"output_tokens":5,"total_tokens":12,"input_tokens_details":{"cached_tokens":3},"output_tokens_details":{"reasoning_tokens":2}}`
 )
 
 // added is output_item.added of item, and itemDone output_item.done of item.
@@ -230,10 +230,10 @@ func quote(s string) string {
 	return string(b)
 }
 
-// terminal is a terminal event of typ, its response of status and the output items, with
-// extra response members after them.
+// terminal is a terminal event of typ, its response resp_1's, of model m-1, of status and the
+// output items, with extra response members after them.
 func terminal(typ, status, extra string, output ...string) string {
-	return event(typ, fmt.Sprintf(`"response":{"id":"resp_1","object":"response","status":%q,"output":[%s],%s}`, status, strings.Join(output, ","), extra))
+	return event(typ, fmt.Sprintf(`"response":{"id":"resp_1","object":"response","model":"m-1","status":%q,"output":[%s],%s}`, status, strings.Join(output, ","), extra))
 }
 
 // routerOpen is a reply of reasoning, text, and a call, each added and given deltas, as the
@@ -491,7 +491,9 @@ func TestStreamUsage(t *testing.T) {
 	if !ok {
 		t.Fatalf("last event = %#v, want response.completed", r.events[len(r.events)-1])
 	}
-	want := protocol.Usage{InputTokens: 7, OutputTokens: 5, TotalTokens: 12, OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 2}}
+	want := protocol.Usage{InputTokens: 7, OutputTokens: 5, TotalTokens: 12,
+		InputTokensDetails:  protocol.InputTokensDetails{CachedTokens: 3},
+		OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 2}}
 	if completed.Response.Usage != want {
 		t.Errorf("Usage = %+v, want %+v", completed.Response.Usage, want)
 	}
@@ -639,6 +641,10 @@ func TestStreamErrorFrame(t *testing.T) {
 				Output: tc.output,
 				Status: protocol.StatusFailed,
 				Error:  &protocol.ResponseError{Code: tc.payload.Code, Message: tc.payload.Message},
+			}
+			// response.failed bears the id and model response.created gave, when it came.
+			if tc.events[0] == created {
+				want.ID, want.Model = "resp_1", "m-1"
 			}
 			aitest.AssertResponse(t, failed.Response, want)
 			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
@@ -795,7 +801,10 @@ func TestStreamRefusesEvent(t *testing.T) {
 			event("response.output_item.added", `"output_index":0,"item":`+fcAdded)}, "output 0 was already added"},
 		{"an item at a negative index", []string{created, event("response.output_item.added", `"output_index":-1,"item":`+msgAdded)}, "output -1 added"},
 		{"an item under an id added", []string{created, added(msgAdded), added(msgAdded)}, `item "msg_1" was already added`},
-		{"an item of an unknown type", []string{created, added(`{"type":"web_search_call","id":"ws_1","status":"in_progress"}`)}, `output 0 has unknown type "web_search_call"`},
+		{"an item to skip below an item added", []string{created,
+			event("response.output_item.added", `"output_index":1,"item":`+msgAdded),
+			event("response.output_item.added", `"output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"in_progress"}`)},
+			`output 0 of type "web_search_call", which the format skips, is added after output 1`},
 		{"a message added with content", []string{created, added(msgDone)}, `message "msg_1" is added with content`},
 		{"a reasoning item added with content", []string{created, added(rsDone)}, `reasoning item "rs_1" is added with content`},
 		{"a reasoning item added with content and encrypted_content", []string{created, added(`{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"reasoning_text","text":"Need"}],"encrypted_content":"part"}`)}, `reasoning item "rs_1" is added with content`},
@@ -825,7 +834,9 @@ func TestStreamRefusesEvent(t *testing.T) {
 		{"an item done of more parts than streamed", []string{created, added(rsAdded), itemDone(rsDone)}, "the item has 1 content parts, want the 0 streamed"},
 		{"a call done not the arguments streamed", slices.Concat(call, []string{itemDone(fcDone)}), `arguments "{\"city\":\"Paris\"}" aren't the arguments streamed, "{}"`},
 		{"a call done of another name", slices.Concat(call, []string{itemDone(`{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_time","arguments":"{}"}`)}), "call \"call_1\" of get_time, is done where"},
-		{"an item done of an unknown part", slices.Concat(text, []string{itemDone(`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"input_text","text":"Hi"}]}`)}), `message content 0 has unknown type "input_text"`},
+		{"an item done of a part its item doesn't take", slices.Concat(text, []string{itemDone(`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"reasoning_text","text":"Hi"}]}`)}), `message content 0 has type "reasoning_text", which a message doesn't take`},
+		{"an item done of a skipped part in place of the part streamed", slices.Concat(text, []string{itemDone(`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"input_text","text":"Hi"}]}`)}), "the item has 0 content parts, want the 1 streamed"},
+		{"an item done of a type the format skips", slices.Concat(text, []string{itemDone(`{"type":"web_search_call","id":"msg_1","status":"completed"}`)}), `item of type "web_search_call" is done where a protocol.Message was added`},
 		{"an event of an item done", slices.Concat(text, []string{itemDone(`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"Hi"}]}`), delta("response.output_text.delta", "msg_1", "!")}), "output 0 is done"},
 		{"response.completed with an item open", slices.Concat(text, []string{completedEmpty}), "response.completed: output 0 isn't done"},
 		{"response.completed with an index skipped", []string{created, event("response.output_item.added", `"output_index":1,"item":`+fcAdded), event("response.function_call_arguments.done", `"output_index":1,"item_id":"fc_1","arguments":""`),

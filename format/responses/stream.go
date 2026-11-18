@@ -48,9 +48,17 @@ import (
 // id, role, call_id, and name it was added with, its content the parts streamed and its
 // arguments those streamed.
 //
-// response.created opens the stream, its response in_progress and of no output. The terminal
-// event, response.completed, response.incomplete, or response.failed, closes it with its
-// response, which DecodeResponse decodes, its usage among it; its status must be the event's.
+// An item of a type DecodeResponse skips, and a message's part of a type it skips, are skipped
+// here too: their added and done events, and every event about them, make nothing, and the
+// items and parts after them take the output and content indexes they would have were those not
+// there, so the events agree with the Response DecodeResponse makes. An item to skip added at an
+// output index below an item already added is an error, as the indexes already given can't be
+// taken back.
+//
+// response.created opens the stream, its response in_progress, of no output, and of the id and
+// model the server's response.created gives. The terminal event, response.completed,
+// response.incomplete, or response.failed, closes it with its response, which DecodeResponse
+// decodes, its id, model, and usage among it; its status must be the event's.
 // response.completed and response.incomplete follow only once every item added is done, with no
 // output index skipped, and their response's output must be those items, by id; an item of
 // theirs the server gives no status, as the router gives a reasoning item none there too, has
@@ -65,8 +73,8 @@ import (
 //
 // An error frame, recognized from its data alone, is the endpoint's report that the response
 // failed, and closes the stream as the spec has it: the error event, then the terminal
-// response.failed, its response failed, its error the frame's code and message, holding the
-// output made before the frame. It takes either shape: the spec's error event,
+// response.failed, its response failed, its error the frame's code and message, of the id and
+// model response.created gave, holding the output made before the frame. It takes either shape: the spec's error event,
 // {"type":"error","error":{"type","code","message","param"}}, or a body of no type whose error
 // member is an object, as llama.cpp's {"error":{"code","message","type"}} is. The items open at
 // the frame get no done event: they are in the output in progress, in output order, with the
@@ -76,8 +84,8 @@ import (
 // no further.
 //
 // An event that isn't JSON, a known event before response.created, a second response.created,
-// an item added at an output index or under an id already added, or of a type DecodeResponse
-// doesn't know, or with content or arguments, an event about an item that wasn't added or is
+// an item added at an output index or under an id already added, or with content or arguments,
+// or to skip below an item already added, an event about an item that wasn't added or is
 // done, an item_id that isn't the id of the item at the event's output_index, a part added out of
 // its order or of a type its item doesn't take, a delta or done event of a part that wasn't added,
 // is done, or is of another type, a function call's arguments event of another item or after
@@ -96,18 +104,25 @@ type streamDecoder struct {
 	// created is set once response.created is made, and ended once the terminal event is made
 	// or an error has broken the stream.
 	created, ended bool
-	// items are the output items added, in output order, done and open; an index not yet added
-	// is skipped.
+	// id and model are the reply's id and model, as response.created gave them, which an error
+	// frame's response.failed bears.
+	id, model string
+	// items are the output items added, in the server's output order, done and open, those of a
+	// type the format skips among them; an index not yet added is skipped.
 	items []*streamItem
 	// events are the events the current call has made.
 	events []protocol.Event
 }
 
-// streamItem is an output item a stream is making.
+// streamItem is an output item a stream is making, or one of a type it skips.
 type streamItem struct {
-	// index is the item's place in the output, and id its id, as added.
-	index int
-	id    string
+	// output is the item's place in the server's output, as added; index is its place in the
+	// output the events give, which counts no skipped item ahead of it; and id is its id.
+	output, index int
+	id            string
+	// skipped is set for an item of a type the format skips, which holds its output index
+	// and id alone, and of which no event makes anything.
+	skipped bool
 	// added is the item as its output_item.added made it.
 	added protocol.Item
 	// parts are a message's or a reasoning item's content parts, in order.
@@ -121,10 +136,15 @@ type streamItem struct {
 }
 
 // streamPart is a content part a stream is making: its type, output_text, refusal, or
-// reasoning_text, and its text so far.
+// reasoning_text, and its text so far; or a message's part of a type the format skips.
 type streamPart struct {
 	kind string
-	text strings.Builder
+	// index is the part's place in the content the events give, which counts no skipped part
+	// ahead of it, and skipped is set for a part of a type the format skips, which makes no
+	// event.
+	index   int
+	skipped bool
+	text    strings.Builder
 	// textDone is set at the part's text's done event, and done at the part's.
 	textDone, done bool
 }
@@ -149,6 +169,13 @@ type streamEvent struct {
 	Refusal      string         `json:"refusal"`
 	Arguments    string         `json:"arguments"`
 	Response     jsontext.Value `json:"response"`
+}
+
+// responseName is the part of response.created's response the decoder reads: the reply's id and
+// model.
+type responseName struct {
+	ID    string `json:"id"`
+	Model string `json:"model"`
 }
 
 // streamError is the part of an error frame's error the decoder reads beside what
@@ -229,6 +256,13 @@ func (d *streamDecoder) decode(data []byte) error {
 		if d.created {
 			return errors.New("a second response.created")
 		}
+		var name responseName
+		if len(e.Response) > 0 {
+			if err := json.Unmarshal(e.Response, &name); err != nil {
+				return fmt.Errorf("decode %s: %v", typ, err)
+			}
+		}
+		d.id, d.model = name.ID, name.Model
 		d.create()
 		return nil
 	}
@@ -258,7 +292,7 @@ func (d *streamDecoder) decode(data []byte) error {
 		return d.doneTextEvent(e, "reasoning_text", e.Text)
 	case "response.function_call_arguments.delta":
 		it, err := d.functionCall(e)
-		if err != nil {
+		if err != nil || it.skipped {
 			return err
 		}
 		it.args.WriteString(e.Delta)
@@ -266,7 +300,7 @@ func (d *streamDecoder) decode(data []byte) error {
 		return nil
 	case "response.function_call_arguments.done":
 		it, err := d.functionCall(e)
-		if err != nil {
+		if err != nil || it.skipped {
 			return err
 		}
 		return d.doneArgs(it, e.Arguments)
@@ -281,29 +315,46 @@ func (d *streamDecoder) create() {
 		return
 	}
 	d.created = true
-	d.emit(protocol.ResponseCreated{SequenceNumber: d.next(), Response: &protocol.Response{Status: protocol.StatusInProgress}})
+	d.emit(protocol.ResponseCreated{SequenceNumber: d.next(), Response: &protocol.Response{ID: d.id, Model: d.model, Status: protocol.StatusInProgress}})
 }
 
 // addItem reads output_item.added: the item at its output_index, or the next in arrival order,
 // in progress, with no content or arguments; a reasoning item's encrypted_content and summary are
-// dropped.
+// dropped. An item of a type DecodeResponse skips makes no event, and the items after it in the
+// output are placed as if it weren't there, so the events' output indexes leave no gap; once an
+// item after it is added, its place can no longer be taken out, and it is an error.
 func (d *streamDecoder) addItem(e streamEvent) error {
 	if e.Item == nil {
 		return errors.New("output_item.added has no item")
 	}
 	w := *e.Item
-	index := len(d.items)
+	output := len(d.items)
 	if e.OutputIndex != nil {
-		index = *e.OutputIndex
+		output = *e.OutputIndex
 	}
-	at, found := d.find(index)
+	at, found := d.find(output)
 	switch {
-	case index < 0:
-		return fmt.Errorf("output %d added, want an output index of 0 or more", index)
+	case output < 0:
+		return fmt.Errorf("output %d added, want an output index of 0 or more", output)
 	case found:
-		return fmt.Errorf("output %d was already added", index)
+		return fmt.Errorf("output %d was already added", output)
 	case w.ID != "" && d.byID(w.ID) != nil:
 		return fmt.Errorf("item %q was already added", w.ID)
+	}
+	if !knownItem(w.Type) {
+		for _, it := range d.items[at:] {
+			if !it.skipped {
+				return fmt.Errorf("output %d of type %q, which the format skips, is added after output %d", output, w.Type, it.output)
+			}
+		}
+		d.items = slices.Insert(d.items, at, &streamItem{output: output, id: w.ID, skipped: true})
+		return nil
+	}
+	index := output
+	for _, it := range d.items[:at] {
+		if it.skipped {
+			index--
+		}
 	}
 	var added protocol.Item
 	switch w.Type {
@@ -321,24 +372,22 @@ func (d *streamDecoder) addItem(e streamEvent) error {
 			return fmt.Errorf("reasoning item %q is added with content", w.ID)
 		}
 		added = protocol.Reasoning{ID: w.ID, Status: protocol.StatusInProgress}
-	case "function_call":
+	default: // function_call
 		if w.Arguments != "" {
 			return fmt.Errorf("function call %q is added with arguments", w.ID)
 		}
 		added = protocol.FunctionCall{ID: w.ID, Status: protocol.StatusInProgress, CallID: w.CallID, Name: w.Name}
-	default:
-		return fmt.Errorf("output %d has unknown type %q", index, w.Type)
 	}
-	d.items = slices.Insert(d.items, at, &streamItem{index: index, id: w.ID, added: added})
+	d.items = slices.Insert(d.items, at, &streamItem{output: output, index: index, id: w.ID, added: added})
 	d.emit(protocol.OutputItemAdded{SequenceNumber: d.next(), OutputIndex: index, Item: added})
 	return nil
 }
 
-// find returns the place in d.items of the item at output, and whether it was added; when it
-// wasn't, the place is where it goes.
+// find returns the place in d.items of the item at output, the server's output index, and
+// whether it was added; when it wasn't, the place is where it goes.
 func (d *streamDecoder) find(output int) (int, bool) {
 	return slices.BinarySearchFunc(d.items, output, func(it *streamItem, output int) int {
-		return it.index - output
+		return it.output - output
 	})
 }
 
@@ -352,8 +401,9 @@ func (d *streamDecoder) byID(id string) *streamItem {
 	return nil
 }
 
-// item returns the item an event names, added and not done: the item at output when it is
-// given, whose id must be id when that is given too, or else the item of id.
+// item returns the item an event names, added and not done, or skipped: the item at output when
+// it is given, whose id must be id when that is given too, or else the item of id. The caller
+// makes nothing of an event about a skipped item.
 func (d *streamDecoder) item(output *int, id string) (*streamItem, error) {
 	var it *streamItem
 	switch {
@@ -380,7 +430,7 @@ func (d *streamDecoder) item(output *int, id string) (*streamItem, error) {
 }
 
 // contentItem returns the item e names, which must be a message or a reasoning item, an item of
-// content parts.
+// content parts, or skipped.
 func (d *streamDecoder) contentItem(e streamEvent) (*streamItem, error) {
 	it, err := d.item(e.OutputIndex, e.ItemID)
 	if err != nil {
@@ -392,13 +442,16 @@ func (d *streamDecoder) contentItem(e streamEvent) (*streamItem, error) {
 	return it, nil
 }
 
-// functionCall returns the function call e names, its arguments still open.
+// functionCall returns the function call e names, its arguments still open, or the skipped item
+// it names.
 func (d *streamDecoder) functionCall(e streamEvent) (*streamItem, error) {
 	it, err := d.item(e.OutputIndex, e.ItemID)
 	if err != nil {
 		return nil, err
 	}
 	switch {
+	case it.skipped:
+		return it, nil
 	case !isFunctionCall(it.added):
 		return nil, fmt.Errorf("output %d is %T, not a function call", it.index, it.added)
 	case it.argsDone:
@@ -420,7 +473,7 @@ func (d *streamDecoder) addPartEvent(e streamEvent) error {
 		return errors.New("content_part.added has no part")
 	}
 	it, err := d.contentItem(e)
-	if err != nil {
+	if err != nil || it.skipped {
 		return err
 	}
 	index := len(it.parts)
@@ -438,9 +491,11 @@ func partText(p part) string {
 	return p.Text
 }
 
-// addPart adds a part of kind and text to it at index, which must be its next, once the part
-// ahead of it is done, and of a type its item takes: output_text or refusal of a message, and
-// reasoning_text of a reasoning item.
+// addPart adds a part of kind and text to it at index, the server's content index, which must be
+// its next, once the part ahead of it is done, and of a type its item takes: output_text or
+// refusal of a message, and reasoning_text of a reasoning item. A message's part of a type that
+// isn't an output part is skipped, as DecodeResponse skips it: it makes no event, and the parts
+// after it are placed as if it weren't there.
 func (d *streamDecoder) addPart(it *streamItem, index int, kind, text string) error {
 	n := len(it.parts)
 	switch {
@@ -450,14 +505,29 @@ func (d *streamDecoder) addPart(it *streamItem, index int, kind, text string) er
 		return fmt.Errorf("output %d content %d added while content %d is open", it.index, index, n-1)
 	}
 	_, reasoning := it.added.(protocol.Reasoning)
+	if !reasoning && !outputPart(kind) {
+		it.parts = append(it.parts, &streamPart{kind: kind, skipped: true})
+		return nil
+	}
 	if (reasoning && kind != "reasoning_text") || (!reasoning && kind != "output_text" && kind != "refusal") {
 		return fmt.Errorf("output %d content %d has type %q, which a %T doesn't take", it.index, index, kind, it.added)
 	}
-	p := &streamPart{kind: kind}
+	p := &streamPart{kind: kind, index: len(it.content())}
 	p.text.WriteString(text)
 	it.parts = append(it.parts, p)
-	d.emit(protocol.ContentPartAdded{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: index, Part: contentPart(kind, text)})
+	d.emit(protocol.ContentPartAdded{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: p.index, Part: contentPart(kind, text)})
 	return nil
+}
+
+// content returns the parts of it the events give: those not skipped, in order.
+func (it *streamItem) content() []*streamPart {
+	var parts []*streamPart
+	for _, p := range it.parts {
+		if !p.skipped {
+			parts = append(parts, p)
+		}
+	}
+	return parts
 }
 
 // contentPart returns the protocol's part of kind holding text.
@@ -471,14 +541,15 @@ func contentPart(kind, text string) protocol.ContentPart {
 	return protocol.OutputText{Text: text}
 }
 
-// part returns the part of kind a delta or a text's done event of e names, its text still open,
-// and its content index: the part at e's content_index, or, when e gives none, the item's last
-// part still open, or else its next. A reasoning item's next part, not added, is added here,
-// filling the content_part.added the router doesn't send.
-func (d *streamDecoder) part(e streamEvent, kind string) (*streamItem, *streamPart, int, error) {
+// part returns the part of kind a delta or a text's done event of e names, its text still open:
+// the part at e's content_index, or, when e gives none, the item's last part still open, or else
+// its next. A reasoning item's next part, not added, is added here, filling the
+// content_part.added the router doesn't send. The part is nil, and the event makes nothing, when
+// the item or the part is skipped.
+func (d *streamDecoder) part(e streamEvent, kind string) (*streamItem, *streamPart, error) {
 	it, err := d.contentItem(e)
-	if err != nil {
-		return nil, nil, 0, err
+	if err != nil || it.skipped {
+		return nil, nil, err
 	}
 	n := len(it.parts)
 	index := n
@@ -490,38 +561,40 @@ func (d *streamDecoder) part(e streamEvent, kind string) (*streamItem, *streamPa
 	}
 	if _, reasoning := it.added.(protocol.Reasoning); reasoning && index == n {
 		if err := d.addPart(it, index, kind, ""); err != nil {
-			return nil, nil, 0, err
+			return nil, nil, err
 		}
 	}
 	if index < 0 || index >= len(it.parts) {
-		return nil, nil, 0, fmt.Errorf("output %d content %d wasn't added", it.index, index)
+		return nil, nil, fmt.Errorf("output %d content %d wasn't added", it.index, index)
 	}
 	p := it.parts[index]
 	switch {
 	case p.done:
-		return nil, nil, 0, fmt.Errorf("output %d content %d is done", it.index, index)
+		return nil, nil, fmt.Errorf("output %d content %d is done", it.index, index)
+	case p.skipped:
+		return nil, nil, nil
 	case p.kind != kind:
-		return nil, nil, 0, fmt.Errorf("output %d content %d is %s, not %s", it.index, index, p.kind, kind)
+		return nil, nil, fmt.Errorf("output %d content %d is %s, not %s", it.index, index, p.kind, kind)
 	case p.textDone:
-		return nil, nil, 0, fmt.Errorf("output %d content %d's text is done", it.index, index)
+		return nil, nil, fmt.Errorf("output %d content %d's text is done", it.index, index)
 	}
-	return it, p, index, nil
+	return it, p, nil
 }
 
 // delta reads an output_text.delta, a refusal.delta, or a reasoning.delta, of a part of kind.
 func (d *streamDecoder) delta(e streamEvent, kind, delta string) error {
-	it, p, index, err := d.part(e, kind)
-	if err != nil {
+	it, p, err := d.part(e, kind)
+	if err != nil || p == nil {
 		return err
 	}
 	p.text.WriteString(delta)
 	switch kind {
 	case "output_text":
-		d.emit(protocol.OutputTextDelta{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: index, Delta: delta})
+		d.emit(protocol.OutputTextDelta{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: p.index, Delta: delta})
 	case "refusal":
-		d.emit(protocol.RefusalDelta{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: index, Delta: delta})
+		d.emit(protocol.RefusalDelta{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: p.index, Delta: delta})
 	default:
-		d.emit(protocol.ReasoningDelta{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: index, Delta: delta})
+		d.emit(protocol.ReasoningDelta{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: p.index, Delta: delta})
 	}
 	return nil
 }
@@ -529,40 +602,40 @@ func (d *streamDecoder) delta(e streamEvent, kind, delta string) error {
 // doneTextEvent reads an output_text.done, a refusal.done, or a reasoning.done, of a part of
 // kind, its text text.
 func (d *streamDecoder) doneTextEvent(e streamEvent, kind, text string) error {
-	it, p, index, err := d.part(e, kind)
-	if err != nil {
+	it, p, err := d.part(e, kind)
+	if err != nil || p == nil {
 		return err
 	}
-	return d.doneText(it, p, index, text)
+	return d.doneText(it, p, text)
 }
 
-// doneText makes the done event of the text of p, the part at index of it, which must be text,
-// the text its deltas made.
-func (d *streamDecoder) doneText(it *streamItem, p *streamPart, index int, text string) error {
+// doneText makes the done event of the text of p, a part of it, which must be text, the text its
+// deltas made.
+func (d *streamDecoder) doneText(it *streamItem, p *streamPart, text string) error {
 	if text != p.text.String() {
-		return fmt.Errorf("output %d content %d's text %q isn't the text its deltas made, %q", it.index, index, text, p.text.String())
+		return fmt.Errorf("output %d content %d's text %q isn't the text its deltas made, %q", it.index, p.index, text, p.text.String())
 	}
 	p.textDone = true
 	switch p.kind {
 	case "output_text":
-		d.emit(protocol.OutputTextDone{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: index, Text: text})
+		d.emit(protocol.OutputTextDone{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: p.index, Text: text})
 	case "refusal":
-		d.emit(protocol.RefusalDone{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: index, Refusal: text})
+		d.emit(protocol.RefusalDone{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: p.index, Refusal: text})
 	default:
-		d.emit(protocol.ReasoningDone{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: index, Text: text})
+		d.emit(protocol.ReasoningDone{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: p.index, Text: text})
 	}
 	return nil
 }
 
 // donePartEvent reads content_part.done: the part at its content_index, or the item's last part
 // when it gives none, which must be the part streamed. The text's done event, when the server
-// sent none, is made ahead of it.
+// sent none, is made ahead of it. A skipped part is done, and makes nothing.
 func (d *streamDecoder) donePartEvent(e streamEvent) error {
 	if e.Part == nil {
 		return errors.New("content_part.done has no part")
 	}
 	it, err := d.contentItem(e)
-	if err != nil {
+	if err != nil || it.skipped {
 		return err
 	}
 	index := len(it.parts) - 1
@@ -579,22 +652,28 @@ func (d *streamDecoder) donePartEvent(e streamEvent) error {
 		return fmt.Errorf("output %d content %d is done", it.index, index)
 	case e.Part.Type != p.kind:
 		return fmt.Errorf("output %d content %d is done as %s, added as %s", it.index, index, e.Part.Type, p.kind)
+	case p.skipped:
+		p.done = true
+		return nil
 	case text != p.text.String():
 		return fmt.Errorf("output %d content %d is done with text %q, not the text streamed, %q", it.index, index, text, p.text.String())
 	}
-	return d.closePart(it, p, index)
+	return d.closePart(it, p)
 }
 
-// closePart makes the done events of p, the part at index of it, that the server didn't send:
-// its text's, and its own.
-func (d *streamDecoder) closePart(it *streamItem, p *streamPart, index int) error {
+// closePart makes the done events of p, a part of it, that the server didn't send: its text's,
+// and its own. A skipped part is done, and makes nothing.
+func (d *streamDecoder) closePart(it *streamItem, p *streamPart) error {
+	p.done = true
+	if p.skipped {
+		return nil
+	}
 	if !p.textDone {
-		if err := d.doneText(it, p, index, p.text.String()); err != nil {
+		if err := d.doneText(it, p, p.text.String()); err != nil {
 			return err
 		}
 	}
-	p.done = true
-	d.emit(protocol.ContentPartDone{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: index, Part: contentPart(p.kind, p.text.String())})
+	d.emit(protocol.ContentPartDone{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, ContentIndex: p.index, Part: contentPart(p.kind, p.text.String())})
 	return nil
 }
 
@@ -612,26 +691,29 @@ func (d *streamDecoder) doneArgs(it *streamItem, args string) error {
 // doneItem reads output_item.done: the whole item, which DecodeResponse makes of it, completed
 // when the server gives it no status, and which must be the item streamed. The done events of
 // its parts, and of a function call's arguments, that the server didn't send are made ahead of
-// it.
+// it. A skipped item's makes nothing.
 func (d *streamDecoder) doneItem(e streamEvent) error {
 	if e.Item == nil {
 		return errors.New("output_item.done has no item")
 	}
 	it, err := d.item(e.OutputIndex, e.Item.ID)
-	if err != nil {
+	if err != nil || it.skipped {
 		return err
 	}
-	done, err := decodeItem(*e.Item)
-	if err != nil {
+	done, ok, err := decodeItem(*e.Item)
+	switch {
+	case err != nil:
 		return fmt.Errorf("output %d: %w", it.index, err)
+	case !ok:
+		return fmt.Errorf("output %d: item of type %q is done where a %T was added", it.index, e.Item.Type, it.added)
 	}
 	if err := it.check(done); err != nil {
 		return fmt.Errorf("output %d: %w", it.index, err)
 	}
 	done = withStatus(done, protocol.StatusCompleted)
-	for i, p := range it.parts {
+	for _, p := range it.parts {
 		if !p.done {
-			if err := d.closePart(it, p, i); err != nil {
+			if err := d.closePart(it, p); err != nil {
 				return err
 			}
 		}
@@ -723,12 +805,14 @@ func (it *streamItem) check(done protocol.Item) error {
 	return nil
 }
 
-// checkParts reports whether content, a done item's, is the parts it streamed, in order.
+// checkParts reports whether content, a done item's, is the parts it streamed, in order, the
+// skipped parts aside, as DecodeResponse skips them.
 func (it *streamItem) checkParts(content []protocol.ContentPart) error {
-	if len(content) != len(it.parts) {
-		return fmt.Errorf("the item has %d content parts, want the %d streamed", len(content), len(it.parts))
+	parts := it.content()
+	if len(content) != len(parts) {
+		return fmt.Errorf("the item has %d content parts, want the %d streamed", len(content), len(parts))
 	}
-	for i, p := range it.parts {
+	for i, p := range parts {
 		if want := contentPart(p.kind, p.text.String()); content[i] != want {
 			return fmt.Errorf("content %d %#v isn't the part streamed, %#v", i, content[i], want)
 		}
@@ -760,8 +844,9 @@ func (d *streamDecoder) end(typ string, raw jsontext.Value) error {
 		}
 		// An item the server gives no status here, as the router gives a reasoning item
 		// none, has the status its output_item.done gave it.
+		items := d.known()
 		for i, it := range resp.Output {
-			resp.Output[i] = withStatus(it, statusOf(d.items[i].item))
+			resp.Output[i] = withStatus(it, statusOf(items[i].item))
 		}
 	}
 	d.ended = true
@@ -778,25 +863,38 @@ func (d *streamDecoder) end(typ string, raw jsontext.Value) error {
 
 // checkOutput reports whether output, a completed or incomplete response's, is the items
 // streamed: every one done, no output index skipped, and each of output the one streamed in its
-// place, by id.
+// place, by id. A skipped item holds its output index, needs no done event, and has no place in
+// output, as DecodeResponse skips it there too.
 func (d *streamDecoder) checkOutput(output []protocol.Item) error {
 	for i, it := range d.items {
 		switch {
-		case it.index != i:
+		case it.output != i:
 			return fmt.Errorf("output %d wasn't added", i)
-		case !it.done:
-			return fmt.Errorf("output %d isn't done", i)
+		case !it.done && !it.skipped:
+			return fmt.Errorf("output %d isn't done", it.index)
 		}
 	}
-	if len(output) != len(d.items) {
-		return fmt.Errorf("the response has %d output items, want the %d streamed", len(output), len(d.items))
+	items := d.known()
+	if len(output) != len(items) {
+		return fmt.Errorf("the response has %d output items, want the %d streamed", len(output), len(items))
 	}
 	for i, it := range output {
-		if id := itemID(it); id != d.items[i].id {
-			return fmt.Errorf("the response's output %d is item %q, not %q, the one streamed", i, id, d.items[i].id)
+		if id := itemID(it); id != items[i].id {
+			return fmt.Errorf("the response's output %d is item %q, not %q, the one streamed", i, id, items[i].id)
 		}
 	}
 	return nil
+}
+
+// known returns the items added that aren't skipped, in output order: those the events give.
+func (d *streamDecoder) known() []*streamItem {
+	var items []*streamItem
+	for _, it := range d.items {
+		if !it.skipped {
+			items = append(items, it)
+		}
+	}
+	return items
 }
 
 // itemID returns the id of it, a message, reasoning item, or function call.
@@ -826,29 +924,32 @@ func (d *streamDecoder) fail(data []byte) {
 	payload.Param = param.Error.Param
 	d.emit(protocol.ErrorEvent{SequenceNumber: d.next(), Error: payload})
 	d.emit(protocol.ResponseFailed{SequenceNumber: d.next(), Response: &protocol.Response{
+		ID:     d.id,
+		Model:  d.model,
 		Output: d.output(),
 		Status: protocol.StatusFailed,
 		Error:  &protocol.ResponseError{Code: payload.Code, Message: payload.Message},
 	}})
 }
 
-// output returns the items added, in output order: each done item as it was done, and each open
-// one in progress with the content or the arguments made so far, as the Accumulator holds it.
+// output returns the items added, in output order, the skipped aside: each done item as it was
+// done, and each open one in progress with the content or the arguments made so far, as the
+// Accumulator holds it.
 func (d *streamDecoder) output() []protocol.Item {
 	var out []protocol.Item
-	for _, it := range d.items {
+	for _, it := range d.known() {
 		if it.done {
 			out = append(out, it.item)
 			continue
 		}
 		switch item := it.added.(type) {
 		case protocol.Message:
-			for _, p := range it.parts {
+			for _, p := range it.content() {
 				item.Content = append(item.Content, contentPart(p.kind, p.text.String()))
 			}
 			out = append(out, item)
 		case protocol.Reasoning:
-			for _, p := range it.parts {
+			for _, p := range it.content() {
 				item.Content = append(item.Content, protocol.ReasoningText{Text: p.text.String()})
 			}
 			out = append(out, item)

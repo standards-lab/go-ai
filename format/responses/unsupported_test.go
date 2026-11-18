@@ -32,6 +32,11 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 		r.Reasoning.Effort = e
 		return r
 	}
+	parallel := func(p bool) *protocol.Request {
+		r := withNative(ask(user), `{"parallel_tool_calls":true}`)
+		r.ParallelToolCalls = &p
+		return r
+	}
 	capped := ask(user)
 	capped.MaxOutputTokens = responses.MinMaxOutputTokens - 1
 	cases := []struct {
@@ -50,6 +55,12 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 		{"native clash", withNative(ask(user), `{"store":true}`),
 			"native member", "store",
 			"responses: native member store clashes with a member the request sets"},
+		{"native parallel_tool_calls beside ParallelToolCalls true", parallel(true),
+			"native member", "parallel_tool_calls",
+			"responses: native member parallel_tool_calls clashes with a member the request sets"},
+		{"native parallel_tool_calls beside ParallelToolCalls false", parallel(false),
+			"native member", "parallel_tool_calls",
+			"responses: native member parallel_tool_calls clashes with a member the request sets"},
 		{"input item", ask(unknownItem{user}),
 			"input item", "responses_test.unknownItem",
 			"responses: input 0: item responses_test.unknownItem has no Open Responses form"},

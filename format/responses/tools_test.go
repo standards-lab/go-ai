@@ -156,3 +156,30 @@ func TestEncodeEffortsAndBound(t *testing.T) {
 		aitest.AssertJSON(t, encode(t, req), `{"model":"m",`+stateless+`,"input":[`+userHi+`],"max_output_tokens":16}`)
 	})
 }
+
+// TestEncodeParallelToolCalls covers ParallelToolCalls: true and false as the top-level
+// parallel_tool_calls, and nil sending nothing, leaving it to the endpoint; and a Native
+// parallel_tool_calls beside nil, the native tier's to send.
+func TestEncodeParallelToolCalls(t *testing.T) {
+	cases := []struct {
+		name     string
+		parallel *bool
+		native   string
+		want     string
+	}{
+		{"nil sends nothing", nil, "", ``},
+		{"true", new(true), "", `,"parallel_tool_calls":true`},
+		{"false", new(false), "", `,"parallel_tool_calls":false`},
+		{"nil beside a Native member, sent from the native tier", nil, `{"parallel_tool_calls":false}`, `,"parallel_tool_calls":false`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := ask(text(protocol.RoleUser, "hi"))
+			req.ParallelToolCalls = tc.parallel
+			if tc.native != "" {
+				req = withNative(req, tc.native)
+			}
+			aitest.AssertJSON(t, encode(t, req), `{"model":"m",`+stateless+`,"input":[`+userHi+`]`+tc.want+`}`)
+		})
+	}
+}

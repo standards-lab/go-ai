@@ -6,7 +6,7 @@
 // wireFormat.
 //
 // It sends the request under the spec's names: model, instructions, the input items, tools,
-// tool choice, reasoning, text, and max_output_tokens, with Native's members, the native tier,
+// tool choice, parallel_tool_calls, reasoning, text, and max_output_tokens, with Native's members, the native tier,
 // merged into the body's top level, and a tool's strict flag always sent.
 //
 // Every request is stateless: it carries store false and include
@@ -45,6 +45,10 @@
 // drops a reasoning item whose encrypted_content isn't its own envelope, and, in the spec's form,
 // one whose server encrypted_content is empty, never an error.
 //
+// A reply's output item of a type the protocol has no form for, such as a hosted tool's call, and
+// a message's content part of a type that isn't an output part, are skipped, whole and streamed,
+// never an error, the output and content indexes after them closing up.
+//
 // The format's Options adjust it to an endpoint that departs from the spec; their zero value is
 // the spec's form.
 //
@@ -77,8 +81,9 @@
 //   - [Format.Route] is the route it posts to, responses.
 //   - [Format.EncodeRequest] encodes a request as a create-response body: model, instructions,
 //     input items, tools, tool choice, reasoning, text, max_output_tokens, and the native tier.
-//   - [Format.DecodeResponse] decodes a response resource into a response: messages,
-//     reasoning, and function calls, with their ids and statuses the server's.
+//   - [Format.DecodeResponse] decodes a response resource into a response: its id, model, and
+//     usage, and its messages, reasoning, and function calls, with their ids and statuses the
+//     server's.
 //   - [Format.EncodeStreamRequest] encodes a request as EncodeRequest does, with stream true.
 //   - [Format.EventStream] is the framing its replies stream in, format.SSE.
 //   - [Format.NewStreamDecoder] returns a decoder of a streamed reply into the protocol's

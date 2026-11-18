@@ -68,10 +68,12 @@ import (
 // high, and xhigh, so minimal and max are refused.
 //
 // MaxOutputTokens goes out as max_output_tokens, and one below MinMaxOutputTokens, the spec's
-// minimum, is refused.
+// minimum, is refused. ParallelToolCalls goes out as parallel_tool_calls, true or false; nil
+// sends none, leaving it to the endpoint.
 //
 // Native's members, the native tier, are merged into the top level, and a member named like one
-// the typed fields set is refused, as are stream, store, and include, which are always set.
+// the typed fields set is refused, parallel_tool_calls among them when ParallelToolCalls is set,
+// as are stream, store, and include, which are always set.
 // previous_response_id and background are refused too, as the package documentation explains.
 func (f *Format) EncodeRequest(req *protocol.Request, _ http.Header) ([]byte, error) {
 	return f.encode(req, false)
@@ -120,16 +122,17 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 		return nil, err
 	}
 	body := request{
-		Model:           req.Model,
-		Instructions:    req.Instructions,
-		Input:           input,
-		ToolChoice:      choice,
-		Text:            text,
-		MaxOutputTokens: req.MaxOutputTokens,
-		Stream:          stream,
-		Store:           false,
-		Include:         include,
-		Native:          req.Native,
+		Model:             req.Model,
+		Instructions:      req.Instructions,
+		Input:             input,
+		ToolChoice:        choice,
+		Text:              text,
+		MaxOutputTokens:   req.MaxOutputTokens,
+		ParallelToolCalls: req.ParallelToolCalls,
+		Stream:            stream,
+		Store:             false,
+		Include:           include,
+		Native:            req.Native,
 	}
 	for _, t := range req.Tools {
 		body.Tools = append(body.Tools, functionTool{
