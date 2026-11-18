@@ -5,10 +5,10 @@ engines serve natively (Chat Completions, Anthropic Messages, and Open Responses
 generates, streams, embeds, and transcribes without a vendor SDK. Its base module uses the
 standard library only; its convenience CLI, `infer`, lives in the nested module `tools/infer`.
 
-Its goals live in the coordinator's roadmap (`standards-lab/context/roadmap.toml`). It is built from spike-ai-pipeline-client v0.4.0 to the design in
-[`design.md`](design.md); the map from each name of docproc's `context/layers.md`, "go-ai's
-surface", to one go-ai name is the coordinator's (`standards-lab/context/ai-strategy.md`, "The
-client and processing layers").
+Its goals live in the coordinator's roadmap (`standards-lab/context/roadmap.toml`). It is built
+from spike-ai-pipeline-client v0.4.0 to the design in [`design.md`](design.md); the map from each
+name of docproc's `context/layers.md`, "go-ai's surface", to one go-ai name is the coordinator's
+(`standards-lab/context/ai-strategy.md`, "The client and processing layers").
 
 ## Capability map
 
