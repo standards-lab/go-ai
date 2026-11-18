@@ -1022,23 +1022,26 @@ alone:
   http(s) URL as given), `--reasoning`, `--max-tokens`, and `--native`, raw JSON merged into the
   request's top level through `Native`, the native tier (finding 25). It checks the request with
   `protocol.Request.Validate` and the format's own encoding before anything is sent, so a refusal
-  is a usage error, exit 2. go-ai's errors carry no field, so `infer` finds the flag to change as
-  it attributes `ai.New`'s refusals: it checks the request again once per flag, with that flag's
-  field alone put back to a value every format accepts. When exactly one of these requests is
-  accepted, its flag precedes go-ai's reason, as in `--max-tokens: protocol: request's max output
-  tokens 15 is below the minimum, 16`, or `--format messages needs --max-tokens: ` when no
-  `--max-tokens` was given. When none is accepted, as with two flags each refused, the flag is
-  the one whose request is refused for a different reason, the errors compared whole. Otherwise,
-  as with two flags refused only together, go-ai's reason stands alone. It streams through
-  `Client.GenerateStream` by default, writing each `OutputTextDelta` as it arrives and folding
-  the events with `protocol.Accumulator`; `--stream=false` sends one request through
-  `Client.Generate`. Either way it writes the reply's status, its usage, and its count of
+  is a usage error, exit 2. A format's refusal is a `format.UnsupportedError`, whose `Feature`
+  names the flag to change, as in `--max-tokens: responses: request's max output tokens 15 is
+  below the minimum, 16`, which only `--format responses` refuses, or `--format messages needs
+  --max-tokens: ` when no `--max-tokens` was given. A refusal the profile declares (`Declared`)
+  ends with `; declared by --profile (INFER_PROFILE)`. A refusal that carries no feature, such as
+  `protocol.Request.Validate`'s, is attributed as `ai.New`'s refusals are: `infer` checks the
+  request again once per flag, with that flag's field alone put back to a value every format
+  accepts. When exactly one of these requests is accepted, its flag precedes go-ai's reason, as
+  in `--reasoning: protocol: request has unknown reasoning effort "extreme"`. When none is
+  accepted, as with two flags each refused, the flag is the one whose request is refused for a
+  different reason, the errors compared whole. Otherwise, as with two flags refused only
+  together, go-ai's reason stands alone. It streams through `Client.GenerateStream` by default,
+  writing each `OutputTextDelta` as it arrives and folding the events with
+  `protocol.Accumulator`; `--stream=false` sends one request through `Client.Generate`. Either way it writes the reply's status, its usage, and its count of
   reasoning items to stderr, the reasoning tokens shown as part of the output, as in `usage: 78
-  input tokens, 38 output tokens (27 reasoning), 116 total tokens`. go-ai v0.1.0 decodes an
-  absent reasoning count as zero, so through `messages`, whose usage has none, the line says
-  `(reasoning not reported)`. The format, not the count, decides, and `infrastructure.go`, which
-  alone names a format package, makes the check. A reply that isn't completed keeps the text
-  written and exits 1 naming its status and reason, as in `incomplete: max_output_tokens`.
+  input tokens, 38 output tokens (27 reasoning), 116 total tokens`. go-ai decodes an absent
+  reasoning count as zero, so when the count is zero and the reply holds a reasoning item, as
+  through `messages`, whose usage has none, the line says `(reasoning not reported)`; with
+  neither, it has no parenthesis. A reply that isn't completed keeps the text written and exits
+  1 naming its status and reason, as in `incomplete: max_output_tokens`.
 - **`transcribe`** sends one audio file through `Client.Transcribe`, its `Open` opening the file
   again for each attempt, and writes the transcript, with the usage on stderr. `--mode`, over
   `INFER_TRANSCRIPTION_MODE`, sets `Options.TranscriptionMode`: `route`, the default, or `chat`,

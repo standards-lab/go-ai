@@ -7,6 +7,44 @@ only; go-ai's base module keeps its own, in the repository's root `CHANGELOG.md`
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-11-18
+
+This release moves `infer` to go-ai v0.2.0 and adds the deployment's profile, in which an
+endpoint that departs from a format's spec declares its gaps. It requires go-ai v0.2.0,
+go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
+
+### Added
+
+- `--profile`, over `INFER_PROFILE`, the deployment's profile: a JSON object keyed by
+  `completions`, `messages`, or `responses`, each member that go-ai format's `Options` under
+  their JSON names, such as `{"responses":{"refused_efforts":["none"]}}`. infer builds the format
+  in use with its member; unset or empty, each format is its spec. It is decoded strictly, so an
+  unknown format name or field, a Go field name, or a value a field refuses exits 2 before any
+  request, naming the flag and its variable. `models` and `embed` send nothing a profile changes
+  and ignore it.
+- `chat --reasoning` takes `minimal` and `max`, so its efforts are `none`, `minimal`, `low`,
+  `medium`, `high`, `xhigh`, and `max`. A format whose spec lacks one refuses it before sending:
+  Open Responses `minimal` and `max`, Messages `minimal`.
+- The integration tier reads each role's optional `AI_<ROLE>_PROFILE`, in `--profile`'s shape,
+  and maps it onto `INFER_PROFILE`. It is decoded strictly first, and a malformed one fails the
+  role's scenarios naming the variable. A run refused for a gap the profile declares skips its
+  scenario, quoting the refusal.
+
+### Changed
+
+- **Breaking:** requires go-ai v0.2.0, in place of v0.1.0.
+- A chat refusal names its flag from go-ai's typed `UnsupportedError`. A refusal of a gap the
+  profile declares ends with `; declared by --profile (INFER_PROFILE)`, as in `--reasoning:
+  responses: reasoning effort none is refused by the deployment, as its profile declares;
+  declared by --profile (INFER_PROFILE)`. A refusal of the spec's own has no suffix.
+- `--max-tokens` from 1 to 15 is refused only under `--format responses`, whose spec sets the
+  minimum, as `--max-tokens: responses: request's max output tokens 15 is below the minimum, 16`.
+  Through `completions` and `messages` it is sent as given.
+- `chat`'s usage line prints `(N reasoning)` when the endpoint reports reasoning tokens, and
+  `(reasoning not reported)` only when it reports none and the reply holds a reasoning item, in
+  any format. Otherwise it prints no parenthesis, where it printed `(0 reasoning)`, or `(reasoning
+  not reported)` for every `messages` reply.
+
 ## [v0.1.0] - 2026-11-13
 
 The first release of `infer`, go-ai's command-line client of one model endpoint: a Go Elemental
@@ -70,5 +108,6 @@ go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
   `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER` map onto `INFER_TOKEN` and `INFER_HEADER`, and no
   scenario's log shows their values.
 
-[Unreleased]: https://github.com/standards-lab/go-ai/compare/tools/infer/v0.1.0...HEAD
+[Unreleased]: https://github.com/standards-lab/go-ai/compare/tools/infer/v0.2.0...HEAD
+[v0.2.0]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.2.0
 [v0.1.0]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.1.0
