@@ -1163,8 +1163,6 @@ What the review rules out, one line each with its reason, cited as the sections 
   running the request, and the error can be matched only by its text (finding 15).
 - **An idempotency key on a retried POST.** It would be one endpoint's native header, not the
   standard's; a caller who sets a policy accepts a run twice (finding 16).
-- **Retry proven by unit tests alone.** data-intelligence asks for proof against the live gateway,
-  which spike-model-gateway gives (finding 17).
 - **An Open Responses SSE encoder of the stream events.** A service relays its own event shapes,
   and an encoder would be a type before its need (finding 21; decision 4).
 - **No idle bound, or one left to the caller's own timer.** A caller's timer sees only events, so
