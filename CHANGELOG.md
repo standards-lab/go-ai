@@ -69,6 +69,13 @@ and token cap as its spec has it.
 - `format/completions` makes `response.created` at the first chunk that claims the reply, or at
   the stream's end, so it bears the reply's id and model past a leading chunk of no id and no
   choices.
+- **Breaking:** `format/messages` reports the `model_context_window_exceeded` stop reason as
+  `protocol.ReasonContextWindow`, where it reported `protocol.ReasonMaxOutputTokens`.
+
+### Removed
+
+- **Breaking:** `protocol.MinMaxOutputTokens`. The minimum is Open Responses' alone, now
+  `responses.MinMaxOutputTokens`.
 
 ### Fixed
 
