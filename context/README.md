@@ -30,9 +30,12 @@ client and processing layers").
 - **infer**: the CLI in `tools/infer`, over the client's released surface: the commands models,
   embed, chat, and transcribe against one endpoint per run, set by flags over `INFER_` variables,
   with credentials from `INFER_TOKEN` and `INFER_HEADER` alone and a fallback to the one model the
-  endpoint lists. `tools/infer/docs/quick-start.md` tours each command and the common failures
-  with real output.
+  endpoint lists. `--profile`, over `INFER_PROFILE`, gives the deployment's profile as one JSON
+  object keyed by format name. `tools/infer/docs/quick-start.md` tours each command and the common
+  failures with real output.
 - **Integration tiers**: go-ai's and infer's, run by `mise run integration` against one endpoint
   per role, named by `AI_<ROLE>_BASE_URL`, with the role's optional credentials in
-  `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER` and its optional model in `AI_<ROLE>_MODEL`, for an
-  endpoint that lists more than one.
+  `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER`, its optional model in `AI_<ROLE>_MODEL`, for an
+  endpoint that lists more than one, and its optional profile in `AI_<ROLE>_PROFILE`, in
+  `--profile`'s shape. Unset, every format is its spec; a scenario the profile refuses before
+  sending skips and names the gap.

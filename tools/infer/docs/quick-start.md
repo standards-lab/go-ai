@@ -18,7 +18,7 @@ of a go-ai checkout.
 ## 1. Install
 
 ```sh
-go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.1.0
+go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.2.0
 ```
 
 `infer` alone prints its help. This part shows the commands and the two settings that have no
@@ -93,7 +93,9 @@ The summary has three lines:
 
 - `status:` is `completed` for a whole reply. Any other status exits 1.
 - `usage:` gives input, output, and total tokens. The parenthesis gives the output tokens spent
-  reasoning, which are part of the output, not added to it.
+  reasoning, which are part of the output, not added to it. It says `reasoning not reported`
+  when the endpoint counts none but the reply holds a reasoning item, and is left out when there
+  is neither.
 - `reasoning items:` counts the reply's reasoning items.
 
 With no arguments, the prompt is stdin. `--instructions` guides the model, and `--stream=false`
@@ -109,8 +111,8 @@ reasoning items: 1
 
 ## 5. Tune the reply
 
-`--reasoning` sets the effort: `none`, `low`, `medium`, `high`, or `xhigh`. It changes how much the
-model spends:
+`--reasoning` sets the effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. It
+changes how much the model spends:
 
 ```text
 $ infer chat --reasoning low "Is 1009 prime? Answer yes or no."
@@ -126,8 +128,8 @@ usage: 78 input tokens, 431 output tokens (419 reasoning), 509 total tokens
 reasoning items: 1
 ```
 
-`--max-tokens` caps the tokens generated, reasoning included, at 16 or more. A reply that
-reaches the cap ends incomplete and exits 1.
+`--max-tokens` caps the tokens generated, reasoning included. `--format responses` needs 16 or
+more. A reply that reaches the cap ends incomplete and exits 1.
 
 ```text
 $ infer chat --max-tokens 256 "Name three rivers."
@@ -176,6 +178,23 @@ usage: 73 input tokens, 153 output tokens (reasoning not reported), 226 total to
 reasoning items: 1
 ```
 
+A deployment can depart from a format's spec, such as by refusing an effort the spec has.
+`--profile`, or `INFER_PROFILE`, declares those gaps, keyed by format, so infer refuses them
+before sending. This one says the endpoint refuses `none` through `responses`:
+
+```text
+$ export INFER_PROFILE='{"responses":{"refused_efforts":["none"]}}'
+$ infer --format responses chat --reasoning none "Say hello."
+infer chat: --reasoning: responses: reasoning effort none is refused by the deployment, as its profile declares; declared by --profile (INFER_PROFILE)
+```
+
+The ending `declared by --profile (INFER_PROFILE)` marks the profile's refusal. Unset, each
+format is its spec. Unset it before going on:
+
+```sh
+unset INFER_PROFILE
+```
+
 ## 7. Send an image
 
 This step uses Gemma-4-26B-A4B-NVFP4, a vision model:
@@ -191,13 +210,13 @@ Repeat it for several. Images work in every format:
 $ infer chat --image integration/testdata/shapes.png "What shapes are in this image? One sentence."
 This image contains a red circle, a blue square, and a green triangle.
 status: completed
-usage: 281 input tokens, 17 output tokens (0 reasoning), 298 total tokens
+usage: 281 input tokens, 17 output tokens, 298 total tokens
 reasoning items: 0
 
 $ infer --format messages chat --max-tokens 256 --image integration/testdata/shapes.png "How many shapes? Answer with a number."
 3
 status: completed
-usage: 280 input tokens, 2 output tokens (reasoning not reported), 282 total tokens
+usage: 280 input tokens, 2 output tokens, 282 total tokens
 reasoning items: 0
 ```
 
@@ -249,7 +268,9 @@ $ wc -l vectors.jsonl
 
 ## 10. Retry and bound a stream
 
-Retry is off by default. A working policy sets all three flags:
+infer retries by default: each request is sent at most three times. Before each retry, infer
+waits a random time up to 500ms, doubling each time, never above 30s. Each flag overrides its
+default alone:
 
 ```text
 $ infer --retries 3 --retry-base-delay 500ms --retry-max-delay 10s chat "Say hello in five words."
@@ -259,8 +280,8 @@ usage: 73 input tokens, 149 output tokens (132 reasoning), 222 total tokens
 reasoning items: 1
 ```
 
-That sends each request at most three times. Before each retry, infer waits a random time up to
-500ms, doubling each time, never above 10s.
+That keeps the default attempts and base delay and waits never above 10s. `--retries 1` sends
+each request once.
 
 `--idle-timeout` ends a streamed chat that sends nothing for that long. Set it well above the
 model's time to start answering, such as `--idle-timeout 30s`.
@@ -277,8 +298,11 @@ command's usage line, left out below.
 | `infer models: client: no base URL: set --base-url or INFER_BASE_URL` | Export `INFER_BASE_URL` or pass `--base-url`. |
 | `format: unknown format "anthropic": --format (INFER_FORMAT) is completions, messages, or responses` | A format names a wire format, not a vendor. Anthropic's is `messages`. |
 | `--format messages needs --max-tokens: messages: request has no max output tokens, …` | Add `--max-tokens`, such as `--max-tokens 512`. |
-| `--max-tokens: protocol: request's max output tokens 15 is below the minimum, 16` | Use 16 or more. |
-| `--reasoning: protocol: request has unknown reasoning effort "extreme"` | Use `none`, `low`, `medium`, `high`, or `xhigh`. |
+| `--max-tokens: responses: request's max output tokens 15 is below the minimum, 16` | Use 16 or more through `responses`. |
+| `--reasoning: protocol: request has unknown reasoning effort "extreme"` | Use `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. |
+| `--reasoning: messages: reasoning effort minimal has no Messages form` | The format's spec lacks the effort. Pick another. |
+| `--reasoning: responses: reasoning effort none is refused by the deployment, as its profile declares; declared by --profile (INFER_PROFILE)` | The profile says the endpoint refuses it. Pick another effort. |
+| `profiled format: --profile (INFER_PROFILE): json: … unknown object member name "refused_effort" …` | Fix the profile's names: format names, then each `Options` field's JSON name. |
 | `--native: protocol: request's native field isn't a JSON object with unique member names` | Write a JSON object, such as `'{"temperature": 0.2}'`. |
 | `--native: completions: native member stream clashes with a member the request sets` | Use the flag instead: `--stream=false`, `--max-tokens`. |
 | `transcription mode: unknown transcription mode "speech": …` | Use `route` or `chat`. |
@@ -286,7 +310,8 @@ command's usage line, left out below.
 | `client: INFER_HEADER: ai: Options.Header names Authorization, which the Client sets` | Put the token in `INFER_TOKEN`. Keep `INFER_HEADER` for headers such as `api-key`. The value is never echoed. |
 | `client: INFER_HEADER line 1 has no colon: each line is "Name: value"` | Write each header as `Name: value`. |
 | `client: --retries (INFER_RETRIES): ai: retry policy has a negative attempt count` | Use 0 or more. |
-| `client: --retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long` | Set `--retry-max-delay`, such as `10s`. |
+| `client: --retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long` | The max delay is `0`. Raise it to the base delay or more, or leave it unset for `30s`. |
+| `client: --retry-base-delay (INFER_RETRY_BASE_DELAY) and --retry-max-delay (INFER_RETRY_MAX_DELAY): ai: retry policy's base delay is above its most delay` | Lower `--retry-base-delay`, or raise `--retry-max-delay`, whose default is `30s`. |
 
 ### Refused past the command line (exit 1)
 
@@ -342,7 +367,7 @@ written is kept.
 $ infer chat --max-tokens 16 "Tell me a long story."
 The lighthouse at Crow’s End did not warn ships away from rocks; it
 status: incomplete
-usage: 19 input tokens, 16 output tokens (0 reasoning), 35 total tokens
+usage: 19 input tokens, 16 output tokens, 35 total tokens
 reasoning items: 0
 infer chat: incomplete: max_output_tokens
 ```

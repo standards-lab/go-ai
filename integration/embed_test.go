@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/standards-lab/go-ai"
-	"github.com/standards-lab/go-ai/format/completions"
 )
 
 // TestEmbed asks the embedding model for three inputs' embeddings, two alike and one unrelated,
@@ -22,7 +21,7 @@ import (
 //     which fails if the vectors came back in arrival order rather than input order, or
 //     swapped.
 func TestEmbed(t *testing.T) {
-	c, model := endpoint(t, embedding, completions.New(completions.Options{}), ai.Options{})
+	c, model := endpoint(t, embedding, completionsFormat, ai.Options{})
 	inputs := []string{
 		"The cat sat on the warm windowsill all afternoon.",
 		"A cat dozed in the sunny window for hours.",

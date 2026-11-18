@@ -36,8 +36,8 @@ func probe[T any](a *app.App, node *graph.Node[T], verb string) {
 // format package's format.
 func TestFormat_FlagOverVariable(t *testing.T) {
 	want := map[string]string{
-		"completions": fmt.Sprintf("%T", completions.New()),
-		"messages":    fmt.Sprintf("%T", messages.New()),
+		"completions": fmt.Sprintf("%T", completions.New(completions.Options{})),
+		"messages":    fmt.Sprintf("%T", messages.New(messages.Options{})),
 		"responses":   fmt.Sprintf("%T", responses.New(responses.Options{})),
 	}
 	for _, tc := range []struct {

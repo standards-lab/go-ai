@@ -948,7 +948,7 @@ go-ai/                        module github.com/standards-lab/go-ai
 │   ├── native/
 │   └── sse/
 └── tools/infer/              module github.com/standards-lab/go-ai/tools/infer
-    ├── go.mod                go-ai v0.1.0, go-cli-sdk v0.4.0, go-core v0.12.0
+    ├── go.mod                go-ai v0.2.0, go-cli-sdk v0.4.0, go-core v0.12.0
     ├── CHANGELOG.md          infer's
     ├── README.md
     ├── docs/quick-start.md   a guided tour of each command and the common failures, with real output
@@ -978,8 +978,8 @@ only when a command declares them; that file is the only one in the composition 
 a format, as it is the only one that names a provider.
 
 Its module requires go-ai, go-cli-sdk, and go-core, each at a pinned release, and nothing else:
-go-ai at the root's first release, `v0.1.0`; go-cli-sdk at `v0.4.0` and go-core at `v0.12.0`,
-their latest releases when the infer task built. A further requirement enters only under
+go-ai at `v0.2.0`, the release that adds format profiles, go-cli-sdk at `v0.4.0`, and go-core at
+`v0.12.0`. A further requirement enters only under
 `dependencies.md`, "Sourcing", and a task's brief states it.
 
 **Each run talks to one endpoint.** The root flags `--base-url`, `--format`, and `--model`,
@@ -999,6 +999,15 @@ refusal echoes a value. The root help names both variables under `Environment:`,
 `ai.New` refuses is a usage error, exit 2, naming the flag and its variable, before any request.
 An endpoint and model per capability is a long-running program's need, not a one-shot client's:
 a run that wants another endpoint is another run.
+
+**A deployment's profile is one JSON setting.** The root flag `--profile`, over `INFER_PROFILE`,
+holds a JSON object keyed by format name, `completions`, `messages`, or `responses`, each member
+that format's `Options` under its snake_case names. `infrastructure.go` decodes the whole object
+with `encoding/json/v2` and `json.RejectUnknownMembers` and builds the format in use with its
+member, or with the zero `Options`, the spec, when the member is absent or the profile unset. A
+malformed profile is a usage error, exit 2, naming the flag and its variable. Only `chat` and
+`transcribe` read it, since every `Options` field concerns a chat request: `models` and `embed`
+share a client in the format's spec form.
 
 **The one-model fallback.** With no model set, a command that sends to a model lists the
 endpoint's models through `Client.Models` first and sends to the one listed. A purpose base URL
@@ -1022,34 +1031,39 @@ alone:
   http(s) URL as given), `--reasoning`, `--max-tokens`, and `--native`, raw JSON merged into the
   request's top level through `Native`, the native tier (finding 25). It checks the request with
   `protocol.Request.Validate` and the format's own encoding before anything is sent, so a refusal
-  is a usage error, exit 2. go-ai's errors carry no field, so `infer` finds the flag to change as
-  it attributes `ai.New`'s refusals: it checks the request again once per flag, with that flag's
-  field alone put back to a value every format accepts. When exactly one of these requests is
-  accepted, its flag precedes go-ai's reason, as in `--max-tokens: protocol: request's max output
-  tokens 15 is below the minimum, 16`, or `--format messages needs --max-tokens: ` when no
-  `--max-tokens` was given. When none is accepted, as with two flags each refused, the flag is
-  the one whose request is refused for a different reason, the errors compared whole. Otherwise,
-  as with two flags refused only together, go-ai's reason stands alone. It streams through
-  `Client.GenerateStream` by default, writing each `OutputTextDelta` as it arrives and folding
-  the events with `protocol.Accumulator`; `--stream=false` sends one request through
-  `Client.Generate`. Either way it writes the reply's status, its usage, and its count of
-  reasoning items to stderr, the reasoning tokens shown as part of the output, as in `usage: 78
-  input tokens, 38 output tokens (27 reasoning), 116 total tokens`. go-ai v0.1.0 decodes an
-  absent reasoning count as zero, so through `messages`, whose usage has none, the line says
-  `(reasoning not reported)`. The format, not the count, decides, and `infrastructure.go`, which
-  alone names a format package, makes the check. A reply that isn't completed keeps the text
-  written and exits 1 naming its status and reason, as in `incomplete: max_output_tokens`.
+  is a usage error, exit 2. A format's refusal is a `format.UnsupportedError`, whose `Feature`
+  names the flag to change, as in `--max-tokens: responses: request's max output tokens 15 is
+  below the minimum, 16`, which only `--format responses` refuses, or `--format messages needs
+  --max-tokens: ` when no `--max-tokens` was given. A refusal the profile declares (`Declared`)
+  ends with `; declared by --profile (INFER_PROFILE)`. A refusal that carries no feature, such as
+  `protocol.Request.Validate`'s, is attributed as `ai.New`'s refusals are: `infer` checks the
+  request again once per flag, with that flag's field alone put back to a value every format
+  accepts. When exactly one of these requests is accepted, its flag precedes go-ai's reason, as
+  in `--reasoning: protocol: request has unknown reasoning effort "extreme"`. When none is
+  accepted, as with two flags each refused, the flag is the one whose request is refused for a
+  different reason, the errors compared whole. Otherwise, as with two flags refused only
+  together, go-ai's reason stands alone. It streams through `Client.GenerateStream` by default,
+  writing each `OutputTextDelta` as it arrives and folding the events with
+  `protocol.Accumulator`; `--stream=false` sends one request through `Client.Generate`. Either way
+  it writes the reply's status, its usage, and its count of reasoning items to stderr, the
+  reasoning tokens shown as part of the output, as in `usage: 78 input tokens, 38 output tokens
+  (27 reasoning), 116 total tokens`. go-ai decodes an absent reasoning count as zero, so when the
+  count is zero and the reply holds a reasoning item, as through `messages`, whose usage has none,
+  the line says `(reasoning not reported)`; with neither, it has no parenthesis. A reply that
+  isn't completed keeps the text written and exits 1 naming its status and reason, as in
+  `incomplete: max_output_tokens`.
 - **`transcribe`** sends one audio file through `Client.Transcribe`, its `Open` opening the file
   again for each attempt, and writes the transcript, with the usage on stderr. `--mode`, over
   `INFER_TRANSCRIPTION_MODE`, sets `Options.TranscriptionMode`: `route`, the default, or `chat`,
   for an endpoint whose audio model has no transcription route (the surface section, decision 9).
   Chat mode through a format that can't carry audio is go-ai's refusal, exit 1, before the file
-  is opened, after `--mode chat needs a format that carries audio; --format messages doesn't: `,
-  the format's capability decided in `infrastructure.go` as the reasoning count is; an
-  `*ai.IncompleteTranscriptError` exits 1 naming its status and reason. A route-mode 404, an
-  `*ai.APIError` of status 404, exits 1 with the error and, on a second line, `(the endpoint
-  serves no transcription route; try --mode chat)`; `infer` neither probes chat mode nor falls
-  back to it.
+  is opened, after `--mode chat needs a format that carries audio; --format messages doesn't: `.
+  `infer` reads that refusal from go-ai's `format.UnsupportedError` of Feature `content part` and
+  Value `protocol.InputAudio`; any other chat-mode refusal, such as of a file name with no audio
+  extension, is go-ai's error alone. An `*ai.IncompleteTranscriptError` exits 1 naming its status
+  and reason. A route-mode 404, an `*ai.APIError` of status 404, exits 1 with the error and, on a
+  second line, `(the endpoint serves no transcription route; try --mode chat)`; `infer` neither
+  probes chat mode nor falls back to it.
 
 The template's version command stands beside them. Help and a usage error exit 2, any other
 failure exits 1, reported once on stderr; help and version read no configuration and send
@@ -1057,11 +1071,14 @@ nothing.
 
 **Retry and the idle bound are flags over variables too.** The root flags `--retries`,
 `--retry-base-delay`, and `--retry-max-delay`, over `INFER_RETRIES`, `INFER_RETRY_BASE_DELAY`,
-and `INFER_RETRY_MAX_DELAY`, set `ai.RetryPolicy` for every command; unset, the policy is go-ai's
-zero value and retries nothing (finding 7). `chat`'s `--idle-timeout`, over `INFER_IDLE_TIMEOUT`,
+and `INFER_RETRY_MAX_DELAY`, set `ai.RetryPolicy` for every command. Unlike go-ai's zero value,
+which retries nothing (finding 7), infer retries by default: each setting unset or empty is 3
+attempts, a 500ms base delay, and a 30s max delay, and each given overrides its default alone;
+`--retries 1` sends once. The default base delay is capped at a max delay given below it, so
+`--retry-max-delay` alone is a working policy. `chat`'s `--idle-timeout`, over `INFER_IDLE_TIMEOUT`,
 sets `Options.StreamIdleTimeout` (the surface section, decision 7). A negative, inverted, or
 unparsable value is a usage error, exit 2, naming the flag and its variable; `ai.New` is the
-authority on what it refuses. A base delay above zero with the max delay unset or zero, which
+authority on what it refuses. A base delay above zero with the max delay zero, which
 `ai.New` refuses as "above its most delay", gets a message that says what to change:
 `--retry-base-delay (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at
 least as long`. Each of these four flags is a string flag that its node parses, and its usage
@@ -1070,8 +1087,8 @@ in place of `string`: `--retries int`, and `duration` for the delays and the tim
 transcription mode and the idle bound each belong to one command, so each reaches a client node
 of its own, the transcriber and the chat client, built by the same constructor as the client the
 other commands share: no other command reads their variables, and an unknown mode never refuses
-a chat. With `--retry-max-delay` unset, a Retry-After above zero ends the retries at once, as
-`MaxDelay` caps every wait (finding 13), so a working policy sets all three.
+a chat. A Retry-After above `--retry-max-delay` ends the retries at once, as `MaxDelay` caps
+every wait (finding 13).
 
 **Two test tiers.** The unit tier runs the App in-process against loopback `httptest` endpoints,
 with `infer`'s own fixtures in `internal/apptest`, never go-ai's internal helpers, and asserts
@@ -1084,8 +1101,12 @@ list one. A scenario whose variable is unset skips. Both tiers read a role's opt
 credentials, `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER`. The base module's tier puts them in
 `Options.Token` and `Options.Header`; `infer`'s maps them onto `INFER_TOKEN` and
 `INFER_HEADER` in the test's environment rather than in a run's logged overrides, so no failing
-scenario prints a value. `mise run integration` runs it after the base module's tier; no CI job
-runs either.
+scenario prints a value. Both tiers also read a role's optional `AI_<ROLE>_PROFILE`, in
+`--profile`'s shape and decoded as strictly. The base module's tier builds each format with the
+role's member; `infer`'s maps the profile onto `INFER_PROFILE`. Unset, every format is its spec.
+A scenario whose request the profile refuses before sending, a declared gap, skips and names the
+gap; a refusal of the spec's own fails. `mise run integration` runs it after the base module's
+tier; no CI job runs either.
 
 ### What each task adds
 
@@ -1093,6 +1114,7 @@ runs either.
 | --- | --- |
 | library | the base module; `"."` in `GO_MODULES`; the base depguard rule and the check's no-`require` assertion; the tagged lint and `mise run integration`; the release workflow over both tag namespaces; `CHANGELOG.md`; the tag `v0.1.0` |
 | infer | `tools/infer`, requiring go-ai `v0.1.0`; `"tools/infer"` in `GO_MODULES`; `go.work`; the infer depguard rule; `tools/infer/CHANGELOG.md`; the tag `tools/infer/v0.1.0` |
+| infer-profiles | `tools/infer` on go-ai `v0.2.0`; `--profile` over `INFER_PROFILE`; `AI_<ROLE>_PROFILE` in both integration tiers; the tag `tools/infer/v0.2.0` |
 
 ## Rejected alternatives
 

@@ -41,14 +41,16 @@ const agentBound = 1024
 // generation only, which on a reasoning model takes tens of seconds.
 const requestTimeout = 3 * time.Minute
 
-// endpoint returns a Client of r's endpoint, speaking f, adjusted by opts and by r's
-// credentials, AI_<ROLE>_TOKEN and AI_<ROLE>_HEADER, as newClient reads them, and the model to
-// send to: the one AI_<ROLE>_MODEL names, as namedModel reads it, when set, for an endpoint whose
-// model list isn't one model, such as a cloud account's that lists its whole catalog; else the one
-// model the endpoint lists. It skips t when r's variable is unset, and fails t when a credential
-// doesn't parse, New refuses the URL or the credentials, or, with no model named, the model list
-// can't be had or names other than exactly one model; no failure prints a token or header value.
-func endpoint(t *testing.T, r role, f format.Format, opts ai.Options) (*ai.Client, string) {
+// endpoint returns a Client of r's endpoint, speaking f under r's profile, AI_<ROLE>_PROFILE, as
+// readProfile reads it, adjusted by opts and by r's credentials, AI_<ROLE>_TOKEN and
+// AI_<ROLE>_HEADER, as newClient reads them, and the model to send to: the one AI_<ROLE>_MODEL
+// names, as namedModel reads it, when set, for an endpoint whose model list isn't one model, such
+// as a cloud account's that lists its whole catalog; else the one model the endpoint lists. The
+// format is wrapped in skipDeclared, so a request the profile declares a gap of skips t. It skips
+// t when r's variable is unset, and fails t when the profile or a credential doesn't parse, New
+// refuses the URL or the credentials, or, with no model named, the model list can't be had or
+// names other than exactly one model; no failure prints a token or header value.
+func endpoint(t *testing.T, r role, f testFormat, opts ai.Options) (*ai.Client, string) {
 	t.Helper()
 	c := roleClient(t, r, f, opts)
 	if model := namedModel(string(r), os.Getenv); model != "" {
@@ -58,13 +60,18 @@ func endpoint(t *testing.T, r role, f format.Format, opts ai.Options) (*ai.Clien
 }
 
 // roleClient returns a Client of r's endpoint as endpoint does, without choosing a model.
-func roleClient(t *testing.T, r role, f format.Format, opts ai.Options) *ai.Client {
+func roleClient(t *testing.T, r role, f testFormat, opts ai.Options) *ai.Client {
 	t.Helper()
 	base := os.Getenv(string(r))
 	if base == "" {
 		t.Skipf("%s is unset: set it to the endpoint's API root, such as http://localhost:8000/v1", r)
 	}
-	c, err := newClient(string(r), base, f, opts, os.Getenv)
+	p, err := readProfile(string(r), os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := skipDeclared{Format: f.new(p), t: t, variable: profileVariable(string(r))}
+	c, err := newClient(string(r), base, wire, opts, os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,10 +105,11 @@ func requestContext(t *testing.T) context.Context {
 	return ctx
 }
 
-// testFormat is a format a scenario runs through: its name and its constructor.
+// testFormat is a format a scenario runs through: its name and its constructor, which builds it
+// with its member of the role's profile.
 type testFormat struct {
 	name string
-	new  func() format.Format
+	new  func(p profile) format.Format
 }
 
 // formats are the formats a scenario runs through with eachFormat, by name.
@@ -112,20 +120,19 @@ var formats = []testFormat{
 }
 
 // completionsFormat is the Chat Completions format; a scenario the endpoint honors in some
-// formats only, such as the vision stream's, names it among them.
-var completionsFormat = testFormat{name: "completions", new: func() format.Format { return completions.New(completions.Options{}) }}
+// formats only, such as the vision stream's, names it among them, and one of a route the format
+// doesn't shape, such as the embed scenario's, speaks it as the client's format.
+var completionsFormat = testFormat{name: "completions", new: func(p profile) format.Format { return completions.New(p.Completions) }}
 
 // messagesFormat is the Messages format; a scenario of its own, such as the allowed_tools
 // choice's, runs it alone.
-var messagesFormat = testFormat{name: "messages", new: func() format.Format { return messages.New(messages.Options{}) }}
+var messagesFormat = testFormat{name: "messages", new: func(p profile) format.Format { return messages.New(p.Messages) }}
 
-// openResponses is the Open Responses format with ResendReasoningText, as vLLM reads a reasoning
-// item's text from its content and gives no encrypted_content to send back instead; a scenario
-// of its own, such as the audio refusal's, runs it alone.
-var openResponses = testFormat{
-	name: "responses",
-	new:  func() format.Format { return responses.New(responses.Options{ResendReasoningText: true}) },
-}
+// openResponses is the Open Responses format; a scenario of its own, such as the audio refusal's,
+// runs it alone. Unprofiled it is the spec's form, which sends a reasoning item back with no
+// text, so a deployment that reads the reasoning from its text, as vLLM does, needs
+// resend_reasoning_text in the role's profile for the round trips to pass.
+var openResponses = testFormat{name: "responses", new: func(p profile) format.Format { return responses.New(p.Responses) }}
 
 // eachFormat runs scenario as a subtest of t for each of formats, named for the format, with a
 // Client of r's endpoint speaking it and the endpoint's model, so one piece of test code covers
@@ -142,7 +149,7 @@ func eachFormatOf(t *testing.T, r role, fs []testFormat, scenario func(t *testin
 	t.Helper()
 	for _, f := range fs {
 		t.Run(f.name, func(t *testing.T) {
-			c, model := endpoint(t, r, f.new(), ai.Options{})
+			c, model := endpoint(t, r, f, ai.Options{})
 			scenario(t, c, model)
 		})
 	}
@@ -193,7 +200,7 @@ func completedText(t *testing.T, resp *protocol.Response) string {
 func TestModels(t *testing.T) {
 	for _, r := range roles {
 		t.Run(string(r), func(t *testing.T) {
-			c := roleClient(t, r, completions.New(completions.Options{}), ai.Options{})
+			c := roleClient(t, r, completionsFormat, ai.Options{})
 			models := listModels(t, c, r)
 			if named := namedModel(string(r), os.Getenv); named != "" {
 				if len(models) == 0 {

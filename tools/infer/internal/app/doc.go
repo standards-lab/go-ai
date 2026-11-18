@@ -9,7 +9,8 @@
 //     define and mount functions in layer order, lowest first;
 //   - infrastructure.go: defineInfrastructure, the root flags and the
 //     configuration, read from INFER_ variables, the lifecycle
-//     configuration, the retry policy, and the go-ai client of the one
+//     configuration, the retry policy, the format in its spec's form and
+//     under the deployment's profile, and the go-ai client of the one
 //     endpoint a run talks to; the commands' own flags over a variable,
 //     transcribe's --mode and chat's --idle-timeout; and the transcriber
 //     and the chat client, clients of the same endpoint in the
@@ -31,19 +32,33 @@
 // line trimmed and a blank one skipped; a line with no colon or no name, a
 // name the client sets (Authorization, Content-Type, or Accept), or a name
 // or value net/http can't send is a usage error naming INFER_HEADER, never
-// its value. The root help's footer names both, as no flag does. The root flags
-// --retries, --retry-base-delay, and --retry-max-delay, over
-// INFER_RETRIES, INFER_RETRY_BASE_DELAY, and INFER_RETRY_MAX_DELAY, set
-// go-ai's retry policy for every command: --retries is the most attempts
-// of a request, the first included, and unset retries nothing. Each is a
-// string flag, parsed in its node, whose help names the type it is parsed
-// as, int or duration, as chat's --idle-timeout's does. A missing base URL, an unknown format, a retry
+// its value. The root help's footer names both, as no flag does.
+//
+// The root flag --profile, over INFER_PROFILE, is the deployment's
+// profile: a JSON object keyed by format name, completions, messages, or
+// responses, each member that format's go-ai Options under its snake_case
+// names, as in {"responses":{"refused_efforts":["none"]}}. The format in
+// use is built with its member, or in its spec's form when the member is
+// absent or the profile unset or empty. It is decoded strictly: an unknown
+// key or field, a Go field name, or a value a field refuses is a usage
+// error, exit 2, naming the flag and its variable. Only chat and
+// transcribe, whose requests a profile changes, read it, so a malformed
+// one fails neither models nor embed.
+//
+// The root flags --retries, --retry-base-delay, and --retry-max-delay,
+// over INFER_RETRIES, INFER_RETRY_BASE_DELAY, and INFER_RETRY_MAX_DELAY,
+// set go-ai's retry policy for every command: --retries is the most
+// attempts of a request, the first included, so 1 or 0 sends once. Unset
+// or empty, each is infer's default, shown in help: 3 attempts, a 500ms
+// base delay, and a 30s max delay, the default base delay capped at a max
+// delay given below it. Each is a string flag, parsed in its node, whose
+// help names the type it is parsed as, int or duration, as chat's
+// --idle-timeout's does. A missing base URL, an unknown format, a retry
 // setting that doesn't parse, or a base URL or retry policy go-ai's New
 // refuses is a usage error, exit 2, naming the flag and its variable,
-// before any request. A base delay above zero with no max delay, or a
-// zero one, is refused as needing one: "--retry-base-delay
-// (INFER_RETRY_BASE_DELAY) needs --retry-max-delay (INFER_RETRY_MAX_DELAY)
-// at least as long".
+// before any request. A base delay above zero with a zero max delay is
+// refused as needing one: "--retry-base-delay (INFER_RETRY_BASE_DELAY)
+// needs --retry-max-delay (INFER_RETRY_MAX_DELAY) at least as long".
 //
 // With no model set, a command that sends to a model lists the endpoint's
 // models first and sends to the one listed; none, or several, exits 1,
@@ -62,16 +77,20 @@
 // Validate or the format's encoding refuses is a usage error, exit 2,
 // before any request, naming the flag to change ahead of go-ai's reason,
 // the one whose value the reason is about when two are refused, as in
-// "--max-tokens: protocol: request's max output tokens 15 is below the
-// minimum, 16", or "--format messages needs --max-tokens: " ahead of
-// messages' refusal of none. It streams by default, writing each text
-// delta as it arrives; --stream=false sends one unstreamed request. Either way it
-// ends the text with a newline and writes the reply's status, token usage,
-// and reasoning item count to stderr, the reasoning tokens as part of the
-// output, as in "usage: 78 input tokens, 38 output tokens (27 reasoning),
-// 116 total tokens", or "(reasoning not reported)" through messages, whose
-// usage has no reasoning count; a reply that isn't completed exits 1
-// naming its status and reason, as in "incomplete: max_output_tokens".
+// "--max-tokens: responses: request's max output tokens 15 is below the
+// minimum, 16", which only responses refuses, or "--format messages needs
+// --max-tokens: " ahead of messages' refusal of none. A refusal the
+// deployment's profile declares, such as of an effort, also names the
+// setting that declared it, ending "; declared by --profile
+// (INFER_PROFILE)". It streams by default, writing each text delta as it
+// arrives; --stream=false sends one unstreamed request. Either way it ends
+// the text with a newline and writes the reply's status, token usage, and
+// reasoning item count to stderr, the reasoning tokens as part of the
+// output when the reply reports some, as in "usage: 78 input tokens, 38
+// output tokens (27 reasoning), 116 total tokens", or "(reasoning not
+// reported)" when it reports none but holds a reasoning item; a reply that
+// isn't completed exits 1 naming its status and reason, as in "incomplete:
+// max_output_tokens".
 // chat's --idle-timeout, set from INFER_IDLE_TIMEOUT, ends a stream that
 // sends nothing for that long, exit 1; it reaches only the chat client, so
 // no other command reads it, and a negative or unparsable one is a usage

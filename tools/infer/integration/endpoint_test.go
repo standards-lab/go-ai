@@ -41,13 +41,19 @@ const answerBound = "1024"
 
 // runOn runs the built program once against r's endpoint, its API root
 // mapped onto INFER_BASE_URL, its model, when AI_<ROLE>_MODEL names one,
-// onto INFER_MODEL, and its credentials, when set, onto INFER_TOKEN and
+// onto INFER_MODEL, its profile, when AI_<ROLE>_PROFILE holds one, onto
+// INFER_PROFILE, and its credentials, when set, onto INFER_TOKEN and
 // INFER_HEADER, as [integration.Endpoint] maps them, with env added; with
-// no model named, infer sends to the one model the endpoint lists. It
-// skips t when r's variable is unset.
+// no model named, infer sends to the one model the endpoint lists, and
+// with no profile, it speaks each format's spec. It skips t when r's
+// variable is unset, and when the run is infer's refusal of a request the
+// profile declares a gap of, as [integration.SkipDeclared] reads it: every
+// scenario on an endpoint runs through here, so each gets that skip.
 func runOn(t *testing.T, r role, env []string, args ...string) processtest.Result {
 	t.Helper()
-	return integration.RunEnv(t, append(integration.Endpoint(t, string(r)), env...), args...)
+	res := integration.RunEnv(t, append(integration.Endpoint(t, string(r)), env...), args...)
+	integration.SkipDeclared(t, string(r), res)
+	return res
 }
 
 // eachFormat runs scenario as a subtest of t for each of formats, named for

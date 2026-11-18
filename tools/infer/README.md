@@ -5,7 +5,7 @@ through go-ai, in Chat Completions, Anthropic Messages, or Open Responses, with 
 your own.
 
 ```sh
-go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.1.0
+go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.2.0
 ```
 
 ## Quick use
@@ -45,9 +45,10 @@ empty. Root flags work before or after the command.
 | `--base-url` | `INFER_BASE_URL` | none; required | every command but `version` |
 | `--format` | `INFER_FORMAT` | `completions` | every command but `version` |
 | `--model` | `INFER_MODEL` | the one model the endpoint lists | chat, embed, transcribe |
-| `--retries` | `INFER_RETRIES` | `0`: no retry | every command but `version` |
-| `--retry-base-delay` | `INFER_RETRY_BASE_DELAY` | `0` | every command but `version` |
-| `--retry-max-delay` | `INFER_RETRY_MAX_DELAY` | `0` | every command but `version` |
+| `--profile` | `INFER_PROFILE` | none: each format's spec | chat, transcribe |
+| `--retries` | `INFER_RETRIES` | `3` attempts | every command but `version` |
+| `--retry-base-delay` | `INFER_RETRY_BASE_DELAY` | `500ms`, at most `--retry-max-delay` | every command but `version` |
+| `--retry-max-delay` | `INFER_RETRY_MAX_DELAY` | `30s` | every command but `version` |
 | `--idle-timeout` | `INFER_IDLE_TIMEOUT` | `0`: no bound | chat |
 | `--mode` | `INFER_TRANSCRIPTION_MODE` | `route` | transcribe |
 | | `INFER_TOKEN` | none | every command but `version` |
@@ -60,6 +61,23 @@ empty. Root flags work before or after the command.
 
 A missing or invalid setting exits 2 before anything is sent. The message names the flag and its
 variable.
+
+### The profile
+
+A deployment can depart from a format's spec, refusing an effort the spec has, for example. Its
+profile declares those gaps, so infer refuses them before sending. `--profile` takes a JSON
+object keyed by `completions`, `messages`, or `responses`, each member that go-ai format's
+`Options` under their JSON names. infer uses the member of the format in use. An unknown name or
+a bad value exits 2.
+
+```text
+$ export INFER_PROFILE='{"responses":{"refused_efforts":["none"]}}'
+$ infer --format responses chat --reasoning none "Say hello."
+infer chat: --reasoning: responses: reasoning effort none is refused by the deployment, as its profile declares; declared by --profile (INFER_PROFILE)
+```
+
+A refusal ending in `declared by --profile (INFER_PROFILE)` is the profile's. Without that
+ending, it is the format's spec's own.
 
 ### Credentials
 
@@ -84,18 +102,22 @@ and asks for `--model`.
 
 ### Retries
 
-Retry is off until `--retries` is above 1. The three flags set go-ai's
+infer retries by default: each request is sent at most 3 times, the first wait at most 500ms,
+doubling, and no wait longer than 30s. The three flags set go-ai's
 [retry policy](../../docs/features.md#retries), which says what is retried and how long each wait
 is:
 
-- `--retries` is `MaxAttempts`. It counts every attempt, so `3` retries twice.
+- `--retries` is `MaxAttempts`. It counts every attempt, so `3` retries twice, and `1` or `0`
+  sends once.
 - `--retry-base-delay` is `BaseDelay`, the cap on the first wait, which doubles for each retry.
 - `--retry-max-delay` is `MaxDelay`, the cap on every wait and the longest Retry-After waited for.
 
-Set all three:
+Each flag overrides its default alone. A `--retry-max-delay` below 500ms caps the default base
+delay at it; a `--retry-base-delay` above 30s needs a `--retry-max-delay` at least as long.
 
 ```sh
-infer --retries 3 --retry-base-delay 500ms --retry-max-delay 10s chat "Say hello."
+infer --retries 1 chat "Say hello."                 # send once, no retry
+infer --retries 5 --retry-max-delay 10s chat "Say hello."
 ```
 
 ## chat
@@ -107,8 +129,8 @@ infer --retries 3 --retry-base-delay 500ms --retry-max-delay 10s chat "Say hello
 | `--stream=false` | Sends one request and writes the whole reply. |
 | `--instructions` | Guides the model, ahead of the prompt. |
 | `--image` | Attaches an image: a file, sent inline, or an `http(s)` URL, sent as given. Repeatable. |
-| `--reasoning` | The reasoning effort: `none`, `low`, `medium`, `high`, or `xhigh`. |
-| `--max-tokens` | The most tokens generated, reasoning included; 16 or more. Required with `--format messages`. |
+| `--reasoning` | The reasoning effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. `responses` refuses `minimal` and `max`, and `messages` `minimal`. |
+| `--max-tokens` | The most tokens generated, reasoning included; 16 or more with `--format responses`. Required with `--format messages`. |
 | `--native` | A JSON object merged into the request, for engine parameters the flags don't cover, such as `'{"temperature": 0.2}'`. It can't set what a flag sets. |
 | `--idle-timeout` | Ends a stream that sends nothing for this long. |
 
@@ -120,9 +142,10 @@ usage: 78 input tokens, 38 output tokens (27 reasoning), 116 total tokens
 reasoning items: 1
 ```
 
-Reasoning tokens are part of the output tokens. Through `messages`, which doesn't count them, the
-usage line says `(reasoning not reported)`. A reply that isn't completed keeps the text already
-written, prints its summary, and exits 1.
+Reasoning tokens are part of the output tokens. When the endpoint reports none but the reply
+holds a reasoning item, as through `messages`, which doesn't count them, the usage line says
+`(reasoning not reported)`. With neither, it has no parenthesis. A reply that isn't completed
+keeps the text already written, prints its summary, and exits 1.
 
 ## transcribe
 
@@ -148,7 +171,7 @@ A failure is reported once on stderr, prefixed with the command, as in `infer ch
 `infer` is a CLI of
 [Go Elemental](https://github.com/standards-lab/architecture/blob/main/standards/go-elemental/README.md),
 laid out from [go-cli-sdk-template](https://github.com/standards-lab/go-cli-sdk-template). Its
-module requires go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else. A
+module requires go-ai v0.2.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else. A
 depguard rule holds every file, tests included, to the standard library, go-ai's public
 packages, go-cli-sdk, go-core, and infer's own packages.
 
@@ -171,8 +194,9 @@ sends and writes.
 
 The integration tier builds `cmd/infer` and runs it against live endpoints. It reads the same
 role variables as [go-ai's tier](../../README.md#development), mapping each role's
-`AI_<ROLE>_BASE_URL`, `AI_<ROLE>_TOKEN`, `AI_<ROLE>_HEADER`, and `AI_<ROLE>_MODEL` onto
-`INFER_BASE_URL`, `INFER_TOKEN`, `INFER_HEADER`, and `INFER_MODEL`:
+`AI_<ROLE>_BASE_URL`, `AI_<ROLE>_TOKEN`, `AI_<ROLE>_HEADER`, `AI_<ROLE>_MODEL`, and
+`AI_<ROLE>_PROFILE` onto `INFER_BASE_URL`, `INFER_TOKEN`, `INFER_HEADER`, `INFER_MODEL`, and
+`INFER_PROFILE`:
 
 | Variable | Scenarios |
 | --- | --- |
@@ -184,7 +208,8 @@ role variables as [go-ai's tier](../../README.md#development), mapping each role
 
 Every role also runs `models`. A role whose variable is unset skips. A credentials scenario
 against a loopback endpoint always runs, and checks that the token and header arrive and that no
-log shows them. The suite sends go-ai's `integration/testdata` media, so it runs from a checkout.
+log shows them. A run refused for a gap the role's profile declares skips its scenario. The
+suite sends go-ai's `integration/testdata` media, so it runs from a checkout.
 
 ## License
 

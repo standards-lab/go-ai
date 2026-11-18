@@ -1,12 +1,19 @@
 package integration
 
 import (
+	"encoding/json/v2"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/standards-lab/go-core/process"
 	"github.com/standards-lab/go-core/process/processtest"
+
+	"github.com/standards-lab/go-ai/format/completions"
+	"github.com/standards-lab/go-ai/format/messages"
+	"github.com/standards-lab/go-ai/format/responses"
 )
 
 // envPrefix opens the name of every variable the program reads.
@@ -58,12 +65,15 @@ func BaseURL(t testing.TB, variable string) string {
 // Endpoint returns the overrides that point a run at the endpoint of the
 // role whose API root variable is baseVariable, such as AI_AGENT_BASE_URL:
 // INFER_BASE_URL set to [BaseURL]'s, which skips t when the variable is
-// unset, and INFER_MODEL set to AI_<ROLE>_MODEL's when it is set and
-// non-empty, for an endpoint whose model list isn't one model, such as a
-// cloud account's that lists its whole catalog; unset, the run sets no
-// model, so infer sends to the one model the endpoint lists. A model is no
-// secret, so it is an override, shown in the run's logged shell line. It
-// maps the role's credentials onto infer's as well, each only when set and
+// unset, INFER_MODEL set to AI_<ROLE>_MODEL's when it is set and non-empty,
+// for an endpoint whose model list isn't one model, such as a cloud
+// account's that lists its whole catalog, and INFER_PROFILE set to
+// AI_<ROLE>_PROFILE's, as [Profile] checks it, when it is set and
+// non-empty, failing t when it doesn't decode. Unset, the run sets no model,
+// so infer sends to the one model the endpoint lists, and no profile, so
+// infer speaks each format's spec. A model and a profile are no secret, so
+// each is an override, shown in the run's logged shell line. It maps the
+// role's credentials onto infer's as well, each only when set and
 // non-empty: AI_<ROLE>_TOKEN onto INFER_TOKEN and AI_<ROLE>_HEADER onto
 // INFER_HEADER. Those it sets in the test's own environment, with
 // t.Setenv, which the program inherits, rather than as overrides, since a
@@ -88,6 +98,13 @@ func Endpoint(t testing.TB, baseVariable string) []string {
 	if model := Model(baseVariable); model != "" {
 		overrides = append(overrides, "INFER_MODEL="+model)
 	}
+	profile, err := Profile(baseVariable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile != "" {
+		overrides = append(overrides, "INFER_PROFILE="+profile)
+	}
 	return overrides
 }
 
@@ -97,6 +114,77 @@ func Endpoint(t testing.TB, baseVariable string) []string {
 // is unset or empty.
 func Model(baseVariable string) string {
 	return os.Getenv(strings.TrimSuffix(baseVariable, "_BASE_URL") + "_MODEL")
+}
+
+// profile is the shape of a deployment's profile, as infer's --profile and
+// INFER_PROFILE take it: a JSON object keyed by format name, each member
+// that go-ai format's Options under the snake_case, case-strict names their
+// tags give them.
+type profile struct {
+	Completions completions.Options `json:"completions,omitzero,case:strict"`
+	Messages    messages.Options    `json:"messages,omitzero,case:strict"`
+	Responses   responses.Options   `json:"responses,omitzero,case:strict"`
+}
+
+// Profile returns the profile AI_<ROLE>_PROFILE holds for the role whose
+// API root variable is baseVariable, such as AI_AGENT_PROFILE for
+// AI_AGENT_BASE_URL, which [Endpoint] maps onto INFER_PROFILE, or "" when it
+// is unset or empty. It decodes it first as infer does, and as go-ai's
+// integration tier does, with encoding/json/v2 and
+// json.RejectUnknownMembers, so a malformed profile, an unknown format name
+// or field, a Go field name, or a value a field refuses, is an error naming
+// the variable ahead of the decoder's, rather than infer's usage error
+// naming its own --profile and INFER_PROFILE. A profile is no secret, so the
+// error may show it.
+func Profile(baseVariable string) (string, error) {
+	variable := profileVariable(baseVariable)
+	v := os.Getenv(variable)
+	if v == "" {
+		return "", nil
+	}
+	var p profile
+	if err := json.Unmarshal([]byte(v), &p, json.RejectUnknownMembers(true)); err != nil {
+		return "", fmt.Errorf("%s: %w", variable, err)
+	}
+	return v, nil
+}
+
+// profileVariable is the variable that holds the profile of the role whose
+// API root variable is baseVariable: AI_<ROLE>_PROFILE, such as
+// AI_AGENT_PROFILE for AI_AGENT_BASE_URL.
+func profileVariable(baseVariable string) string {
+	return strings.TrimSuffix(baseVariable, "_BASE_URL") + "_PROFILE"
+}
+
+// declaredSuffix ends infer's error line for a request the deployment's
+// profile refuses before sending, a go-ai *format.UnsupportedError of
+// Declared true: chat names the setting that declared the gap after the
+// format's reason, which names the gap's feature and value.
+const declaredSuffix = "; declared by --profile (INFER_PROFILE)"
+
+// SkipDeclared skips t when res, a run on the endpoint of the role whose
+// API root variable is baseVariable, is infer's refusal of a request the
+// role's profile, AI_<ROLE>_PROFILE, declares a gap of: a usage error,
+// exit 2, whose error line ends in "; declared by --profile
+// (INFER_PROFILE)". The profile says the deployment can't serve that
+// request, so the scenario has nothing to assert of it; the skip names the
+// variable and quotes the line, which names the gap, its feature and
+// value, as in "--reasoning: responses: reasoning effort none is refused
+// by the deployment, as its profile declares". It is the suite's one skip
+// rule, and every scenario gets it, as each runs on an endpoint through
+// one helper that calls it. A refusal of the format spec's own carries no
+// such suffix, so its scenario goes on to fail on the code.
+func SkipDeclared(t testing.TB, baseVariable string, res processtest.Result) {
+	t.Helper()
+	if res.Code != process.ExitUsage {
+		return
+	}
+	for line := range strings.Lines(res.Stderr) {
+		if line = strings.TrimSuffix(line, "\n"); strings.HasSuffix(line, declaredSuffix) {
+			t.Skipf("%s, passed as INFER_PROFILE, declares the request's gap: %s", profileVariable(baseVariable), line)
+			return
+		}
+	}
 }
 
 // mediaDir is the directory of the media the suite sends, from the suite's

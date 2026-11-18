@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/standards-lab/go-ai"
-	"github.com/standards-lab/go-ai/format/completions"
 )
 
 // phrase is the TranscriptionRequest of phrase.wav for model, opening the file on each attempt.
@@ -37,7 +36,7 @@ func assertTranscription(t *testing.T, got *ai.Transcription) {
 // TestTranscribeChat transcribes phrase.wav on the audio endpoint in chat mode, through Chat
 // Completions, as for an endpoint with no transcription route, and wants its words.
 func TestTranscribeChat(t *testing.T) {
-	c, model := endpoint(t, audio, completions.New(completions.Options{}), ai.Options{TranscriptionMode: ai.TranscribeChat})
+	c, model := endpoint(t, audio, completionsFormat, ai.Options{TranscriptionMode: ai.TranscribeChat})
 	got, err := c.Transcribe(requestContext(t), phrase(model))
 	if err != nil {
 		t.Fatalf("Transcribe: %v", err)
@@ -50,7 +49,7 @@ func TestTranscribeChat(t *testing.T) {
 // skips unless that variable is set, as the audio endpoint may serve no route; the endpoint, as
 // every role's, lists exactly one model, which is sent to.
 func TestTranscribeRoute(t *testing.T) {
-	c, model := endpoint(t, transcription, completions.New(completions.Options{}), ai.Options{})
+	c, model := endpoint(t, transcription, completionsFormat, ai.Options{})
 	got, err := c.Transcribe(requestContext(t), phrase(model))
 	if err != nil {
 		t.Fatalf("Transcribe: %v", err)
