@@ -98,9 +98,9 @@ func wantNoRequest(t *testing.T, e *apptest.Endpoint) {
 }
 
 // The root help names every command, each root flag with its variable and
-// the type it is parsed as, and INFER_TOKEN and INFER_HEADER, which no
-// flag overrides; it names no token or header flag, and builds and sends
-// nothing.
+// the type it is parsed as, each retry flag's default, and INFER_TOKEN and
+// INFER_HEADER, which no flag overrides; it names no token or header flag,
+// and builds and sends nothing.
 func TestRun_RootHelp(t *testing.T) {
 	for _, args := range [][]string{nil, {"-h"}, {"--help"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -114,6 +114,8 @@ func TestRun_RootHelp(t *testing.T) {
 				// Each retry flag shows the type its node parses it as,
 				// not the string the flag holds.
 				"--retries int", "--retry-base-delay duration", "--retry-max-delay duration",
+				// Each retry flag's help shows infer's default.
+				"(env INFER_RETRIES) (default 3)", "(env INFER_RETRY_BASE_DELAY) (default 500ms)", "(env INFER_RETRY_MAX_DELAY) (default 30s)",
 				// --profile is a deployment's profile, JSON keyed by format name.
 				"--profile JSON", "INFER_PROFILE", "keyed by format name",
 				// INFER_TOKEN and INFER_HEADER have no flag, so the

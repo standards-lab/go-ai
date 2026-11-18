@@ -325,8 +325,9 @@ func refusesAudio(err error) bool {
 // field is names both delays. When the most delay is zero in that case,
 // the refusal says the base delay needs one at least as long, which says
 // what to change, rather than repeat go-ai's "above its most delay"; go-ai
-// has still refused it. A most delay left unset is the default, never zero. Only a refused New calls it, so the
-// probes cost nothing in a run that builds.
+// has still refused it. A most delay left unset is the default, never
+// zero. Only a refused New calls it, so the probes cost nothing in a run
+// that builds.
 func settingsRefusal(base string, wireFormat format.Format, opts ai.Options, err error) error {
 	refuses := func(base string, o ai.Options) bool {
 		_, err := ai.New(base, &http.Client{}, wireFormat, o)
