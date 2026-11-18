@@ -91,8 +91,8 @@ import (
 // sends nothing.
 //
 // The hints Messages has no form for are dropped, never refused: an image's detail; a reasoning
-// summary's detail; text's verbosity; and a JSON-schema format's name, description, and strict
-// flag.
+// summary's detail, and a summary of no adaptive thinking; ParallelToolCalls false where no tool
+// can be called; text's verbosity; and a JSON-schema format's name, description, and strict flag.
 //
 // The request is unstreamed, sent with stream false; EncodeStreamRequest streams it. Native's
 // members, the native tier, are merged into the top level, and a member named like one the typed

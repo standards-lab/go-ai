@@ -209,7 +209,7 @@ sends, refuses, drops, and normalizes. In short:
 | Reasoning effort | all seven as `reasoning_effort` | `output_config.effort`; `minimal` refused | `reasoning.effort`; `minimal` and `max` refused |
 | `ParallelToolCalls` | `parallel_tool_calls` | false as `tool_choice`'s `disable_parallel_tool_use` | `parallel_tool_calls` |
 | Audio input | its own `input_audio` part | refused | the `go-ai:input_audio` extension |
-| Hints dropped | a reasoning summary request | an image's detail, a reasoning summary's detail, verbosity, and a JSON schema's name, description, and strict flag | nothing |
+| Hints dropped | a reasoning summary request | an image's detail, a reasoning summary's detail and a summary without adaptive thinking, `ParallelToolCalls` false where no tool can be called, verbosity, and a JSON schema's name, description, and strict flag | nothing |
 | Item ids | derived from the reply's id | derived from the reply's id | the server's |
 
 `responses.Options` adjusts the Open Responses format to an endpoint that departs from the

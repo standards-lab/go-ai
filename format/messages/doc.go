@@ -17,14 +17,16 @@
 // It refuses, before anything is sent and before it sets a header, a request with no
 // MaxOutputTokens, as Messages requires max_tokens; a minimal reasoning effort, which Messages
 // lacks; a system or developer message after the conversation has begun, which Messages has no
-// place for; audio input, which has no Messages form;
-// an image data URL that isn't base64 or has no media type; and a Native member that clashes with
-// one the typed fields set, stream among them, or a Native tool_choice beside ParallelToolCalls.
+// place for; audio input, which has no Messages form; an image data URL that isn't base64 or has no
+// media type; and a Native member that clashes with one the typed fields set, stream among them, or
+// a Native tool_choice beside ParallelToolCalls.
 //
-// It drops the hints Messages has no form for, never refusing them: an image's detail; a
-// reasoning summary's detail, and a summary of no adaptive thinking; text's verbosity; and a JSON-schema text format's name, description, and
-// strict flag. It drops a reasoning item whose encrypted_content isn't its own envelope, and a
-// run of reasoning that no assistant message or function_call follows, never an error.
+// It drops the hints Messages has no form for, never refusing them: an image's detail; a reasoning
+// summary's detail, and a summary of no adaptive thinking; ParallelToolCalls false where no tool
+// can be called, under a tool choice of none or with no tools, as disable_parallel_tool_use has no
+// place there; text's verbosity; and a JSON-schema text format's name, description, and strict
+// flag. It drops a reasoning item whose encrypted_content isn't its own envelope, and a run of
+// reasoning that no assistant message or function_call follows, never an error.
 //
 // Reasoning goes back through a reasoning item's encrypted_content, where DecodeResponse writes
 // the format's envelope, go-ai:messages/v1: and base64 of the thinking block's
@@ -35,11 +37,12 @@
 // output item's id derives from the reply's id and its place in the output, the stop_reason gives
 // the status, only the last item taking an incomplete one, and the usage counts every input token,
 // the cached ones apart, and the thinking tokens as reasoning tokens. A stream may send several
-// message_delta events, the last stop_reason given and each cumulative count taken. A streamed reply's content blocks may be open at once, as an endpoint may
-// stop every block only at the end of the reply; the decoder closes each part at its own block's
-// stop, and the folded Response is DecodeResponse's for the same reply. An error frame in the
-// stream, Anthropic's {"type":"error",...} or an OpenAI-style {"code","message","type"}, ends it
-// with the error event and response.failed. An error body of either shape is decoded.
+// message_delta events, the last stop_reason given and each cumulative count taken. A streamed
+// reply's content blocks may be open at once, as an endpoint may stop every block only at the end
+// of the reply; the decoder closes each part at its own block's stop, and the folded Response is
+// DecodeResponse's for the same reply. An error frame in the stream, Anthropic's
+// {"type":"error",...} or an OpenAI-style {"code","message","type"}, ends it with the error event
+// and response.failed. An error body of either shape is decoded.
 //
 // Its exported identifiers:
 //
