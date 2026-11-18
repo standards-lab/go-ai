@@ -93,7 +93,8 @@ deployment it was seen on, vLLM 0.34.0 or Azure AI Foundry. go-ai ships no loade
 - Each format's unit tests also run against the gap replies recorded from vLLM 0.34.0, in a new
   set beside the vLLM 0.33.0 one, which is unchanged, and from Azure AI Foundry gpt-oss-120b's
   refusal of `tool_choice` `required`: each recorded gap reaches the caller as recorded under the
-  zero profile, and is refused before sending with it declared.
+  zero profile. Declared, a refused effort or `tool_choice` `required` is refused before sending,
+  `allowed_tools` is narrowed to the allowed tools, and reasoning text is resent.
 - `format/messages` sends a reasoning summary as adaptive thinking's display `summarized`, where
   it dropped the summary, and reads `thinking_tokens` as reasoning tokens.
 - `format/messages` accepts several `message_delta` events in a stream, keeping the last
