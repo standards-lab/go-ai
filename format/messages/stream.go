@@ -46,16 +46,15 @@ import (
 // argument delta of the input its start gave, or {} when it gave none, so the call's arguments are
 // the empty object DecodeResponse gives a call of no input, never empty.
 //
-// Items and parts may be open at once: llama.cpp's router stops every block only at the end of
-// the reply, after the last block began, where Anthropic stops each before the next begins. Each
-// part closes at its own block's stop, in whatever order the stops arrive. An item's
-// output_item.done, carrying the whole item, follows once its blocks have stopped, a message's
-// once it has ended too, and once its status is known: an item that a later item follows is
-// completed, and the last item waits for message_stop, by which the stop_reason that gives the
-// response's status as DecodeResponse maps it is final, so only the last item can be incomplete,
-// as the spec has it.
-// A second part of a message beginning while its first is open, which neither endpoint sends, is
-// an error, as the spec adds a part only once the one ahead of it is done.
+// Items and parts may be open at once: llama.cpp's router stops every block only at the end of the
+// reply, after the last block began, where Anthropic stops each before the next begins. Each part
+// closes at its own block's stop, in whatever order the stops arrive. An item's output_item.done,
+// carrying the whole item, follows once its blocks have stopped, a message's once it has ended too,
+// and once its status is known: an item that a later item follows is completed, and the last item
+// waits for message_stop, by which the stop_reason that gives the response's status as
+// DecodeResponse maps it is final, so only the last item can be incomplete, as the spec has it. A
+// second part of a message beginning while its first is open, which neither endpoint sends, is an
+// error, as the spec adds a part only once the one ahead of it is done.
 //
 // A stream may send several message_delta events after its last block. The last stop_reason one
 // gives that isn't null is the reply's, and each count a delta's usage gives is cumulative and

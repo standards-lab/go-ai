@@ -530,14 +530,13 @@ func sameKind(p, kind ContentPart) bool {
 	return false
 }
 
-// Response returns the response folded so far, a new value each call. After a terminal event it
-// is that event's Response, its ID and Model the created Response's where it leaves them empty.
-// Before one it is the created Response, in StatusInProgress, holding
-// the output so far, in output order, an index not yet added left out: each item done as it was
-// done, and each item still open with the content, or the arguments, its events have made, in
-// StatusInProgress. A reasoning item still open has no
-// encrypted content, which its format gives only at its done event. Before response.created it is
-// empty.
+// Response returns the response folded so far, a new value each call. After a terminal event it is
+// that event's Response, its ID and Model the created Response's where it leaves them empty. Before
+// one it is the created Response, in StatusInProgress, holding the output so far, in output order,
+// an index not yet added left out: each item done as it was done, and each item still open with the
+// content, or the arguments, its events have made, in StatusInProgress. A reasoning item still open
+// has no encrypted content, which its format gives only at its done event. Before response.created
+// it is empty.
 func (a *Accumulator) Response() *Response {
 	r := a.resp
 	if a.ended {

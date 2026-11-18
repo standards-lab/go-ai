@@ -73,15 +73,15 @@ import (
 //
 // An error frame, recognized from its data alone, is the endpoint's report that the response
 // failed, and closes the stream as the spec has it: the error event, then the terminal
-// response.failed, its response failed, its error the frame's code and message, of the id and
-// model response.created gave, holding the output made before the frame. It takes either shape: the spec's error event,
-// {"type":"error","error":{"type","code","message","param"}}, or a body of no type whose error
-// member is an object, as llama.cpp's {"error":{"code","message","type"}} is. The items open at
-// the frame get no done event: they are in the output in progress, in output order, with the
-// content or arguments they had, as the Accumulator holds an item still open. A frame as the
-// first event follows response.created, which every stream opens with. The spec has the server
-// send response.failed after its error event; the stream has ended by then, and the client reads
-// no further.
+// response.failed, its response failed, its error the frame's code and message, of the id and model
+// response.created gave, holding the output made before the frame. It takes either shape: the
+// spec's error event, {"type":"error","error":{"type","code","message","param"}}, or a body of no
+// type whose error member is an object, as llama.cpp's {"error":{"code","message","type"}} is. The
+// items open at the frame get no done event: they are in the output in progress, in output order,
+// with the content or arguments they had, as the Accumulator holds an item still open. A frame as
+// the first event follows response.created, which every stream opens with. The spec has the server
+// send response.failed after its error event; the stream has ended by then, and the client reads no
+// further.
 //
 // An event that isn't JSON, a known event before response.created, a second response.created,
 // an item added at an output index or under an id already added, or with content or arguments,

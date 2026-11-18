@@ -71,10 +71,10 @@ import (
 // minimum, is refused. ParallelToolCalls goes out as parallel_tool_calls, true or false; nil
 // sends none, leaving it to the endpoint.
 //
-// Native's members, the native tier, are merged into the top level, and a member named like one
-// the typed fields set is refused, parallel_tool_calls among them when ParallelToolCalls is set,
-// as are stream, store, and include, which are always set.
-// previous_response_id and background are refused too, as the package documentation explains.
+// Native's members, the native tier, are merged into the top level, and a member named like one the
+// typed fields set is refused, parallel_tool_calls among them when ParallelToolCalls is set, as are
+// stream, store, and include, which are always set. previous_response_id and background are refused
+// too, as the package documentation explains.
 func (f *Format) EncodeRequest(req *protocol.Request, _ http.Header) ([]byte, error) {
 	return f.encode(req, false)
 }

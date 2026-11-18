@@ -19,20 +19,21 @@ import (
 // DecodeResponse decodes a Chat Completions response body. Each output item gets the id itemID
 // derives from the reply's id and the item's place in the output, as Chat Completions supplies no
 // item ids. The first choice's message's reasoning, when it has some, becomes a reasoning item
-// ahead of the others, read as reasoningText reads it, from reasoning_content or vLLM's reasoning: its content one reasoning_text part of the text, and its
-// encrypted_content the format's envelope holding it, which EncodeRequest reads back. The message
-// then becomes an assistant message item, its content an output_text part and its refusal a refusal
-// part; a message with neither gives no message item. Each of its tool_calls then becomes a
-// function_call item, in order, its call_id the call's id; a call of a type other than function is
-// an error. The first choice's finish_reason gives the response's status:
+// ahead of the others, read as reasoningText reads it, from reasoning_content or vLLM's reasoning:
+// its content one reasoning_text part of the text, and its encrypted_content the format's envelope
+// holding it, which EncodeRequest reads back. The message then becomes an assistant message item,
+// its content an output_text part and its refusal a refusal part; a message with neither gives no
+// message item. Each of its tool_calls then becomes a function_call item, in order, its call_id the
+// call's id; a call of a type other than function is an error. The first choice's finish_reason
+// gives the response's status:
 //
 //	stop, tool_calls  completed
 //	length            incomplete, reason max_output_tokens
 //	content_filter    incomplete, reason content_filter
 //
-// The last output item takes the response's status, and the items before it are completed, as
-// the spec has only the last item incomplete; a reasoning item takes its status like any other,
-// so a reply of reasoning alone stopped at length is an incomplete reasoning item. Any other
+// The last output item takes the response's status, and the items before it are completed, as the
+// spec has only the last item incomplete; a reasoning item takes its status like any other, so a
+// reply of reasoning alone stopped at length is an incomplete reasoning item. Any other
 // finish_reason, or a body with no choices, is an error. The reply's id and model give the
 // response's ID and Model. The reply's usage gives the response's: prompt_tokens,
 // completion_tokens, total_tokens, the cached input tokens from
@@ -247,23 +248,22 @@ func (*Format) DecodeError(body []byte) (message, typ, code string) {
 // item as any other. It translates the reasoning, the message, and its calls alone: a chunk's
 // other members are ignored.
 //
-// The stream ends at data [DONE], or at the end of the stream once the finish_reason has
-// arrived, where it closes with the terminal event: response.completed or
-// response.incomplete, as the finish_reason gives, its response bearing the stream's id and model
-// and holding the output and the usage of the chunk that carried it. A stream that ends with no finish_reason is
+// The stream ends at data [DONE], or at the end of the stream once the finish_reason has arrived,
+// where it closes with the terminal event: response.completed or response.incomplete, as the
+// finish_reason gives, its response bearing the stream's id and model and holding the output and
+// the usage of the chunk that carried it. A stream that ends with no finish_reason is
 // io.ErrUnexpectedEOF; so is [DONE] without one.
 //
-// An error frame, an event whose data is an OpenAI-style error body, {"error": {...}}, as
-// llama.cpp sends when generation fails mid-stream, is the endpoint's report that the response
-// failed, and closes the stream as the spec has it: the error event, its payload the frame's
-// type, code, message, and param, then the terminal response.failed, its response failed and
-// bearing the stream's id and model, its error the frame's code and message, holding the output made before the frame and the usage
-// given so far. The items open at the frame get no done event: they are in the output in
-// progress, in output order, with the content or arguments they had, as the Accumulator holds an
-// item still open, since the spec keeps incomplete for an item of an incomplete response and has
-// no failed item status. A
-// frame as the first event follows response.created, which every stream opens with, and an
-// event after the frame is an error, as one after [DONE] is.
+// An error frame, an event whose data is an OpenAI-style error body, {"error": {...}}, as llama.cpp
+// sends when generation fails mid-stream, is the endpoint's report that the response failed, and
+// closes the stream as the spec has it: the error event, its payload the frame's type, code,
+// message, and param, then the terminal response.failed, its response failed and bearing the
+// stream's id and model, its error the frame's code and message, holding the output made before the
+// frame and the usage given so far. The items open at the frame get no done event: they are in the
+// output in progress, in output order, with the content or arguments they had, as the Accumulator
+// holds an item still open, since the spec keeps incomplete for an item of an incomplete response
+// and has no failed item status. A frame as the first event follows response.created, which every
+// stream opens with, and an event after the frame is an error, as one after [DONE] is.
 //
 // A chunk that isn't JSON, an unknown finish_reason, a delta after the finish_reason, or an event
 // after [DONE] is an error. The stream's id is the first id a chunk carries, which every chunk

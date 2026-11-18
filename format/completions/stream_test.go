@@ -1122,14 +1122,14 @@ func TestStreamRefusesChunk(t *testing.T) {
 	}
 }
 
-// TestStreamErrorFrame wants an error frame, llama.cpp's report that generation failed
-// mid-stream, to close the stream as the spec has it: the error event of the frame's type, code,
-// message, and param, then response.failed, its response failed, its error the frame's code and
-// message, holding the output made before the frame, the item open at it in progress with what
-// it had, which is what the Accumulator held just before the frame, and bearing the stream's id.
-// The frame alone carries no id; it comes as the first event, after response.created, or after chunks of an id, in each
-// shape an OpenAI-style error body takes, and with each kind of item open. An event after it is
-// an error, and End makes nothing.
+// TestStreamErrorFrame wants an error frame, llama.cpp's report that generation failed mid-stream,
+// to close the stream as the spec has it: the error event of the frame's type, code, message, and
+// param, then response.failed, its response failed, its error the frame's code and message, holding
+// the output made before the frame, the item open at it in progress with what it had, which is what
+// the Accumulator held just before the frame, and bearing the stream's id. The frame alone carries
+// no id; it comes as the first event, after response.created, or after chunks of an id, in each
+// shape an OpenAI-style error body takes, and with each kind of item open. An event after it is an
+// error, and End makes nothing.
 func TestStreamErrorFrame(t *testing.T) {
 	text := delta(`{"content":"Paris"}`, "")
 	const llama = `{"error":{"code":500,"message":"context shift is disabled","type":"server_error"}}`
