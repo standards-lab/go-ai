@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/standards-lab/go-ai/format"
@@ -54,6 +55,13 @@ import (
 // bound as it is. ParallelToolCalls goes out as parallel_tool_calls, true or false; nil sends
 // none, leaving it to the endpoint.
 //
+// The format's Options, the deployment's profile, adjust what goes out. An effort among
+// RefusedEfforts is refused, and under NoToolChoiceRequired so is a tool choice of mode
+// required, plain or allowed_tools', each a declared gap, Declared true. Under NoAllowedTools an
+// allowed_tools choice of mode auto or required is narrowed: tools carries only the tools it
+// allows, in the request's order, and tool_choice its mode as a string. One of mode none is
+// refused as above, the spec's gap, never narrowed.
+//
 // The hints Chat Completions has no form for are dropped, never refused: reasoning's summary.
 //
 // Text's format goes out as response_format: plain text as {"type":"text"}, sent because the
@@ -64,21 +72,25 @@ import (
 // the typed fields set is refused, parallel_tool_calls among them when ParallelToolCalls is set,
 // as are stream, which is always set, and stream_options, which the streamed request sets. It
 // adds no headers.
-func (*Format) EncodeRequest(req *protocol.Request, _ http.Header) ([]byte, error) {
-	return encodeRequest(req, false)
+func (f *Format) EncodeRequest(req *protocol.Request, _ http.Header) ([]byte, error) {
+	return f.encodeRequest(req, false)
 }
 
 // EncodeStreamRequest encodes req as EncodeRequest does, as a streamed request: with stream
 // true, and stream_options.include_usage true, which asks for the usage the stream's terminal
 // event carries. A Native stream or stream_options member is refused, as EncodeRequest refuses
 // them. It adds no headers.
-func (*Format) EncodeStreamRequest(req *protocol.Request, _ http.Header) ([]byte, error) {
-	return encodeRequest(req, true)
+func (f *Format) EncodeStreamRequest(req *protocol.Request, _ http.Header) ([]byte, error) {
+	return f.encodeRequest(req, true)
 }
 
 // encodeRequest encodes req as EncodeRequest describes, streamed when stream is set.
-func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
+func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	var err error
+	if e := req.Reasoning.Effort; e != "" && slices.Contains(f.opts.RefusedEfforts, e) {
+		return nil, fmt.Errorf("completions: %w", declare("reasoning effort", string(e),
+			fmt.Sprintf("reasoning effort %s is refused by the deployment, as its profile declares", e)))
+	}
 	body := request{
 		Model:               req.Model,
 		ReasoningEffort:     string(req.Reasoning.Effort),
@@ -113,7 +125,11 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 		return nil, fmt.Errorf("completions: %w", err)
 	}
 	body.Messages = append(body.Messages, messages...)
-	for _, t := range req.Tools {
+	tools, choice := req.Tools, req.ToolChoice
+	if allowed, ok := choice.(protocol.AllowedToolChoice); ok && f.opts.NoAllowedTools && allowed.Mode != protocol.ToolChoiceNone {
+		tools, choice = narrow(tools, allowed), allowed.Mode
+	}
+	for _, t := range tools {
 		body.Tools = append(body.Tools, tool{Type: "function", Function: functionTool{
 			Name:        t.Name,
 			Description: t.Description,
@@ -121,8 +137,8 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 			Strict:      t.Strict,
 		}})
 	}
-	if req.ToolChoice != nil {
-		if body.ToolChoice, err = encodeToolChoice(req.ToolChoice); err != nil {
+	if choice != nil {
+		if body.ToolChoice, err = f.encodeToolChoice(choice); err != nil {
 			return nil, fmt.Errorf("completions: tool choice: %w", err)
 		}
 	}
@@ -223,16 +239,37 @@ func encodeOutput(o protocol.FunctionCallOutput) (jsontext.Value, error) {
 	return json.Marshal(o.Output)
 }
 
-// encodeToolChoice encodes a tool choice as tool_choice.
-func encodeToolChoice(tc protocol.ToolChoice) (jsontext.Value, error) {
+// narrow returns the tools allowed lets through, in their order in tools, for a deployment
+// with no allowed_tools choice. A tool allowed names that tools doesn't carry adds none.
+func narrow(tools []protocol.FunctionTool, allowed protocol.AllowedToolChoice) []protocol.FunctionTool {
+	var out []protocol.FunctionTool
+	for _, t := range tools {
+		if slices.ContainsFunc(allowed.Tools, func(c protocol.FunctionToolChoice) bool { return c.Name == t.Name }) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// encodeToolChoice encodes a tool choice as tool_choice, refusing a mode of required, plain or
+// allowed_tools', where the profile declares the deployment refuses it.
+func (f *Format) encodeToolChoice(tc protocol.ToolChoice) (jsontext.Value, error) {
 	switch tc := tc.(type) {
 	case protocol.ToolChoiceMode:
+		if tc == protocol.ToolChoiceRequired && f.opts.NoToolChoiceRequired {
+			return nil, declare("tool choice", string(tc),
+				"tool_choice required is refused by the deployment, as its profile declares")
+		}
 		return json.Marshal(string(tc))
 	case protocol.FunctionToolChoice:
 		return json.Marshal(namedChoice(tc))
 	case protocol.AllowedToolChoice:
 		if tc.Mode == protocol.ToolChoiceNone {
 			return nil, refuse("allowed_tools mode", string(tc.Mode), "allowed_tools of mode none has no Chat Completions form")
+		}
+		if tc.Mode == protocol.ToolChoiceRequired && f.opts.NoToolChoiceRequired {
+			return nil, declare("tool choice", string(tc.Mode),
+				"allowed_tools of mode required is refused by the deployment, as its profile declares")
 		}
 		allowed := allowedToolsChoice{
 			Type:         "allowed_tools",
@@ -268,6 +305,13 @@ func encodeTextFormat(f protocol.TextFormat) (*responseFormat, error) {
 // form for value, of feature, as message says.
 func refuse(feature, value, message string) error {
 	return &format.UnsupportedError{Format: "completions", Feature: feature, Value: value, Message: message}
+}
+
+// declare returns the format's refusal of a request feature the deployment's profile declares a
+// gap: the deployment refuses value, of feature, though Chat Completions has a form for it, as
+// message says.
+func declare(feature, value, message string) error {
+	return &format.UnsupportedError{Format: "completions", Feature: feature, Value: value, Declared: true, Message: message}
 }
 
 // namedChoice is f as a Chat Completions named tool choice.

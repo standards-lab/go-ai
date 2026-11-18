@@ -4,6 +4,17 @@
 // /completions API. A caller builds it with New at the composition root, as ai.New's
 // wireFormat.
 //
+// New takes Options, a profile of the one deployment the format targets: the gaps where that
+// deployment departs from the spec. The zero Options declare none and are the spec's form.
+// RefusedEfforts declares the reasoning efforts the deployment refuses, and NoToolChoiceRequired
+// that it refuses tool_choice required; a request that needs either is refused before anything
+// is sent, a format.UnsupportedError of Declared true. NoAllowedTools declares that it has no
+// allowed_tools choice, which the format then narrows to the tools it allows and its mode as a
+// plain tool_choice. A profile binds the format to one deployment, so a caller of several
+// deployments builds one format and one client per deployment, sharing the http.Client. Options
+// decodes from JSON under refused_efforts, no_tool_choice_required, and no_allowed_tools; the
+// module ships no loader of them.
+//
 // It sends instructions as a leading system message, the input items as messages, a run of
 // assistant items joined into one assistant message of reasoning_content, content, and tool_calls,
 // the tools and tool choice, reasoning's effort as reasoning_effort, text's format as
@@ -11,10 +22,10 @@
 // ParallelToolCalls, when set, as parallel_tool_calls, and audio input as its own input_audio part.
 // Native's members, the native tier, are merged into the body's top level.
 //
-// It refuses, before anything is sent, an allowed tool choice of mode none, which Chat
-// Completions' allowed_tools has no form for, and a Native member that clashes with one the
-// typed fields set, stream and stream_options among them, and parallel_tool_calls when
-// ParallelToolCalls is set.
+// It refuses, before anything is sent, the gaps its Options declare, an allowed tool choice of
+// mode none, which Chat Completions' allowed_tools has no form for, and a Native member that
+// clashes with one the typed fields set, stream and stream_options among them, and
+// parallel_tool_calls when ParallelToolCalls is set.
 //
 // It drops the hint Chat Completions has no form for, never refusing it: reasoning's summary. It
 // drops a reasoning item whose encrypted_content isn't its own envelope, and a run of reasoning
@@ -41,7 +52,8 @@
 // Its exported identifiers:
 //
 //   - [Format] is the format, a format.Format.
-//   - [New] returns the format.
+//   - [Options] is the profile of the deployment the format targets, its zero value the spec.
+//   - [New] returns the format under a profile.
 //   - [Format.Route] is the route it posts to, chat/completions.
 //   - [Format.EncodeRequest] encodes a request as a Chat Completions body.
 //   - [Format.DecodeResponse] decodes a Chat Completions reply into a response.

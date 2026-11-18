@@ -22,7 +22,7 @@ func encode(t *testing.T, req *protocol.Request) []byte {
 		t.Fatalf("Validate: %v", err)
 	}
 	header := make(http.Header)
-	body, err := completions.New().EncodeRequest(req, header)
+	body, err := completions.New(completions.Options{}).EncodeRequest(req, header)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -34,7 +34,7 @@ func encode(t *testing.T, req *protocol.Request) []byte {
 
 // decode decodes reply as the body of a 2xx reply.
 func decode(reply string) (*protocol.Response, error) {
-	return completions.New().DecodeResponse([]byte(reply))
+	return completions.New(completions.Options{}).DecodeResponse([]byte(reply))
 }
 
 func text(role protocol.Role, s string) protocol.Message {
@@ -621,7 +621,7 @@ func TestEncodeRefusesNativeClash(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			body, err := completions.New().EncodeRequest(&protocol.Request{
+			body, err := completions.New(completions.Options{}).EncodeRequest(&protocol.Request{
 				Model:           "m",
 				Input:           []protocol.Item{text(protocol.RoleUser, "hi")},
 				MaxOutputTokens: tc.max,
@@ -640,7 +640,7 @@ func TestEncodeRefusesNativeClash(t *testing.T) {
 }
 
 func TestEncodeRefusesAllowedToolsModeNone(t *testing.T) {
-	body, err := completions.New().EncodeRequest(withTools(protocol.AllowedToolChoice{
+	body, err := completions.New(completions.Options{}).EncodeRequest(withTools(protocol.AllowedToolChoice{
 		Tools: []protocol.FunctionToolChoice{{Name: "get_time"}},
 		Mode:  protocol.ToolChoiceNone,
 	}), make(http.Header))

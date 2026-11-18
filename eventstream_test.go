@@ -88,8 +88,8 @@ type framing struct {
 
 // framings are SSE, the formats' own, and ndjsonStream, one the client was never told of.
 var framings = []framing{
-	{"SSE", func() format.Format { return completions.New() }, eventStream},
-	{"NDJSON", func() format.Format { return ndjsonFormat{completions.New()} }, ndjsonEvents},
+	{"SSE", func() format.Format { return completions.New(completions.Options{}) }, eventStream},
+	{"NDJSON", func() format.Format { return ndjsonFormat{completions.New(completions.Options{})} }, ndjsonEvents},
 }
 
 // TestGenerateStreamDeclaredEventStream streams a reply in ndjsonStream, which only this test
@@ -98,7 +98,7 @@ var framings = []framing{
 // through its Format's event stream.
 func TestGenerateStreamDeclaredEventStream(t *testing.T) {
 	srv := aitest.NewServer(t, http.StatusOK, ndjsonEvents(streamed...))
-	c := newClientFormat(t, srv.URL, http.DefaultClient, ndjsonFormat{completions.New()}, ai.Options{})
+	c := newClientFormat(t, srv.URL, http.DefaultClient, ndjsonFormat{completions.New(completions.Options{})}, ai.Options{})
 	events, got, errs := collect(t, c.GenerateStream(t.Context(), hello()))
 	if len(errs) > 0 {
 		t.Fatalf("GenerateStream errors: %v", errs)
@@ -121,7 +121,7 @@ func TestGenerateStreamDeclaredEventStream(t *testing.T) {
 // io.ErrUnexpectedEOF and wrapping the reader's error.
 func TestGenerateStreamEventStreamReadError(t *testing.T) {
 	srv := aitest.NewServer(t, http.StatusOK, ndjsonEvents(streamed[:3]...)+"not JSON\n")
-	c := newClientFormat(t, srv.URL, http.DefaultClient, ndjsonFormat{completions.New()}, ai.Options{})
+	c := newClientFormat(t, srv.URL, http.DefaultClient, ndjsonFormat{completions.New(completions.Options{})}, ai.Options{})
 	_, resp, errs := collect(t, c.GenerateStream(t.Context(), hello()))
 	if len(errs) != 1 || !errors.Is(errs[0], io.ErrUnexpectedEOF) || !strings.Contains(errs[0].Error(), "ndjson:") {
 		t.Fatalf("GenerateStream errors = %v, want one io.ErrUnexpectedEOF wrapping the reader's", errs)

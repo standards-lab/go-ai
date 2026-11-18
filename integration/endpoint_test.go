@@ -113,7 +113,7 @@ var formats = []testFormat{
 
 // completionsFormat is the Chat Completions format; a scenario the endpoint honors in some
 // formats only, such as the vision stream's, names it among them.
-var completionsFormat = testFormat{name: "completions", new: func() format.Format { return completions.New() }}
+var completionsFormat = testFormat{name: "completions", new: func() format.Format { return completions.New(completions.Options{}) }}
 
 // messagesFormat is the Messages format; a scenario of its own, such as the allowed_tools
 // choice's, runs it alone.
@@ -193,7 +193,7 @@ func completedText(t *testing.T, resp *protocol.Response) string {
 func TestModels(t *testing.T) {
 	for _, r := range roles {
 		t.Run(string(r), func(t *testing.T) {
-			c := roleClient(t, r, completions.New(), ai.Options{})
+			c := roleClient(t, r, completions.New(completions.Options{}), ai.Options{})
 			models := listModels(t, c, r)
 			if named := namedModel(string(r), os.Getenv); named != "" {
 				if len(models) == 0 {
