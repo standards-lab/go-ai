@@ -6,6 +6,9 @@
 # marathon's task and session briefs.
 .claude/briefs/
 
+# Untracked run state: credentials and request logs (spike-model-gateway's convention).
+.state/
+
 # Per-machine mise overrides.
 mise.local.toml
 
