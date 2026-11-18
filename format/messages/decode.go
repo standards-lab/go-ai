@@ -26,25 +26,30 @@ import (
 // reply's id and the item's place in the output, as Messages supplies no item ids. The reply's
 // stop_reason gives the response's status:
 //
-//	end_turn, tool_use, stop_sequence          completed
-//	max_tokens, model_context_window_exceeded  incomplete, reason max_output_tokens
-//	refusal                                    incomplete, reason content_filter
+//	end_turn, tool_use, stop_sequence  completed
+//	max_tokens                         incomplete, reason max_output_tokens
+//	model_context_window_exceeded      incomplete, reason go-ai:context_window
+//	refusal                            incomplete, reason content_filter
 //
 // The last output item takes the response's status, and the items before it are completed, as
 // the spec has only the last item incomplete. pause_turn, which asks the caller to send the turn
 // back for the endpoint to continue, has no place in a stateless response, and is an error, as is
-// any other stop_reason.
+// any other stop_reason. model_context_window_exceeded is the input and output filling the
+// model's context window, not the request's max_tokens, so it takes protocol.ReasonContextWindow.
 //
-// The reply's usage gives the response's: InputTokens is input_tokens with the prompt cache's
-// cache_read_input_tokens and cache_creation_input_tokens added, as Messages counts those apart
-// from input_tokens and the spec counts every input token; OutputTokens is output_tokens; and
-// TotalTokens is their sum, which Messages doesn't report.
+// The reply's id and model are the response's ID and Model. The reply's usage gives the
+// response's: InputTokens is input_tokens with the prompt cache's cache_read_input_tokens and
+// cache_creation_input_tokens added, as Messages counts those apart from input_tokens and the
+// spec's input_tokens counts every input token; InputTokensDetails.CachedTokens is
+// cache_read_input_tokens, the input served from the cache; OutputTokens is output_tokens;
+// OutputTokensDetails.ReasoningTokens is output_tokens_details.thinking_tokens; and TotalTokens
+// is the input and output tokens' sum, which Messages doesn't report.
 func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 	var wire response
 	if err := json.Unmarshal(body, &wire); err != nil {
 		return nil, fmt.Errorf("messages: decode response: %w", err)
 	}
-	resp := &protocol.Response{Usage: decodeUsage(wire.Usage)}
+	resp := &protocol.Response{ID: wire.ID, Model: wire.Model, Usage: decodeUsage(wire.Usage)}
 	var ok bool
 	if resp.Status, resp.IncompleteDetails, ok = decodeStop(wire.StopReason); !ok {
 		return nil, fmt.Errorf("messages: response has unknown stop_reason %q", wire.StopReason)
@@ -157,12 +162,23 @@ func itemID(reply string, output int) string {
 
 // decodeUsage returns a reply's usage as the protocol's, as DecodeResponse describes.
 func decodeUsage(u usage) protocol.Usage {
-	input := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+	input := count(u.InputTokens) + count(u.CacheReadInputTokens) + count(u.CacheCreationInputTokens)
+	output := count(u.OutputTokens)
 	return protocol.Usage{
-		InputTokens:  input,
-		OutputTokens: u.OutputTokens,
-		TotalTokens:  input + u.OutputTokens,
+		InputTokens:         input,
+		OutputTokens:        output,
+		TotalTokens:         input + output,
+		InputTokensDetails:  protocol.InputTokensDetails{CachedTokens: count(u.CacheReadInputTokens)},
+		OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: count(u.OutputTokensDetails.ThinkingTokens)},
 	}
+}
+
+// count returns the count n points to, or zero for a count the reply omits.
+func count(n *int) int {
+	if n == nil {
+		return 0
+	}
+	return *n
 }
 
 // decodeStop returns the status, and the incomplete details, that a stop_reason gives, as
@@ -171,8 +187,10 @@ func decodeStop(reason string) (protocol.Status, *protocol.IncompleteDetails, bo
 	switch reason {
 	case "end_turn", "tool_use", "stop_sequence":
 		return protocol.StatusCompleted, nil, true
-	case "max_tokens", "model_context_window_exceeded":
+	case "max_tokens":
 		return protocol.StatusIncomplete, &protocol.IncompleteDetails{Reason: protocol.ReasonMaxOutputTokens}, true
+	case "model_context_window_exceeded":
+		return protocol.StatusIncomplete, &protocol.IncompleteDetails{Reason: protocol.ReasonContextWindow}, true
 	case "refusal":
 		return protocol.StatusIncomplete, &protocol.IncompleteDetails{Reason: protocol.ReasonContentFilter}, true
 	}

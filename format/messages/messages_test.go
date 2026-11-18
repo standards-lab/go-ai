@@ -96,20 +96,45 @@ func TestEncode(t *testing.T) {
 				{"role":"user","content":[{"type":"text","text":"Capital of France?"}]}]}`,
 		},
 		{
-			name: "system and developer messages as system messages in their places",
+			name: "a leading system message hoisted into system, as text blocks",
+			req:  ask(text(protocol.RoleSystem, "s"), text(protocol.RoleUser, "u")),
+			want: `{"model":"m","max_tokens":64,"stream":false,"system":[{"type":"text","text":"s"}],"messages":[
+				{"role":"user","content":[{"type":"text","text":"u"}]}]}`,
+		},
+		{
+			name: "a leading developer message hoisted into system",
+			req:  ask(text(protocol.RoleDeveloper, "d"), text(protocol.RoleUser, "u")),
+			want: `{"model":"m","max_tokens":64,"stream":false,"system":[{"type":"text","text":"d"}],"messages":[
+				{"role":"user","content":[{"type":"text","text":"u"}]}]}`,
+		},
+		{
+			name: "several leading system and developer messages hoisted in order, a block per part",
 			req: ask(
-				text(protocol.RoleUser, "u"),
 				text(protocol.RoleSystem, "s"),
+				protocol.Message{Role: protocol.RoleDeveloper, Content: []protocol.ContentPart{
+					protocol.InputText{Text: "d1"}, protocol.InputText{Text: "d2"},
+				}},
+				text(protocol.RoleSystem, "s2"),
+				text(protocol.RoleUser, "u"),
 				assistant(protocol.OutputText{Text: "a"}),
-				text(protocol.RoleDeveloper, "d"),
-				text(protocol.RoleUser, "u2"),
 			),
-			want: `{"model":"m","max_tokens":64,"stream":false,"messages":[
+			want: `{"model":"m","max_tokens":64,"stream":false,"system":[
+				{"type":"text","text":"s"},{"type":"text","text":"d1"},{"type":"text","text":"d2"},{"type":"text","text":"s2"}],
+				"messages":[
 				{"role":"user","content":[{"type":"text","text":"u"}]},
-				{"role":"system","content":[{"type":"text","text":"s"}]},
-				{"role":"assistant","content":[{"type":"text","text":"a"}]},
-				{"role":"system","content":[{"type":"text","text":"d"}]},
-				{"role":"user","content":[{"type":"text","text":"u2"}]}]}`,
+				{"role":"assistant","content":[{"type":"text","text":"a"}]}]}`,
+		},
+		{
+			name: "instructions first, then the hoisted messages",
+			req: &protocol.Request{
+				Model:           "m",
+				Instructions:    "Answer in one word.",
+				Input:           []protocol.Item{text(protocol.RoleSystem, "Use capital letters only."), text(protocol.RoleUser, "Capital of France?")},
+				MaxOutputTokens: 64,
+			},
+			want: `{"model":"m","max_tokens":64,"stream":false,"system":[
+				{"type":"text","text":"Answer in one word."},{"type":"text","text":"Use capital letters only."}],"messages":[
+				{"role":"user","content":[{"type":"text","text":"Capital of France?"}]}]}`,
 		},
 		{
 			name: "several text parts as several text blocks",
@@ -161,14 +186,47 @@ func TestEncode(t *testing.T) {
 				{"type":"image","source":{"type":"url","url":"https://example.com/shapes.png"}}]}]}`,
 		},
 		{
-			name: "reasoning effort as adaptive thinking, its summary dropped",
+			name: "reasoning effort as adaptive thinking, no summary sending no display",
+			req: &protocol.Request{
+				Model:           "m",
+				Input:           []protocol.Item{text(protocol.RoleUser, "hi")},
+				MaxOutputTokens: 64,
+				Reasoning:       protocol.ReasoningParam{Effort: protocol.ReasoningEffortHigh},
+			},
+			want: `{"model":"m","max_tokens":64,"stream":false,"thinking":{"type":"adaptive"},"output_config":{"effort":"high"},
+				"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`,
+		},
+		{
+			name: "a detailed summary as display summarized",
 			req: &protocol.Request{
 				Model:           "m",
 				Input:           []protocol.Item{text(protocol.RoleUser, "hi")},
 				MaxOutputTokens: 64,
 				Reasoning:       protocol.ReasoningParam{Effort: protocol.ReasoningEffortHigh, Summary: protocol.ReasoningSummaryDetailed},
 			},
-			want: `{"model":"m","max_tokens":64,"stream":false,"thinking":{"type":"adaptive"},"output_config":{"effort":"high"},
+			want: `{"model":"m","max_tokens":64,"stream":false,"thinking":{"type":"adaptive","display":"summarized"},
+				"output_config":{"effort":"high"},"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`,
+		},
+		{
+			name: "a concise summary as display summarized",
+			req: &protocol.Request{
+				Model:           "m",
+				Input:           []protocol.Item{text(protocol.RoleUser, "hi")},
+				MaxOutputTokens: 64,
+				Reasoning:       protocol.ReasoningParam{Effort: protocol.ReasoningEffortLow, Summary: protocol.ReasoningSummaryConcise},
+			},
+			want: `{"model":"m","max_tokens":64,"stream":false,"thinking":{"type":"adaptive","display":"summarized"},
+				"output_config":{"effort":"low"},"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`,
+		},
+		{
+			name: "a summary of effort none dropped, as disabled thinking has none",
+			req: &protocol.Request{
+				Model:           "m",
+				Input:           []protocol.Item{text(protocol.RoleUser, "hi")},
+				MaxOutputTokens: 64,
+				Reasoning:       protocol.ReasoningParam{Effort: protocol.ReasoningEffortNone, Summary: protocol.ReasoningSummaryAuto},
+			},
+			want: `{"model":"m","max_tokens":64,"stream":false,"thinking":{"type":"disabled"},
 				"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`,
 		},
 		{
@@ -209,6 +267,11 @@ func TestEncodeRefuses(t *testing.T) {
 		{"data URL not base64", image("data:image/png,%89PNG"), "input 0: content 0: image data URL isn't base64"},
 		{"data URL of no media type", image("data:;base64,iVBORw0KGgo="), "image data URL has no media type"},
 		{"data URL of no data", image("data:image/png;base64"), "image data URL has no data"},
+		{"a system message after the conversation has begun", ask(user, text(protocol.RoleSystem, "s")),
+			"input 1: system message after the conversation has begun has no Messages form"},
+		{"a developer message after an assistant message", ask(text(protocol.RoleSystem, "s"), user,
+			assistant(protocol.OutputText{Text: "a"}), text(protocol.RoleDeveloper, "d"), user),
+			"input 3: developer message after the conversation has begun has no Messages form"},
 		{"native stream", withNative(ask(user), `{"stream":true}`),
 			"native member stream clashes with a member the request sets"},
 		{"native max_tokens", withNative(ask(user), `{"max_tokens":8}`),
@@ -270,6 +333,8 @@ func TestDecodeRecorded(t *testing.T) {
 			// The thinking block ahead of the text is a reasoning item, its signature empty.
 			file: "text.json",
 			want: &protocol.Response{
+				ID:    "chatcmpl-AM4P3ZlmlUsqESx8ANKHI8limmMGUALi",
+				Model: "ggml-org/gpt-oss-120b-GGUF:MXFP4",
 				Output: []protocol.Item{
 					protocol.Reasoning{
 						ID:               "chatcmpl-AM4P3ZlmlUsqESx8ANKHI8limmMGUALi/0",
@@ -285,13 +350,16 @@ func TestDecodeRecorded(t *testing.T) {
 					},
 				},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 91, OutputTokens: 85, TotalTokens: 176},
+				Usage: protocol.Usage{InputTokens: 91, OutputTokens: 85, TotalTokens: 176,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 60}},
 			},
 		},
 		{
 			// A thinking block, then a tool_use block, its input the call's arguments.
 			file: "tool_use.json",
 			want: &protocol.Response{
+				ID:    "chatcmpl-FtWUtroPbbUwM5wedxWLbnuDkCXabSyo",
+				Model: "ggml-org/gpt-oss-120b-GGUF:MXFP4",
 				Output: []protocol.Item{
 					protocol.Reasoning{
 						ID:      "chatcmpl-FtWUtroPbbUwM5wedxWLbnuDkCXabSyo/0",
@@ -311,12 +379,15 @@ func TestDecodeRecorded(t *testing.T) {
 					},
 				},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 134, OutputTokens: 60, TotalTokens: 194},
+				Usage: protocol.Usage{InputTokens: 134, OutputTokens: 60, TotalTokens: 194,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 133}},
 			},
 		},
 		{
 			file: "length.json",
 			want: &protocol.Response{
+				ID:    "chatcmpl-RMGRO2IdNL6QNnOC6Yk1axTBpXQk3Zsk",
+				Model: "ggml-org/gemma-4-E4B-it-GGUF:Q8_0",
 				Output: []protocol.Item{protocol.Message{
 					ID:      "chatcmpl-RMGRO2IdNL6QNnOC6Yk1axTBpXQk3Zsk/0",
 					Status:  protocol.StatusIncomplete,
@@ -325,12 +396,15 @@ func TestDecodeRecorded(t *testing.T) {
 				}},
 				Status:            protocol.StatusIncomplete,
 				IncompleteDetails: &protocol.IncompleteDetails{Reason: protocol.ReasonMaxOutputTokens},
-				Usage:             protocol.Usage{InputTokens: 29, OutputTokens: 8, TotalTokens: 37},
+				Usage: protocol.Usage{InputTokens: 29, OutputTokens: 8, TotalTokens: 37,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 7}},
 			},
 		},
 		{
 			file: "conversation.json",
 			want: &protocol.Response{
+				ID:    "chatcmpl-yCOWmZF11j1jz7AcJ32cFQgRD1KScyo0",
+				Model: "ggml-org/gemma-4-E4B-it-GGUF:Q8_0",
 				Output: []protocol.Item{protocol.Message{
 					ID:      "chatcmpl-yCOWmZF11j1jz7AcJ32cFQgRD1KScyo0/0",
 					Status:  protocol.StatusCompleted,
@@ -338,7 +412,8 @@ func TestDecodeRecorded(t *testing.T) {
 					Content: []protocol.ContentPart{protocol.OutputText{Text: "ROME"}},
 				}},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 54, OutputTokens: 2, TotalTokens: 56},
+				Usage: protocol.Usage{InputTokens: 54, OutputTokens: 2, TotalTokens: 56,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 6}},
 			},
 		},
 	}
@@ -374,6 +449,7 @@ func TestDecode(t *testing.T) {
 				{"type":"text","text":"Paris"},{"type":"text","text":", Lyon"}],"stop_reason":"end_turn",
 				"usage":{"input_tokens":10,"output_tokens":3}}`,
 			want: &protocol.Response{
+				ID:     "msg_1",
 				Output: []protocol.Item{msg("msg_1/0", protocol.StatusCompleted, "Paris", ", Lyon")},
 				Status: protocol.StatusCompleted,
 				Usage:  protocol.Usage{InputTokens: 10, OutputTokens: 3, TotalTokens: 13},
@@ -387,6 +463,7 @@ func TestDecode(t *testing.T) {
 				{"type":"tool_use","id":"toolu_1","name":"f","input":{}},
 				{"type":"text","text":"three"},{"type":"text","text":"four"}],"stop_reason":"max_tokens"}`,
 			want: &protocol.Response{
+				ID: "msg_2",
 				Output: []protocol.Item{
 					msg("msg_2/0", protocol.StatusCompleted, "one"),
 					protocol.Reasoning{
@@ -415,6 +492,7 @@ func TestDecode(t *testing.T) {
 				{"type":"tool_use","id":"toolu_2","name":"get_time","input":{ "city" : "Paris" }}],
 				"stop_reason":"max_tokens"}`,
 			want: &protocol.Response{
+				ID: "msg_5",
 				Output: []protocol.Item{
 					protocol.FunctionCall{ID: "msg_5/0", Status: protocol.StatusCompleted, CallID: "toolu_1",
 						Name: "get_weather", Arguments: `{"city":"Paris"}`},
@@ -429,6 +507,7 @@ func TestDecode(t *testing.T) {
 			name:  "a reply ending in thinking, the reasoning taking the status",
 			reply: `{"id":"msg_6","content":[{"type":"thinking","thinking":"hm","signature":"sig"}],"stop_reason":"max_tokens"}`,
 			want: &protocol.Response{
+				ID: "msg_6",
 				Output: []protocol.Item{protocol.Reasoning{
 					ID:               "msg_6/0",
 					Status:           protocol.StatusIncomplete,
@@ -443,6 +522,7 @@ func TestDecode(t *testing.T) {
 			name:  "no content gives no output",
 			reply: `{"id":"msg_3","content":[],"stop_reason":"max_tokens"}`,
 			want: &protocol.Response{
+				ID:                "msg_3",
 				Status:            protocol.StatusIncomplete,
 				IncompleteDetails: &protocol.IncompleteDetails{Reason: protocol.ReasonMaxOutputTokens},
 			},
@@ -456,13 +536,32 @@ func TestDecode(t *testing.T) {
 			},
 		},
 		{
-			name: "every input count in InputTokens",
+			name: "every input count in InputTokens, the cache reads its cached tokens",
 			reply: `{"id":"msg_4","content":[{"type":"text","text":"Paris"}],"stop_reason":"end_turn",
 				"usage":{"input_tokens":5,"cache_read_input_tokens":100,"cache_creation_input_tokens":20,"output_tokens":7}}`,
 			want: &protocol.Response{
+				ID:     "msg_4",
 				Output: []protocol.Item{msg("msg_4/0", protocol.StatusCompleted, "Paris")},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 125, OutputTokens: 7, TotalTokens: 132},
+				Usage: protocol.Usage{InputTokens: 125, OutputTokens: 7, TotalTokens: 132,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 100}},
+			},
+		},
+		{
+			name: "id and model, and thinking tokens as reasoning tokens",
+			reply: `{"id":"msg_7","model":"claude-opus-4-7","content":[{"type":"thinking","thinking":"hm","signature":"sig"},
+				{"type":"text","text":"Paris"}],"stop_reason":"end_turn",
+				"usage":{"input_tokens":5,"cache_read_input_tokens":null,"output_tokens":40,"output_tokens_details":{"thinking_tokens":32}}}`,
+			want: &protocol.Response{
+				ID:    "msg_7",
+				Model: "claude-opus-4-7",
+				Output: []protocol.Item{
+					protocol.Reasoning{ID: "msg_7/0", Status: protocol.StatusCompleted, Content: []protocol.ReasoningText{{Text: "hm"}}, EncryptedContent: thinkingEnvelope},
+					msg("msg_7/1", protocol.StatusCompleted, "Paris"),
+				},
+				Status: protocol.StatusCompleted,
+				Usage: protocol.Usage{InputTokens: 5, OutputTokens: 40, TotalTokens: 45,
+					OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 32}},
 			},
 		},
 	}
@@ -490,7 +589,7 @@ func TestDecodeStopReason(t *testing.T) {
 		{"tool_use", protocol.StatusCompleted, nil},
 		{"stop_sequence", protocol.StatusCompleted, nil},
 		{"max_tokens", protocol.StatusIncomplete, maxTokens},
-		{"model_context_window_exceeded", protocol.StatusIncomplete, maxTokens},
+		{"model_context_window_exceeded", protocol.StatusIncomplete, &protocol.IncompleteDetails{Reason: protocol.ReasonContextWindow}},
 		{"refusal", protocol.StatusIncomplete, &protocol.IncompleteDetails{Reason: protocol.ReasonContentFilter}},
 	}
 	for _, tc := range cases {

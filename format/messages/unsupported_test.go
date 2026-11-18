@@ -36,6 +36,16 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 	choice := ask(user)
 	choice.Tools = []protocol.FunctionTool{{Name: "f"}}
 	choice.ToolChoice = unknownChoice{protocol.FunctionToolChoice{Name: "f"}}
+	// parallel is a request of a tool and ParallelToolCalls, its Native tool_choice clashing with
+	// the member ParallelToolCalls sets, whether or not the request sends it.
+	parallel := func(p bool, choice protocol.ToolChoice) *protocol.Request {
+		req := withNative(ask(user), `{"tool_choice":{"type":"any"}}`)
+		req.Tools = []protocol.FunctionTool{{Name: "f"}}
+		req.ToolChoice = choice
+		req.ParallelToolCalls = &p
+		return req
+	}
+	const parallelClash = "messages: native member tool_choice clashes with a member the request sets"
 	cases := []struct {
 		name    string
 		req     *protocol.Request
@@ -52,6 +62,18 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 		{"native clash", withNative(ask(user), `{"max_tokens":8}`),
 			"native member", "max_tokens",
 			"messages: native member max_tokens clashes with a member the request sets"},
+		{"native tool_choice beside ParallelToolCalls false", parallel(false, nil),
+			"native member", "tool_choice", parallelClash},
+		{"native tool_choice beside ParallelToolCalls true", parallel(true, nil),
+			"native member", "tool_choice", parallelClash},
+		{"native tool_choice beside a choice of none and ParallelToolCalls false", parallel(false, protocol.ToolChoiceNone),
+			"native member", "tool_choice", parallelClash},
+		{"a system message after the conversation has begun", ask(user, text(protocol.RoleSystem, "s")),
+			"system message placement", "system",
+			"messages: input 1: system message after the conversation has begun has no Messages form, as Messages takes system content only ahead of the messages"},
+		{"a developer message after the conversation has begun", ask(user, text(protocol.RoleDeveloper, "d")),
+			"system message placement", "developer",
+			"messages: input 1: developer message after the conversation has begun has no Messages form, as Messages takes system content only ahead of the messages"},
 		{"input item", ask(unknownItem{user}),
 			"input item", "messages_test.unknownItem",
 			"messages: input 0: item messages_test.unknownItem has no Messages form"},

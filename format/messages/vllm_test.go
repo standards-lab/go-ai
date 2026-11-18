@@ -41,6 +41,8 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "text.json",
 			want: &protocol.Response{
+				ID:     "chatcmpl-93cdbdc1b27eb8c2",
+				Model:  "nvidia/Gemma-4-26B-A4B-NVFP4",
 				Output: []protocol.Item{message("chatcmpl-93cdbdc1b27eb8c2/0", "Paris, Lyon, Marseille")},
 				Status: protocol.StatusCompleted,
 				Usage:  protocol.Usage{InputTokens: 25, OutputTokens: 6, TotalTokens: 31},
@@ -49,6 +51,8 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "reasoning.json",
 			want: &protocol.Response{
+				ID:    "chatcmpl-a27537d77e8fb570",
+				Model: "openai/gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("chatcmpl-a27537d77e8fb570/0", vllmCitiesThinking, "cd03ad08121346fa9164bc3aabab3445"),
 					message("chatcmpl-a27537d77e8fb570/1", "Paris, Lyon, Marseille"),
@@ -60,6 +64,8 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "tool_use.json",
 			want: &protocol.Response{
+				ID:    "chatcmpl-be61c70f8fb2ff38",
+				Model: "openai/gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("chatcmpl-be61c70f8fb2ff38/0", vllmWeatherThinking, "9a35add13ed9412d9dbb5b1d7815cd2e"),
 					protocol.FunctionCall{
@@ -77,6 +83,8 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "structured.json",
 			want: &protocol.Response{
+				ID:    "chatcmpl-aab14de85610a507",
+				Model: "openai/gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("chatcmpl-aab14de85610a507/0", "Simple.", "0f788c623ffd4ec5a59e0eb5000b5bd3"),
 					message("chatcmpl-aab14de85610a507/1", "{\n  \"name\": \"Paris\"\n}"),

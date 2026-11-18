@@ -186,9 +186,11 @@ func assertTrace(t *testing.T, events []protocol.Event, want string) {
 
 // asStreamed returns reply, an unstreamed reply's body, with the ids body, a text/event-stream
 // reply to the same request, gave: the reply's, message_start's, and each tool_use block's, the
-// one the stream's block in its place began with; and each thinking block's signature, the one
-// the stream's thinking block in its place was given by its signature_delta. The recorded replies
-// were each sent twice, and the endpoint makes new ids for each, and vLLM a new signature.
+// one the stream's block in its place began with; each thinking block's signature, the one the
+// stream's thinking block in its place was given by its signature_delta; and the model and the
+// input usage message_start gave, its split between input_tokens and the cache counts. The
+// recorded replies were each sent twice, and the endpoint makes new ids for each, vLLM a new
+// signature, and the router's prompt cache another split of the same input.
 func asStreamed(t *testing.T, reply, body string) string {
 	t.Helper()
 	var r map[string]any
@@ -208,7 +210,9 @@ func asStreamed(t *testing.T, reply, body string) string {
 		var event struct {
 			Type    string `json:"type"`
 			Message struct {
-				ID string `json:"id"`
+				ID    string         `json:"id"`
+				Model string         `json:"model"`
+				Usage map[string]any `json:"usage"`
 			} `json:"message"`
 			ContentBlock struct {
 				Type string `json:"type"`
@@ -224,7 +228,15 @@ func asStreamed(t *testing.T, reply, body string) string {
 		}
 		switch {
 		case event.Type == "message_start":
-			r["id"] = event.Message.ID
+			r["id"], r["model"] = event.Message.ID, event.Message.Model
+			usage := r["usage"].(map[string]any)
+			for _, count := range []string{"input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"} {
+				if n, ok := event.Message.Usage[count]; ok {
+					usage[count] = n
+				} else {
+					delete(usage, count)
+				}
+			}
 		case event.Type == "content_block_start" && event.ContentBlock.Type == "tool_use":
 			callIDs = append(callIDs, event.ContentBlock.ID)
 		case event.Type == "content_block_start" && event.ContentBlock.Type == "thinking":
@@ -343,10 +355,12 @@ func TestStreamRecorded(t *testing.T) {
 }
 
 // TestStreamUsage wants the terminal Response's usage counted as DecodeResponse counts it: its
-// input message_start's input_tokens with both cache counts added, its output message_delta's
-// output_tokens, not message_start's, and its total their sum.
+// input message_start's input_tokens with both cache counts added, its cached tokens the cache
+// reads, its output message_delta's output_tokens, not message_start's, its reasoning tokens
+// message_delta's thinking_tokens, and its total the input and output's sum.
 func TestStreamUsage(t *testing.T) {
-	r := decodeStream(t, stream(messageStart, messageDelta("end_turn"), messageStop))
+	const delta = `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5,"output_tokens_details":{"thinking_tokens":3}}}`
+	r := decodeStream(t, stream(messageStart, delta, messageStop))
 	if r.err != nil {
 		t.Fatalf("stream error: %v", r.err)
 	}
@@ -354,9 +368,110 @@ func TestStreamUsage(t *testing.T) {
 	if !ok {
 		t.Fatalf("last event = %#v, want response.completed", r.events[len(r.events)-1])
 	}
-	want := protocol.Usage{InputTokens: 7, OutputTokens: 5, TotalTokens: 12}
+	want := protocol.Usage{InputTokens: 7, OutputTokens: 5, TotalTokens: 12,
+		InputTokensDetails:  protocol.InputTokensDetails{CachedTokens: 2},
+		OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 3}}
 	if completed.Response.Usage != want {
 		t.Errorf("Usage = %+v, want %+v", completed.Response.Usage, want)
+	}
+}
+
+// TestStreamIDAndModel wants message_start's id and model on the created and the terminal
+// Response, and on the Response the stream folds to.
+func TestStreamIDAndModel(t *testing.T) {
+	r := decodeStream(t, stream(messageStart, messageDelta("end_turn"), messageStop))
+	if r.err != nil {
+		t.Fatalf("stream error: %v", r.err)
+	}
+	created, ok := r.events[0].(protocol.ResponseCreated)
+	if !ok {
+		t.Fatalf("first event = %#v, want response.created", r.events[0])
+	}
+	completed, ok := r.events[len(r.events)-1].(protocol.ResponseCompleted)
+	if !ok {
+		t.Fatalf("last event = %#v, want response.completed", r.events[len(r.events)-1])
+	}
+	for name, resp := range map[string]*protocol.Response{
+		"created":   created.Response,
+		"completed": completed.Response,
+		"folded":    aitest.Fold(t, r.events),
+	} {
+		if resp.ID != "msg_1" || resp.Model != "m" {
+			t.Errorf("%s ID, Model = %q, %q; want %q, %q", name, resp.ID, resp.Model, "msg_1", "m")
+		}
+	}
+}
+
+// TestStreamMessageDeltas covers several message_delta events: the last stop_reason that isn't
+// null is the reply's, each count a delta gives is cumulative and replaces the one before, a
+// count a delta omits keeps its value, and the last item's status waits for message_stop.
+func TestStreamMessageDeltas(t *testing.T) {
+	text := []string{
+		messageStart,
+		blockStart(0, `{"type":"text","text":""}`),
+		blockDelta(0, "text_delta", "Paris"),
+		blockStop(0),
+	}
+	cases := []struct {
+		name    string
+		deltas  []string
+		status  protocol.Status
+		details *protocol.IncompleteDetails
+		usage   protocol.Usage
+	}{
+		{
+			name: "stop_reason null, then set",
+			deltas: []string{
+				`{"type":"message_delta","delta":{"stop_reason":null,"stop_sequence":null},"usage":{"output_tokens":3}}`,
+				`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":6}}`,
+			},
+			status: protocol.StatusCompleted,
+			usage: protocol.Usage{InputTokens: 7, OutputTokens: 6, TotalTokens: 13,
+				InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 2}},
+		},
+		{
+			name: "stop_reason set, then null, kept",
+			deltas: []string{
+				`{"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":3}}`,
+				`{"type":"message_delta","delta":{"stop_reason":null},"usage":{"output_tokens":4}}`,
+			},
+			status:  protocol.StatusIncomplete,
+			details: &protocol.IncompleteDetails{Reason: protocol.ReasonMaxOutputTokens},
+			usage: protocol.Usage{InputTokens: 7, OutputTokens: 4, TotalTokens: 11,
+				InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 2}},
+		},
+		{
+			name: "the last stop_reason of two, and cumulative counts, those omitted kept",
+			deltas: []string{
+				`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":10,"cache_read_input_tokens":20,"output_tokens":3,"output_tokens_details":{"thinking_tokens":1}}}`,
+				`{"type":"message_delta","delta":{"stop_reason":"model_context_window_exceeded"},"usage":{"output_tokens":9}}`,
+				`{"type":"message_delta","delta":{},"usage":{"output_tokens_details":{"thinking_tokens":4}}}`,
+			},
+			status:  protocol.StatusIncomplete,
+			details: &protocol.IncompleteDetails{Reason: protocol.ReasonContextWindow},
+			// input 10, cache reads 20, and message_start's cache creation 1.
+			usage: protocol.Usage{InputTokens: 31, OutputTokens: 9, TotalTokens: 40,
+				InputTokensDetails:  protocol.InputTokensDetails{CachedTokens: 20},
+				OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 4}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := decodeStream(t, stream(slices.Concat(text, tc.deltas, []string{messageStop})...))
+			if r.err != nil {
+				t.Fatalf("stream error: %v", r.err)
+			}
+			resp := aitest.Fold(t, r.events)
+			want := &protocol.Response{
+				ID:                "msg_1",
+				Model:             "m",
+				Output:            []protocol.Item{protocol.Message{ID: "msg_1/0", Status: tc.status, Role: protocol.RoleAssistant, Content: []protocol.ContentPart{protocol.OutputText{Text: "Paris"}}}},
+				Status:            tc.status,
+				IncompleteDetails: tc.details,
+				Usage:             tc.usage,
+			}
+			aitest.AssertResponse(t, resp, want)
+		})
 	}
 }
 
@@ -376,7 +491,7 @@ var openAtOnce = []string{
 }
 
 // openAtOnceReply is the reply openAtOnce's stream makes, unstreamed.
-const openAtOnceReply = `{"id":"msg_1","content":[
+const openAtOnceReply = `{"id":"msg_1","model":"m","content":[
 	{"type":"thinking","thinking":"Need the tool.","signature":"sig"},
 	{"type":"text","text":"Checking."},
 	{"type":"tool_use","id":"toolu_1","name":"get_weather","input":{"city":"Paris"}}],
@@ -536,7 +651,7 @@ func TestStreamBlocks(t *testing.T) {
 				9 response.content_part.done 0 1 msg_1/0 protocol.OutputText{Text:"Lyon"}
 				10 response.output_item.done 0 protocol.Message{ID:"msg_1/0", Status:"incomplete", Role:"assistant", Content:[]protocol.ContentPart{protocol.OutputText{Text:"Paris"}, protocol.OutputText{Text:"Lyon"}}}
 				11 response.incomplete 1 items`,
-			reply: `{"id":"msg_1","content":[{"type":"text","text":"Paris"},{"type":"text","text":"Lyon"}],"stop_reason":"max_tokens",` + usageJSON + `}`,
+			reply: `{"id":"msg_1","model":"m","content":[{"type":"text","text":"Paris"},{"type":"text","text":"Lyon"}],"stop_reason":"max_tokens",` + usageJSON + `}`,
 		},
 		{
 			name: "thinking, its signature kept for the envelope",
@@ -558,7 +673,7 @@ func TestStreamBlocks(t *testing.T) {
 				5 response.content_part.done 0 0 msg_1/0 protocol.ReasoningText{Text:"hm"}
 				6 response.output_item.done 0 protocol.Reasoning{ID:"msg_1/0", Status:"completed", Content:[]protocol.ReasoningText{protocol.ReasoningText{Text:"hm"}}, Summary:[]protocol.SummaryText(nil), EncryptedContent:"go-ai:messages/v1:eyJ0aGlua2luZyI6ImhtIiwic2lnbmF0dXJlIjoic2lnIn0="}
 				7 response.completed 1 items`,
-			reply: `{"id":"msg_1","content":[{"type":"thinking","thinking":"hm","signature":"sig"}],"stop_reason":"end_turn",` + usageJSON + `}`,
+			reply: `{"id":"msg_1","model":"m","content":[{"type":"thinking","thinking":"hm","signature":"sig"}],"stop_reason":"end_turn",` + usageJSON + `}`,
 		},
 		{
 			name: "redacted thinking, then text",
@@ -583,7 +698,7 @@ func TestStreamBlocks(t *testing.T) {
 				7 response.content_part.done 1 0 msg_1/1 protocol.OutputText{Text:"Paris"}
 				8 response.output_item.done 1 protocol.Message{ID:"msg_1/1", Status:"completed", Role:"assistant", Content:[]protocol.ContentPart{protocol.OutputText{Text:"Paris"}}}
 				9 response.completed 2 items`,
-			reply: `{"id":"msg_1","content":[{"type":"redacted_thinking","data":"x"},{"type":"text","text":"Paris"}],"stop_reason":"end_turn",` + usageJSON + `}`,
+			reply: `{"id":"msg_1","model":"m","content":[{"type":"redacted_thinking","data":"x"},{"type":"text","text":"Paris"}],"stop_reason":"end_turn",` + usageJSON + `}`,
 		},
 		{
 			name: "a call of no input",
@@ -601,7 +716,7 @@ func TestStreamBlocks(t *testing.T) {
 				3 response.function_call_arguments.done 0 msg_1/0 "{}"
 				4 response.output_item.done 0 protocol.FunctionCall{ID:"msg_1/0", Status:"completed", CallID:"toolu_1", Name:"get_time", Arguments:"{}"}
 				5 response.completed 1 items`,
-			reply: `{"id":"msg_1","content":[{"type":"tool_use","id":"toolu_1","name":"get_time","input":{}}],"stop_reason":"tool_use",` + usageJSON + `}`,
+			reply: `{"id":"msg_1","model":"m","content":[{"type":"tool_use","id":"toolu_1","name":"get_time","input":{}}],"stop_reason":"tool_use",` + usageJSON + `}`,
 		},
 		{
 			name: "a call of no input, its start of no input member, as the router's",
@@ -619,7 +734,7 @@ func TestStreamBlocks(t *testing.T) {
 				3 response.function_call_arguments.done 0 msg_1/0 "{}"
 				4 response.output_item.done 0 protocol.FunctionCall{ID:"msg_1/0", Status:"incomplete", CallID:"toolu_1", Name:"get_time", Arguments:"{}"}
 				5 response.incomplete 1 items`,
-			reply: `{"id":"msg_1","content":[{"type":"tool_use","id":"toolu_1","name":"get_time","input":{}}],"stop_reason":"refusal",` + usageJSON + `}`,
+			reply: `{"id":"msg_1","model":"m","content":[{"type":"tool_use","id":"toolu_1","name":"get_time","input":{}}],"stop_reason":"refusal",` + usageJSON + `}`,
 		},
 		{
 			name:   "no content",
@@ -627,7 +742,7 @@ func TestStreamBlocks(t *testing.T) {
 			trace: `
 				0 response.created in_progress
 				1 response.completed 0 items`,
-			reply: `{"id":"msg_1","content":[],"stop_reason":"end_turn",` + usageJSON + `}`,
+			reply: `{"id":"msg_1","model":"m","content":[],"stop_reason":"end_turn",` + usageJSON + `}`,
 		},
 	}
 	for _, tc := range cases {
@@ -745,7 +860,7 @@ func TestStreamStopReason(t *testing.T) {
 		{reason: "stop_sequence", status: protocol.StatusCompleted},
 		{reason: "tool_use", status: protocol.StatusCompleted},
 		{reason: "max_tokens", status: protocol.StatusIncomplete, details: &protocol.IncompleteDetails{Reason: protocol.ReasonMaxOutputTokens}},
-		{reason: "model_context_window_exceeded", status: protocol.StatusIncomplete, details: &protocol.IncompleteDetails{Reason: protocol.ReasonMaxOutputTokens}},
+		{reason: "model_context_window_exceeded", status: protocol.StatusIncomplete, details: &protocol.IncompleteDetails{Reason: protocol.ReasonContextWindow}},
 		{reason: "refusal", status: protocol.StatusIncomplete, details: &protocol.IncompleteDetails{Reason: protocol.ReasonContentFilter}},
 		{reason: "pause_turn", err: `unknown stop_reason "pause_turn"`},
 		{reason: "tired", err: `unknown stop_reason "tired"`},
@@ -800,7 +915,7 @@ func TestStreamErrorFrame(t *testing.T) {
 		protocol.Message{ID: "msg_1/1", Status: protocol.StatusInProgress, Role: protocol.RoleAssistant, Content: []protocol.ContentPart{protocol.OutputText{Text: "Checking."}}},
 		protocol.FunctionCall{ID: "msg_1/2", Status: protocol.StatusInProgress, CallID: "toolu_1", Name: "get_weather", Arguments: `{"city":"Paris"}`},
 	}
-	usage := protocol.Usage{InputTokens: 7, TotalTokens: 7}
+	usage := protocol.Usage{InputTokens: 7, TotalTokens: 7, InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 2}}
 	cases := []struct {
 		name    string
 		events  []string
@@ -829,10 +944,10 @@ func TestStreamErrorFrame(t *testing.T) {
 		{name: "Anthropic's, of a redacted block open", payload: overloaded, usage: usage,
 			events: []string{messageStart, blockStart(0, `{"type":"redacted_thinking","data":"x"}`), anthropic},
 			output: []protocol.Item{protocol.Reasoning{ID: "msg_1/0", Status: protocol.StatusInProgress}}},
-		{name: "Anthropic's, after message_delta", payload: overloaded,
+		{name: "Anthropic's, after message_delta, the last item waiting on message_stop", payload: overloaded,
 			events: []string{messageStart, blockStart(0, `{"type":"text","text":""}`), blockDelta(0, "text_delta", "Paris"), blockStop(0), messageDelta("end_turn"), anthropic},
-			output: []protocol.Item{protocol.Message{ID: "msg_1/0", Status: protocol.StatusCompleted, Role: protocol.RoleAssistant, Content: []protocol.ContentPart{protocol.OutputText{Text: "Paris"}}}},
-			usage:  protocol.Usage{InputTokens: 7, OutputTokens: 5, TotalTokens: 12}},
+			output: []protocol.Item{protocol.Message{ID: "msg_1/0", Status: protocol.StatusInProgress, Role: protocol.RoleAssistant, Content: []protocol.ContentPart{protocol.OutputText{Text: "Paris"}}}},
+			usage:  protocol.Usage{InputTokens: 7, OutputTokens: 5, TotalTokens: 12, InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 2}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -860,6 +975,10 @@ func TestStreamErrorFrame(t *testing.T) {
 				Status: protocol.StatusFailed,
 				Error:  &protocol.ResponseError{Code: tc.payload.Code, Message: tc.payload.Message},
 				Usage:  tc.usage,
+			}
+			if tc.events[0] == messageStart {
+				// A frame after message_start fails the reply message_start opened.
+				want.ID, want.Model = "msg_1", "m"
 			}
 			aitest.AssertResponse(t, failed.Response, want)
 			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
@@ -961,8 +1080,10 @@ func TestStreamRefusesEvent(t *testing.T) {
 		{"a second text block with the first open", []string{messageStart, text, blockStart(1, `{"type":"text","text":""}`)}, "text block 1 began while the message's text block before it is open"},
 		{"message_delta with a block open", []string{messageStart, text, messageDelta("end_turn")}, "message_delta while a content block of output 0 is open"},
 		{"a block after message_delta", []string{messageStart, messageDelta("end_turn"), text}, "content block 0 began after message_delta"},
-		{"a second message_delta", []string{messageStart, messageDelta("end_turn"), messageDelta("end_turn")}, "a second message_delta"},
 		{"message_stop before message_delta", []string{messageStart, messageStop}, "message_stop before message_delta"},
+		{"message_stop before a stop_reason", []string{messageStart, `{"type":"message_delta","delta":{"stop_reason":null},"usage":{"output_tokens":1}}`, messageStop},
+			"message_stop before a message_delta gave a stop_reason"},
+		{"a block after a second message_delta", []string{messageStart, messageDelta("end_turn"), messageDelta("end_turn"), text}, "content block 0 began after message_delta"},
 		{"an event after message_stop", []string{messageStart, messageDelta("end_turn"), messageStop, ping}, "event after the end of the stream"},
 	}
 	for _, tc := range cases {
