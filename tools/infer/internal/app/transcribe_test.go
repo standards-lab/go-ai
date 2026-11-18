@@ -263,6 +263,24 @@ func TestTranscribe_ChatThroughMessages(t *testing.T) {
 	wantNoRequest(t, e)
 }
 
+// Chat mode through messages with a file name go-ai refuses first, one with
+// no audio extension, is that refusal alone, exit 1: only the format's
+// refusal of the audio part names the mode and the format.
+func TestTranscribe_ChatThroughMessagesNoExtension(t *testing.T) {
+	e := transcribeEndpoint(t, nil, completedChat())
+	env := whisper(e)
+	env["INFER_FORMAT"] = "messages"
+	missing := filepath.Join(t.TempDir(), "missing.txt")
+
+	r := runApp(t, env, "transcribe", "--mode", "chat", missing)
+
+	wantCode(t, r, process.ExitFailure)
+	if !strings.HasPrefix(r.stderr, "infer transcribe: ai: transcribe: ") || !strings.Contains(r.stderr, "no audio extension") {
+		t.Errorf("stderr = %q, want go-ai's refusal of the extension alone", r.stderr)
+	}
+	wantNoRequest(t, e)
+}
+
 // notFound answers every request 404, as an endpoint without the route
 // does, with vLLM's body.
 func notFound() http.Handler {

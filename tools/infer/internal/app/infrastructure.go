@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +24,7 @@ import (
 	"github.com/standards-lab/go-ai/format/completions"
 	"github.com/standards-lab/go-ai/format/messages"
 	"github.com/standards-lab/go-ai/format/responses"
+	"github.com/standards-lab/go-ai/protocol"
 )
 
 // envPrefix is the prefix of every environment variable infer reads its
@@ -33,14 +36,39 @@ const envPrefix = "INFER"
 // --format is given.
 const defaultFormat = "completions"
 
-// formats maps each format setting to its format package's constructor.
-// This file is the one that names a format package; the rest of the
-// program sees only the format.Format the format node holds.
-var formats = map[string]func() format.Format{
-	"completions": func() format.Format { return completions.New() },
-	"messages":    func() format.Format { return messages.New() },
-	"responses":   func() format.Format { return responses.New(responses.Options{}) },
+// formatNames holds each format setting, the name of a go-ai format
+// package; [buildFormat] builds the format each names.
+var formatNames = []string{"completions", "messages", "responses"}
+
+// formatOptions holds the Options each format is built with, the profile
+// of the deployment it speaks to; its zero value is each format's spec.
+type formatOptions struct {
+	completions completions.Options
+	messages    messages.Options
+	responses   responses.Options
 }
+
+// buildFormat returns the format name names, one of formatNames, built
+// with its Options from opts. This file is the one that names a format
+// package, and this the one function that builds a format; the rest of the
+// program sees only the format.Format the format node holds and the name
+// the format name node holds.
+func buildFormat(name string, opts formatOptions) (format.Format, error) {
+	switch name {
+	case "completions":
+		return completions.New(opts.completions), nil
+	case "messages":
+		return messages.New(opts.messages), nil
+	case "responses":
+		return responses.New(opts.responses), nil
+	}
+	return nil, fmt.Errorf("no format %q", name)
+}
+
+// anyFormatMaxTokens is the least max output tokens every format accepts:
+// responses' minimum, its spec's, where completions and messages take any
+// positive cap.
+const anyFormatMaxTokens = responses.MinMaxOutputTokens
 
 // defineInfrastructure defines the infrastructure nodes on g into n: the
 // lifecycle configuration; the endpoint settings and the retry policy, each
@@ -66,7 +94,8 @@ var formats = map[string]func() format.Format{
 func defineInfrastructure(g *graph.Graph, n *Nodes, flags *rootFlags, cmd commandFlags) {
 	n.LifecycleConfig = g.Define("lifecycle config", newLifecycleConfig)
 	n.BaseURL = g.Define("base url", newSetting(flags, "base-url", ""))
-	n.Format = g.Define("format", newFormat(flags))
+	n.FormatName = g.Define("format name", newSetting(flags, "format", defaultFormat))
+	n.Format = g.Define("format", newFormat(n))
 	n.Model = g.Define("model", newSetting(flags, "model", ""))
 	n.RetryPolicy = g.Define("retry policy", newRetryPolicy(flags))
 	n.Client = g.Define("client", newClient(n, func(*graph.Scope) ai.Options { return ai.Options{} }))
@@ -123,21 +152,16 @@ func resolveSetting(def, variable, flagValue string, flagGiven bool) (string, er
 func parseString(s string) (string, error) { return s, nil }
 
 // newFormat returns the format node's constructor: the format the format
-// setting names, from INFER_FORMAT and --format, completions when neither
-// is given. A name formats doesn't hold is a usage error naming the flag
-// and its variable.
-func newFormat(flags *rootFlags) func(*graph.Scope) (format.Format, error) {
-	setting := newSetting(flags, "format", defaultFormat)
+// name node names, built with each format's zero Options, its spec. A name
+// formatNames doesn't hold is a usage error naming the flag and its
+// variable.
+func newFormat(n *Nodes) func(*graph.Scope) (format.Format, error) {
 	return func(s *graph.Scope) (format.Format, error) {
-		name, err := setting(s)
-		if err != nil {
-			return nil, err
-		}
-		newFormat, ok := formats[name]
-		if !ok {
+		name := s.Use(n.FormatName)
+		if !slices.Contains(formatNames, name) {
 			return nil, cli.Usagef("unknown format %q: %s is completions, messages, or responses", name, flagAndVar("format"))
 		}
-		return newFormat(), nil
+		return buildFormat(name, formatOptions{})
 	}
 }
 
@@ -231,39 +255,23 @@ func writeEnvironment(w io.Writer) {
 		config.EnvName(envPrefix, "token"), headerVariable)
 }
 
-// reportsReasoningTokens reports whether replies in wireFormat count their
-// reasoning tokens. messages' usage has no such count, and go-ai v0.1.0
+// reportsReasoningTokens reports whether replies in the format the format
+// setting name names count their reasoning tokens. messages' usage counts
+// them only as thinking_tokens, which an endpoint may leave out, and go-ai
 // decodes its absence as zero, so a zero there is "not reported", not
-// "none"; the format is the only way to tell them apart. It is here, beside
-// [formats], because this is the one file that names a format package.
-func reportsReasoningTokens(wireFormat format.Format) bool {
-	_, isMessages := wireFormat.(*messages.Format)
-	return !isMessages
+// "none".
+func reportsReasoningTokens(name string) bool {
+	return name != "messages"
 }
 
-// formatName returns the format setting that names wireFormat, such as
-// "messages", or empty for a format no setting names, as a caller's
-// Replace of the format node may give. It is here, beside [formats],
-// because this is the one file that names a format package.
-func formatName(wireFormat format.Format) string {
-	switch wireFormat.(type) {
-	case *completions.Format:
-		return "completions"
-	case *messages.Format:
-		return "messages"
-	case *responses.Format:
-		return "responses"
-	}
-	return ""
-}
-
-// carriesAudio reports whether a request in wireFormat can carry an audio
-// part, as a chat-mode transcription sends. messages has no audio block, so
-// go-ai refuses the part there; the others carry it. go-ai remains the
-// authority: transcribe asks this only to word a refusal go-ai has made.
-func carriesAudio(wireFormat format.Format) bool {
-	_, isMessages := wireFormat.(*messages.Format)
-	return !isMessages
+// refusesAudio reports whether err is a format's refusal of an audio part,
+// as a chat-mode transcription sends: a *format.UnsupportedError of the
+// feature "content part" and the value protocol.InputAudio, as messages,
+// which has no audio block, refuses it. go-ai is the authority: transcribe
+// reads its typed refusal only to word it.
+func refusesAudio(err error) bool {
+	u, ok := errors.AsType[*format.UnsupportedError](err)
+	return ok && u.Feature == "content part" && u.Value == fmt.Sprintf("%T", protocol.InputAudio{})
 }
 
 // settingsRefusal returns the usage error of err, ai.New's refusal of base

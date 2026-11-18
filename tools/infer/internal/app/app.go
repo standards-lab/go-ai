@@ -70,9 +70,13 @@ func (a *App) Run(ctx context.Context, args []string) int {
 // field names the node, and no comment repeats it.
 type Nodes struct {
 	LifecycleConfig *graph.Node[lifecycle.Config]
-	BaseURL         *graph.Node[string]        // the endpoint's API root, such as http://localhost:8000/v1
-	Format          *graph.Node[format.Format] // the wire format the client speaks
-	Model           *graph.Node[string]        // the model a request names; empty when not given
+	BaseURL         *graph.Node[string] // the endpoint's API root, such as http://localhost:8000/v1
+	// FormatName is the format setting, such as "messages", as
+	// INFER_FORMAT and --format give it; the format node refuses a name it
+	// doesn't build.
+	FormatName *graph.Node[string]
+	Format     *graph.Node[format.Format] // the wire format the client speaks, the one FormatName names
+	Model      *graph.Node[string]        // the model a request names; empty when not given
 	// RetryPolicy is when and how long every client waits to send a
 	// request again; its zero value retries nothing.
 	RetryPolicy *graph.Node[ai.RetryPolicy]

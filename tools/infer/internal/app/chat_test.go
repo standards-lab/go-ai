@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -343,8 +344,8 @@ func TestChat_RefusedRequests(t *testing.T) {
 		args   []string
 		want   string // the error's line, after "infer chat: "
 	}{
-		{"max tokens 1", "", []string{"--max-tokens", "1"}, "--max-tokens: protocol: request's max output tokens 1 is below the minimum, 16"},
-		{"max tokens 15", "", []string{"--max-tokens", "15"}, "--max-tokens: protocol: request's max output tokens 15 is below the minimum, 16"},
+		{"responses max tokens 1", "responses", []string{"--max-tokens", "1"}, "--max-tokens: responses: request's max output tokens 1 is below the minimum, 16"},
+		{"responses max tokens 15", "responses", []string{"--max-tokens", "15"}, "--max-tokens: responses: request's max output tokens 15 is below the minimum, 16"},
 		{"negative max tokens", "", []string{"--max-tokens", "-1"}, "--max-tokens: protocol: request's max output tokens -1 is negative"},
 		{"unknown effort", "", []string{"--reasoning", "extreme"}, `--reasoning: protocol: request has unknown reasoning effort "extreme"`},
 		{"malformed native", "", []string{"--native", `{"temperature":`}, "--native: " + nativeObject},
@@ -354,8 +355,7 @@ func TestChat_RefusedRequests(t *testing.T) {
 		{"native clashing with a typed member", "", []string{"--native", `{"stream":false}`}, "--native: completions: native member stream clashes with a member the request sets"},
 		{"native clashing unstreamed", "", []string{"--stream=false", "--max-tokens", "20", "--native", `{"max_completion_tokens":5}`}, "--native: completions: native member max_completion_tokens clashes with a member the request sets"},
 		{"messages without max tokens", "messages", nil, "--format messages needs --max-tokens: " + noMaxTokens},
-		{"messages max tokens 15", "messages", []string{"--max-tokens", "15"}, "--max-tokens: protocol: request's max output tokens 15 is below the minimum, 16"},
-		{"two flags refused", "", []string{"--max-tokens", "5", "--reasoning", "extreme"}, "--max-tokens: protocol: request's max output tokens 5 is below the minimum, 16"},
+		{"two flags refused", "responses", []string{"--max-tokens", "5", "--native", `[1]`}, "--native: " + nativeObject},
 		{"two flags refused together", "", []string{"--reasoning", "low", "--native", `{"reasoning_effort":"low"}`}, "completions: native member reasoning_effort clashes with a member the request sets"},
 		{"native clash through messages without max tokens", "messages", []string{"--native", `{"stream":false}`}, "--format messages needs --max-tokens: " + noMaxTokens},
 		{"array native through messages without max tokens", "messages", []string{"--native", `[1]`}, "--native: " + nativeObject},
@@ -382,9 +382,10 @@ func TestChat_RefusedRequests(t *testing.T) {
 	}
 }
 
-// Each effort go-ai defines is accepted, and 16, go-ai's minimum, is.
+// Each effort go-ai defines is accepted through completions, which sends
+// all seven, and so is a cap of 16.
 func TestChat_AcceptedValues(t *testing.T) {
-	for _, effort := range []string{"none", "low", "medium", "high", "xhigh"} {
+	for _, effort := range []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"} {
 		t.Run(effort, func(t *testing.T) {
 			e := completedStream(t)
 
@@ -396,6 +397,42 @@ func TestChat_AcceptedValues(t *testing.T) {
 				t.Errorf("body = %v, want reasoning_effort %s and max_completion_tokens 16", body, effort)
 			}
 		})
+	}
+}
+
+// A cap of 1 to 15, which only responses refuses, reaches the wire through
+// completions as max_completion_tokens and through messages as max_tokens.
+func TestChat_SmallMaxTokens(t *testing.T) {
+	messagesStream := apptest.Stream("messages",
+		`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"usage":{"input_tokens":3,"output_tokens":0}}}`,
+		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}`,
+		`{"type":"content_block_stop","index":0}`,
+		`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}`,
+		`{"type":"message_stop"}`)
+	for _, tc := range []struct {
+		format string
+		route  string
+		member string // the body member the cap is sent as
+		reply  http.Handler
+	}{
+		{"completions", completionsRoute, "max_completion_tokens", apptest.Stream(completionsRoute, completionsChunks("Hi", "stop", "Hi")...)},
+		{"messages", "messages", "max_tokens", messagesStream},
+	} {
+		for _, maxTokens := range []int{1, 15} {
+			t.Run(fmt.Sprintf("%s %d", tc.format, maxTokens), func(t *testing.T) {
+				e := chatEndpoint(t, nil, tc.route, tc.reply)
+				env := agent(e)
+				env["INFER_FORMAT"] = tc.format
+
+				r := runApp(t, env, "chat", "--max-tokens", strconv.Itoa(maxTokens), "hello")
+
+				wantCode(t, r, process.ExitOK)
+				if body := oneBody(t, e, tc.route); body[tc.member] != float64(maxTokens) {
+					t.Errorf("body = %v, want %s %d", body, tc.member, maxTokens)
+				}
+			})
+		}
 	}
 }
 
