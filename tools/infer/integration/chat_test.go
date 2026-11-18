@@ -66,8 +66,16 @@ func TestChatIncompleteAtMaxTokens(t *testing.T) {
 // Responses, and through Messages takes thinking {"type":"disabled"} and
 // reasons anyway. The vision model, Gemma 4, honors the effort in all three
 // formats.
+//
+// The reasoning at low is wanted only to give none's zero its meaning, so it
+// is wanted only where none ran. Where the role's profile declares none
+// refused, the none case skips and low wants the answer alone: Foundry's
+// gpt-5-mini reasons at low through Open Responses but, through Chat
+// Completions, whose spec has no reasoning output, returns none and reports
+// no reasoning tokens (2026-11-18).
 func TestChatReasoningEffort(t *testing.T) {
 	eachChat(t, func(t *testing.T, formatEnv, streamFlag string) {
+		noneRan := false // whether the none case reached the model, not skipped
 		for _, c := range []struct {
 			effort  string
 			atLeast int // the fewest reasoning items wanted
@@ -80,6 +88,13 @@ func TestChatReasoningEffort(t *testing.T) {
 				res := runOn(t, vision, []string{formatEnv}, "chat", streamFlag,
 					"--instructions", "Answer in one word.", "--reasoning", c.effort, "--max-tokens", answerBound,
 					"What is the capital of France?")
+				if c.effort == "none" {
+					noneRan = true
+				}
+				atLeast := c.atLeast
+				if c.effort == "low" && !noneRan {
+					atLeast = 0
+				}
 
 				wantCode(t, res, process.ExitOK)
 				if !strings.Contains(strings.ToLower(res.Stdout), "paris") {
@@ -89,9 +104,9 @@ func TestChatReasoningEffort(t *testing.T) {
 				if s.status != "completed" {
 					t.Errorf("status = %q, want completed", s.status)
 				}
-				if s.reasoningItems < c.atLeast || (c.atMost >= 0 && s.reasoningItems > c.atMost) {
+				if s.reasoningItems < atLeast || (c.atMost >= 0 && s.reasoningItems > c.atMost) {
 					t.Errorf("reasoning items = %d at --reasoning %s, want %d to %d (-1: no bound)",
-						s.reasoningItems, c.effort, c.atLeast, c.atMost)
+						s.reasoningItems, c.effort, atLeast, c.atMost)
 				}
 			})
 		}
