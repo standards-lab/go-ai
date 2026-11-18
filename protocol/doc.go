@@ -57,6 +57,7 @@
 //   - [ReasoningEffort] is how much the model reasons: [ReasoningEffortNone],
 //     [ReasoningEffortMinimal], [ReasoningEffortLow], [ReasoningEffortMedium],
 //     [ReasoningEffortHigh], [ReasoningEffortXHigh], or [ReasoningEffortMax].
+//   - [ReasoningEffort.UnmarshalText] decodes an effort, refusing a name the protocol lacks.
 //   - [ReasoningSummary] is how detailed a summary of its reasoning the model gives:
 //     [ReasoningSummaryAuto], [ReasoningSummaryConcise], or [ReasoningSummaryDetailed].
 //   - [Request.Validate] refuses a request the model can't describe.

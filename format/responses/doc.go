@@ -38,18 +38,18 @@
 // empty. Options.ResendReasoningText sends the texts back as content too: the one exception to
 // protocol.Reasoning's rule that a format never sends a reasoning item's text on input, for an
 // endpoint such as llama.cpp's router or vLLM 0.34.0, which gives no encrypted_content and reads
-// the reasoning from content; under it, a run of reasoning that no assistant message or function_call follows
-// is dropped, as the router refuses one. An envelope under another prefix, another format's,
-// another version's, or another implementor's, is dropped on encode.
+// the reasoning from content; under it, a run of reasoning that no assistant message or
+// function_call follows is dropped, as the router refuses one. An envelope under another prefix,
+// another format's, another version's, or another implementor's, is dropped on encode.
 //
 // Audio input goes out as the protocol's client extension, the spec having no audio input
 // part: the content part {"type":"go-ai:input_audio","data","format"}, its data the
 // clip's bytes in standard base64 and its format wav or mp3.
 //
-// It refuses, before anything is sent, the efforts its Options declare refused, a MaxOutputTokens below MinMaxOutputTokens, the spec's
-// minimum of 16; a reasoning effort the spec lacks, minimal or max; a Native member that clashes
-// with one the typed fields set, stream, store, and include among them; and a Native
-// previous_response_id or background, as above.
+// It refuses, before anything is sent, the efforts its Options declare refused; a
+// MaxOutputTokens below MinMaxOutputTokens, the spec's minimum of 16; a reasoning effort the spec
+// lacks, minimal or max; a Native member that clashes with one the typed fields set, stream,
+// store, and include among them; and a Native previous_response_id or background, as above.
 //
 // The spec has a form for every hint the protocol carries, so the format drops none: an image's
 // detail, reasoning's summary, text's verbosity, and a JSON-schema format's name, description,

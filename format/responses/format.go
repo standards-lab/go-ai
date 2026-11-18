@@ -47,13 +47,7 @@ type Format struct {
 // New returns the Open Responses format under the profile opts, for ai.New's wireFormat. The zero
 // Options are the spec's form. A profile binds the format to one deployment, so a caller of
 // several deployments builds one format, and one client, per deployment, the clients sharing one
-// http.Client. opts declares:
-//
-//   - RefusedEfforts: the reasoning efforts the deployment refuses, each refused before sending.
-//   - NoAllowedTools: that the deployment ignores an allowed_tools choice, which is narrowed to
-//     the tools it allows and its mode.
-//   - ResendReasoningText: that the deployment reads a reasoning item's text as content, which
-//     goes back so.
+// http.Client. Each field of Options states the gap it declares.
 //
 // New keeps its own copy of RefusedEfforts, so a change to opts after New changes nothing.
 func New(opts Options) *Format {
