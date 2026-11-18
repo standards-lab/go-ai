@@ -13,8 +13,12 @@ client and processing layers").
 
 ## Capability map
 
-- **Protocol**: the Open Responses request and response types every format maps to and from.
-- **Formats**: Chat Completions, Anthropic Messages, and Open Responses on the wire.
+- **Protocol**: the Open Responses request and response types every format maps to and from,
+  with the reasoning efforts any implemented format's spec defines and the `go-ai:context_window`
+  incomplete reason.
+- **Formats**: Chat Completions, Anthropic Messages, and Open Responses on the wire. Each format
+  declares the event stream its replies arrive in, `format.SSE` for all three, and refuses what
+  its spec has no form for with a `*format.UnsupportedError` before anything is sent.
 - **Client**: construction with `Options`, including fixed request headers; Generate,
   GenerateStream with its accumulator, Embed, Transcribe by the route or over chat, and the
   /models listing.

@@ -205,7 +205,7 @@ sends, refuses, drops, and normalizes. In short:
 | API | OpenAI Chat Completions | Anthropic Messages, version 2026-10-21 | Open Responses, spec 2026-04-24 |
 | Route | `chat/completions` | `messages` | `responses` |
 | Instructions | a leading system message | the top-level `system`, with the system and developer messages that lead the input; a later one is refused | `instructions` |
-| `MaxOutputTokens` | `max_completion_tokens`, any | `max_tokens`, required | `max_output_tokens`, at least 16 (`responses.MinMaxOutputTokens`) |
+| `MaxOutputTokens` | `max_completion_tokens`, any positive value | `max_tokens`, required | `max_output_tokens`, at least 16 (`responses.MinMaxOutputTokens`) |
 | Reasoning effort | all seven as `reasoning_effort` | `output_config.effort`; `minimal` refused | `reasoning.effort`; `minimal` and `max` refused |
 | `ParallelToolCalls` | `parallel_tool_calls` | false as `tool_choice`'s `disable_parallel_tool_use` | `parallel_tool_calls` |
 | Audio input | its own `input_audio` part | refused | the `go-ai:input_audio` extension |
@@ -223,8 +223,8 @@ A format refuses a request before anything is sent or any token is fetched, and 
 is a `*format.UnsupportedError`, matched with `errors.As`, naming the `Format`, the `Feature`
 refused, and its `Value`.
 
-All three stream their replies as server-sent events, `format.SSE`, and decode an OpenAI-style
-error body, and `messages` also decodes Anthropic's.
+All three stream their replies as server-sent events, `format.SSE`. All three decode an
+OpenAI-style error body, and `messages` also decodes Anthropic's.
 
 ## format: the contract
 
@@ -235,8 +235,8 @@ of the reply's `WireEvent`s, each the framing's `Type` and its `Data`. The clien
 only through it, never by the reply's Content-Type, and hands each event to the format's
 `StreamDecoder`; `format.SSE` is the server-sent event stream. `format.UnsupportedError` is a
 format's refusal. `format.DecodeOpenAIError` decodes the OpenAI-style error body most endpoints
-return. A new format is a package that implements the interface, and a
-caller uses it by passing it to `ai.New`.
+return. A new format is a package that implements the interface, and a caller uses it by passing
+it to `ai.New`.
 
 ## integration: the live tier
 

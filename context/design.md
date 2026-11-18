@@ -195,7 +195,7 @@ of layers' surface to go-ai's.
     (finding 24) and `UnsupportedError`, the one type of every refusal a format makes before
     anything is sent: its format, the feature refused and its value, and whether the gap is the
     spec's or one a deployment declares, matched with `errors.As` through the format's and the
-    client's wrapping. Each refusal kept its message.
+    client's wrapping. Each refusal keeps its own wording in `Message`.
 29. **`responses.New(opts Options)` takes one options struct whose zero value is the spec's form**
     (`format/responses/format.go`). Against `construction-and-execution.md`, "The rule". **kept**:
     it already has the rule's shape.
@@ -206,8 +206,8 @@ of layers' surface to go-ai's.
     message, only the top-level `system`, so the system and developer messages that lead the input
     go out there, after the instructions, and one after the conversation has begun is refused
     rather than sent in place as a system message, which the spec doesn't define; the minimal
-    effort is refused too (finding 25). A reasoning summary, once dropped, goes out as adaptive
-    thinking's display `summarized`.
+    effort is refused too (finding 25). A reasoning summary goes out as adaptive thinking's display
+    `summarized`, and is dropped only when the request sends no adaptive thinking.
 31. **The formats' package documentation and the README record what one build of llama.cpp's router
     drops and departs from** (`format/messages/doc.go`, `format/responses/doc.go`, `README.md`).
     Against `tests-and-docs.md`, "doc.go and godoc": the package comment describes the package's
@@ -228,8 +228,8 @@ of layers' surface to go-ai's.
     the request sets is refused by name rather than overriding it silently. The package is
     internal because none of the three layers may import another, and the tier stays off go-ai's
     surface. `Marshal` reports a clash as a `ClashError` naming the member, which each format
-    refuses as its own `UnsupportedError` (finding 28): `native` can't import `format`, as
-    `protocol` imports `native`.
+    refuses as its own `UnsupportedError` (finding 28): `native` can't import `format`, since
+    `format` imports `protocol`, which imports `native`.
 
 ### Embeddings, transcription, and models
 
@@ -1098,8 +1098,8 @@ What the review rules out, one line each with its reason, cited as the sections 
   and reasoning, each proven against set A (finding 26).
 - **One `MaxOutputTokens` minimum for every format.** 16 is Open Responses' minimum alone, and
   holding every format to it refused caps Chat Completions and Messages allow (finding 27).
-- **Reasoning efforts limited to Open Responses'.** Chat Completions' minimal and Messages' max
-  would reach no model; an effort joins when an implemented format's spec defines it, and a
+- **Reasoning efforts limited to Open Responses'.** No model could then be sent Chat Completions'
+  minimal or Messages' max; an effort joins when an implemented format's spec defines it, and a
   format refuses one its spec lacks (finding 25).
 - **Refusals as untyped errors.** A caller could tell a format's refusal from a failure only by
   its text; `format.UnsupportedError` names the format and the feature (finding 28).

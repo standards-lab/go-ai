@@ -40,8 +40,8 @@ func Marshal(body any) ([]byte, error) {
 }
 
 // ClashError is a Native member named like one a wire body's typed fields set, which Marshal
-// refuses. A format reports it as its own refusal of the member; this package can't, as protocol,
-// which the format package imports, imports it.
+// refuses. A format reports it as its own refusal of the member. This package can't build that
+// refusal itself: the format package imports protocol, which imports this package.
 type ClashError struct {
 	// Member is the clashing member's name.
 	Member string

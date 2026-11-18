@@ -35,9 +35,10 @@
 //
 // It normalizes the reply to the spec's model: the reply's id and model are the response's, each
 // output item's id derives from the reply's id and its place in the output, the stop_reason gives
-// the status, only the last item taking an incomplete one, and the usage counts every input token,
-// the cached ones apart, and the thinking tokens as reasoning tokens. A stream may send several
-// message_delta events, the last stop_reason given and each cumulative count taken. A streamed
+// the status, only the last item taking an incomplete one, and the usage's input tokens count every
+// input token, cached ones included and also counted apart, and its reasoning tokens are the
+// thinking tokens. A stream may send several message_delta events: the last stop_reason given
+// stands, and each cumulative count replaces the one before. A streamed
 // reply's content blocks may be open at once, as an endpoint may stop every block only at the end
 // of the reply; the decoder closes each part at its own block's stop, and the folded Response is
 // DecodeResponse's for the same reply. An error frame in the stream, Anthropic's
