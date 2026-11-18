@@ -5,6 +5,18 @@
 // such as llama.cpp's router. A caller builds it with New at the composition root, as ai.New's
 // wireFormat.
 //
+// New takes Options, a profile of the one deployment the format targets: the gaps where that
+// deployment departs from the spec. The zero Options declare none and are the spec's form.
+// RefusedEfforts declares the reasoning efforts the deployment refuses; a request of one is
+// refused before anything is sent, a format.UnsupportedError of Declared true. NoAllowedTools
+// declares that the deployment ignores an allowed_tools choice, which the format then narrows to
+// the tools it allows and its mode as a plain tool_choice. ResendReasoningText declares that it
+// reads a reasoning item's text as content, which then goes back so, as below. A profile binds
+// the format to one deployment, so a caller of several deployments builds one format and one
+// client per deployment, sharing the http.Client. Options decodes from JSON under
+// refused_efforts, no_allowed_tools, and resend_reasoning_text; the module ships no loader of
+// them.
+//
 // It sends the request under the spec's names: model, instructions, the input items, tools, tool
 // choice, parallel_tool_calls, reasoning, text, and max_output_tokens, with Native's members, the
 // native tier, merged into the body's top level, and a tool's strict flag always sent.
@@ -25,8 +37,8 @@
 // encrypted_content back, and never content, dropping an item whose server encrypted_content is
 // empty. Options.ResendReasoningText sends the texts back as content too: the one exception to
 // protocol.Reasoning's rule that a format never sends a reasoning item's text on input, for an
-// endpoint such as llama.cpp's router, which gives no encrypted_content and reads the reasoning
-// from content; under it, a run of reasoning that no assistant message or function_call follows
+// endpoint such as llama.cpp's router or vLLM 0.34.0, which gives no encrypted_content and reads
+// the reasoning from content; under it, a run of reasoning that no assistant message or function_call follows
 // is dropped, as the router refuses one. An envelope under another prefix, another format's,
 // another version's, or another implementor's, is dropped on encode.
 //
@@ -34,7 +46,7 @@
 // part: the content part {"type":"go-ai:input_audio","data","format"}, its data the
 // clip's bytes in standard base64 and its format wav or mp3.
 //
-// It refuses, before anything is sent, a MaxOutputTokens below MinMaxOutputTokens, the spec's
+// It refuses, before anything is sent, the efforts its Options declare refused, a MaxOutputTokens below MinMaxOutputTokens, the spec's
 // minimum of 16; a reasoning effort the spec lacks, minimal or max; a Native member that clashes
 // with one the typed fields set, stream, store, and include among them; and a Native
 // previous_response_id or background, as above.
@@ -48,9 +60,6 @@
 // A reply's output item of a type the protocol has no form for, such as a hosted tool's call, and
 // a message's content part of a type that isn't an output part, are skipped, whole and streamed,
 // never an error, the output and content indexes after them closing up.
-//
-// The format's Options adjust it to an endpoint that departs from the spec; their zero value is
-// the spec's form.
 //
 // A streamed reply becomes the spec's semantic events, under the spec's names, each numbered by
 // the decoder in order and placed at its item's output_index. A stream that departs from the
@@ -75,9 +84,9 @@
 // Its exported identifiers:
 //
 //   - [Format] is the format, a format.Format.
-//   - [Options] adjusts the format to an endpoint that departs from the spec.
+//   - [Options] is the profile of the deployment the format targets, its zero value the spec.
 //   - [MinMaxOutputTokens] is the least positive MaxOutputTokens it sends, the spec's 16.
-//   - [New] returns the format.
+//   - [New] returns the format under a profile.
 //   - [Format.Route] is the route it posts to, responses.
 //   - [Format.EncodeRequest] encodes a request as a create-response body: model, instructions,
 //     input items, tools, tool choice, parallel_tool_calls, reasoning, text, max_output_tokens,

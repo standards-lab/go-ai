@@ -1,6 +1,8 @@
 package responses_test
 
 import (
+	"encoding/json/v2"
+	"net/http"
 	"testing"
 
 	"github.com/standards-lab/go-ai/format/responses"
@@ -193,28 +195,91 @@ func dropCases(t *testing.T, user protocol.Message) []reasoningCase {
 	return out
 }
 
-// TestReasoningRoundTripRecorded decodes the router's recorded reasoning and call, sends them
-// back after the user's question with the call's output, and wants the request llama.cpp's
-// router takes with ResendReasoningText: the reasoning's text as content ahead of the call, its
-// id the router's, and no encrypted_content, the router's being empty. The spec's form drops the
-// reasoning.
+// TestReasoningRoundTripRecorded drives two turns through ai.Client.Generate over a loopback
+// server answering with a recorded reasoning reply, and wants the reply's reasoning sent back on
+// the next turn as the deployment takes it. With ResendReasoningText, the profile of a deployment
+// that gives no encrypted_content, the reasoning's text goes back as content ahead of the item
+// that answered it, its id the server's, and no encrypted_content: llama.cpp's router's
+// reasoning ahead of its call, and vLLM 0.34.0's, whose reasoning item carries reasoning_text
+// content and a null encrypted_content, ahead of its message. The spec's form drops the
+// reasoning, there being no encrypted_content to send.
 func TestReasoningRoundTripRecorded(t *testing.T) {
-	resp, err := responses.New(responses.Options{}).DecodeResponse(aitest.ReadTestdata(t, "tool_call.json"))
-	if err != nil {
-		t.Fatalf("DecodeResponse: %v", err)
+	cases := []struct {
+		name  string
+		reply string
+		// question is the user's text of the first turn, and follow the item the next turn adds
+		// after the reply's output.
+		question string
+		follow   protocol.Item
+		// reasoning is the reply's reasoning text, decoded as the reasoning item's content.
+		reasoning string
+		// reasoningJSON is the reply's reasoning item resent with its text, and answerJSON the
+		// item after it, as each goes back; followJSON is follow on the wire.
+		reasoningJSON, answerJSON, followJSON string
+	}{
+		{
+			name:      "llama.cpp router",
+			reply:     "tool_call.json",
+			question:  "What is the weather in Paris right now?",
+			follow:    protocol.FunctionCallOutput{CallID: "call_HMhSOwdRkvjir1D59ezHFChk5pTnYdJc", Output: `{"celsius":17}`},
+			reasoning: "User asks current weather in Paris. Use function get_weather.",
+			reasoningJSON: `{"type":"reasoning","id":"rs_H4pfaCFvrGf1ljLr7M56OB81gR3sEvYK","summary":[],
+				"content":[{"type":"reasoning_text","text":"User asks current weather in Paris. Use function get_weather."}]}`,
+			answerJSON: `{"type":"function_call","id":"fc_HMhSOwdRkvjir1D59ezHFChk5pTnYdJc","call_id":"call_HMhSOwdRkvjir1D59ezHFChk5pTnYdJc",
+				"name":"get_weather","arguments":"{\n  \"city\": \"Paris\"\n}"}`,
+			followJSON: `{"type":"function_call_output","call_id":"call_HMhSOwdRkvjir1D59ezHFChk5pTnYdJc","output":"{\"celsius\":17}"}`,
+		},
+		{
+			name:      "vLLM 0.34.0",
+			reply:     "vllm-0.34.0/reasoning_text.json",
+			question:  "Name three French cities, comma-separated, nothing else.",
+			follow:    text(protocol.RoleUser, "And three German ones?"),
+			reasoning: "We just output three French cities separated by commas.",
+			reasoningJSON: `{"type":"reasoning","id":"rs_8e31363d3477e577","summary":[],
+				"content":[{"type":"reasoning_text","text":"We just output three French cities separated by commas."}]}`,
+			answerJSON: `{"type":"message","id":"msg_a78b6a7988ed022b","role":"assistant",
+				"content":[{"type":"output_text","text":"Paris, Lyon, Marseille"}]}`,
+			followJSON: `{"type":"message","role":"user","content":[{"type":"input_text","text":"And three German ones?"}]}`,
+		},
 	}
-	question := text(protocol.RoleUser, "What is the weather in Paris right now?")
-	input := append(append([]protocol.Item{question}, resp.Output...),
-		protocol.FunctionCallOutput{CallID: "call_HMhSOwdRkvjir1D59ezHFChk5pTnYdJc", Output: `{"celsius":17}`})
-	questionJSON := `{"type":"message","role":"user","content":[{"type":"input_text","text":"What is the weather in Paris right now?"}]}`
-	callJSON := `{"type":"function_call","id":"fc_HMhSOwdRkvjir1D59ezHFChk5pTnYdJc","call_id":"call_HMhSOwdRkvjir1D59ezHFChk5pTnYdJc",
-		"name":"get_weather","arguments":"{\n  \"city\": \"Paris\"\n}"}`
-	outputJSON := `{"type":"function_call_output","call_id":"call_HMhSOwdRkvjir1D59ezHFChk5pTnYdJc","output":"{\"celsius\":17}"}`
-
-	aitest.AssertJSON(t, encodeWith(t, responses.Options{ResendReasoningText: true}, ask(input...)), `{"model":"m",`+stateless+`,"input":[`+
-		questionJSON+`,
-		{"type":"reasoning","id":"rs_H4pfaCFvrGf1ljLr7M56OB81gR3sEvYK","summary":[],
-			"content":[{"type":"reasoning_text","text":"User asks current weather in Paris. Use function get_weather."}]},`+
-		callJSON+`,`+outputJSON+`]}`)
-	aitest.AssertJSON(t, encode(t, ask(input...)), `{"model":"m",`+stateless+`,"input":[`+questionJSON+`,`+callJSON+`,`+outputJSON+`]}`)
+	for _, tc := range cases {
+		question := text(protocol.RoleUser, tc.question)
+		questionJSON, err := json.Marshal(tc.question)
+		if err != nil {
+			t.Fatal(err)
+		}
+		head := `{"model":"m",` + stateless + `,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":` +
+			string(questionJSON) + `}]},`
+		profiles := []struct {
+			name string
+			opts responses.Options
+			want string
+		}{
+			{"ResendReasoningText", responses.Options{ResendReasoningText: true},
+				head + tc.reasoningJSON + `,` + tc.answerJSON + `,` + tc.followJSON + `]}`},
+			{"spec form", responses.Options{}, head + tc.answerJSON + `,` + tc.followJSON + `]}`},
+		}
+		for _, p := range profiles {
+			t.Run(tc.name+"/"+p.name, func(t *testing.T) {
+				srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, tc.reply)))
+				c := newProfileClient(t, srv.URL+"/v1", p.opts, &tokenCounter{})
+				resp, err := c.Generate(t.Context(), ask(question))
+				if err != nil {
+					t.Fatalf("Generate: %v", err)
+				}
+				if rs, ok := resp.Output[0].(protocol.Reasoning); !ok || len(rs.Content) != 1 || rs.Content[0].Text != tc.reasoning {
+					t.Errorf("Output[0] = %#v, want the reasoning %q as its content", resp.Output[0], tc.reasoning)
+				}
+				next := append(append([]protocol.Item{question}, resp.Output...), tc.follow)
+				if _, err := c.Generate(t.Context(), ask(next...)); err != nil {
+					t.Fatalf("Generate, next turn: %v", err)
+				}
+				reqs := srv.Requests()
+				if len(reqs) != 2 {
+					t.Fatalf("server received %d requests, want 2", len(reqs))
+				}
+				aitest.AssertJSON(t, reqs[1].Body, p.want)
+			})
+		}
+	}
 }
