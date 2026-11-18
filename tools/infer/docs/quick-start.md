@@ -98,8 +98,7 @@ The summary has three lines:
   is neither.
 - `reasoning items:` counts the reply's reasoning items.
 
-With no arguments, the prompt is stdin. `--instructions` guides the model, and `--stream=false`
-waits for the whole reply:
+With no arguments, the prompt is stdin. `--instructions` guides the model:
 
 ```text
 $ echo "Summarize: The quick brown fox jumps over the lazy dog. It does this every morning before breakfast." | infer chat --instructions "Answer in French, in one sentence."
@@ -108,6 +107,8 @@ status: completed
 usage: 104 input tokens, 90 output tokens (57 reasoning), 194 total tokens
 reasoning items: 1
 ```
+
+`--stream=false` turns streaming off: chat waits for the whole reply before writing it.
 
 ## 5. Tune the reply
 
