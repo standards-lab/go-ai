@@ -87,3 +87,58 @@ if wanted models; then
     lifecycle_status: (.data | group_by(.lifecycle_status) | map({(.[0].lifecycle_status): length}) | add)}' models.json
   rm models.json
 fi
+
+# The gap stems, oss_tool_choice_required, oss_parallel_tool_calls, and parallel_tool_calls, are
+# sent only when named, so a run of no names records the replies above and sends none of them.
+named() { [[ $names == *" $1 "* ]]; }
+
+# requests is the running count of Azure requests the gap stems send, from AZURE_REQUESTS, the
+# count the task sent before this run, or 0.
+requests=${AZURE_REQUESTS:-0}
+
+# gap file role model want body: sends body, unstreamed as EncodeRequest gives it, to the role's
+# chat/completions, and prints its line with the running count of Azure requests. A 429 stops the
+# script. With want 400, a 400 is written to file. With want probe, a 400 is written to file and a
+# 200, the host taking the request, is reported and discarded. Any other reply is discarded and
+# stops the script.
+gap() {
+  local file=$1 role=$2 model=$3 want=$4 body=$5 base="AI_${2}_BASE_URL" status
+  if [ -z "${!base:-}" ]; then
+    echo "$base is not set" >&2
+    exit 1
+  fi
+  status=$(config "$role" /chat/completions | curl -s -K - -o "$file.part" -w '%{http_code}' \
+    -H 'Content-Type: application/json' -d "$body") || true
+  requests=$((requests + 1))
+  printf '%s /chat/completions %s stream=n %s azure=%d\n' "$(date -u +%FT%TZ)" "$model" "$status" "$requests"
+  if [ "$status" = 400 ]; then
+    mv "$file.part" "$file"
+    return
+  fi
+  rm -f "$file.part"
+  if [ "$want" = probe ] && [ "$status" = 200 ]; then
+    echo "$file: HTTP 200, the host took the request; nothing kept"
+    return
+  fi
+  echo "$file: HTTP $status; stopping" >&2
+  exit 1
+}
+
+weather='"tools":[{"type":"function","function":{"name":"get_weather","description":"Get the current temperature in a city, in degrees Celsius.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}]'
+two_cities='"messages":[{"role":"user","content":"What is the weather in Paris and in London right now?"}]'
+
+# tool_choice required, which gpt-oss-120b refuses: a 400.
+if named oss_tool_choice_required; then
+  gap oss_tool_choice_required.json AGENT "$AGENT" 400 \
+    '{"model":"'"$AGENT"'","messages":[{"role":"user","content":"What is the weather in Paris right now?"}],'"$weather"',"tool_choice":"required","reasoning_effort":"low","max_completion_tokens":256,"stream":false,"temperature":0,"seed":7}'
+fi
+
+# parallel_tool_calls false, a probe of each deployment: a 400 is kept, a 200 reported.
+if named oss_parallel_tool_calls; then
+  gap oss_parallel_tool_calls.json AGENT "$AGENT" probe \
+    '{"model":"'"$AGENT"'",'"$two_cities"','"$weather"',"reasoning_effort":"low","max_completion_tokens":256,"parallel_tool_calls":false,"stream":false,"temperature":0,"seed":7}'
+fi
+if named parallel_tool_calls; then
+  gap parallel_tool_calls.json VISION "$VISION" probe \
+    '{"model":"'"$VISION"'",'"$two_cities"','"$weather"',"reasoning_effort":"low","max_completion_tokens":1024,"parallel_tool_calls":false,"stream":false}'
+fi

@@ -1,0 +1,1 @@
+{"error":{"message":"reasoning_effort='xhigh' is not supported by Harmony. Supported values are: high, medium, low. (parameter=reasoning_effort)","type":"BadRequestError","param":"reasoning_effort","code":400}}

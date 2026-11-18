@@ -30,6 +30,23 @@ same request sent again, has other token counts and encrypted content.
 - `reasoning.json`, `reasoning.sse`: gpt-5-mini, `reasoning` `{"effort":"low"}`, the same
   question; a reasoning item, then the message.
 
+## The gap stem
+
+One stem probes a gap a profile declares, for the format-profiles task: `parallel_tool_calls`. It
+is sent only when named, so a run of no names records the files above and sends none of it, and
+it is not recorded yet. Its request is in the script verbatim, unstreamed and stateless, its
+members in the order `EncodeRequest` gives them: gpt-5-mini, `reasoning.effort` low, asked "What
+is the weather in Paris and in London right now?" with the `get_weather` tool and
+`parallel_tool_calls` false. It is a probe: a 400 is kept, as the backing of
+`NoParallelToolCalls` (`no_parallel_tool_calls`), and a 200, the host taking the member, is
+reported and discarded; any other status, a 429 among them, stops the script. Its line ends with
+`azure=N`, the running count of Azure requests, which starts from `AZURE_REQUESTS`, the count the
+task sent before the run, or 0.
+
+```
+AZURE_REQUESTS=3 ./record.sh parallel_tool_calls
+```
+
 ## What Foundry departs from
 
 Foundry adds gpt-5-mini's reasoning item with an `encrypted_content` already set, 1188

@@ -1,0 +1,1 @@
+{"id":"chatcmpl-9b954247f3c78ffb","type":"message","role":"assistant","content":[{"type":"thinking","thinking":"We just output three French cities separated by commas.","signature":"5a0c5d2b58dd41959e1f299f674e1f41"},{"type":"text","text":"Paris, Lyon, Marseille"}],"model":"agent","stop_reason":"end_turn","usage":{"input_tokens":78,"output_tokens":25}}

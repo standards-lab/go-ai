@@ -39,6 +39,29 @@ for the `.json`, given the stream's ids, reasoning text, and usage, which they p
 - `oss_length.json`, `oss_length.sse`: gpt-oss-120b, the same question at
   `max_completion_tokens` 16; it stops in the reasoning, finish_reason `length`, the content `""`.
 
+## The gap stems
+
+Three stems probe the gaps a profile declares, for the format-profiles task: `oss_tool_choice_required`,
+`oss_parallel_tool_calls`, and `parallel_tool_calls`. They are sent only when named, so a run of no
+names records the files above and sends none of them, and none is recorded yet. Each request is in
+the script verbatim, unstreamed, its members in the order `EncodeRequest` gives them, and prints
+its line with `azure=N`, the running count of Azure requests, which starts from `AZURE_REQUESTS`,
+the count the task sent before the run, or 0. A 429 stops the script.
+
+- `oss_tool_choice_required`: gpt-oss-120b, `reasoning_effort` low, asked "What is the weather in
+  Paris right now?" with the `get_weather` tool and `tool_choice` `required`, `temperature` 0 and
+  `seed` 7. A 400 is kept, as the backing of `NoToolChoiceRequired` (`no_tool_choice_required`);
+  any other status stops the script.
+- `oss_parallel_tool_calls`, `parallel_tool_calls`: gpt-oss-120b and gpt-5-mini, `reasoning_effort`
+  low, asked "What is the weather in Paris and in London right now?" with the `get_weather` tool
+  and `parallel_tool_calls` false. Each is a probe: a 400 is kept, as the backing of
+  `NoParallelToolCalls` (`no_parallel_tool_calls`), and a 200, the host taking the member, is
+  reported and discarded; any other status stops the script.
+
+```
+AZURE_REQUESTS=0 ./record.sh oss_tool_choice_required oss_parallel_tool_calls parallel_tool_calls
+```
+
 ## What Foundry departs from
 
 gpt-5-mini's stream opens with a chunk of an empty `id`, no choices, `created` 0, empty `model`
