@@ -43,7 +43,7 @@ for the `.json`, given the stream's ids, reasoning text, and usage, which they p
 
 Three stems probe the gaps a profile declares, for the format-profiles task: `oss_tool_choice_required`,
 `oss_parallel_tool_calls`, and `parallel_tool_calls`. They are sent only when named, so a run of no
-names records the files above and sends none of them, and none is recorded yet. Each request is in
+names records the files above and sends none of them. Each request is in
 the script verbatim, unstreamed, its members in the order `EncodeRequest` gives them, and prints
 its line with `azure=N`, the running count of Azure requests, which starts from `AZURE_REQUESTS`,
 the count the task sent before the run, or 0. A 429 stops the script.
@@ -61,6 +61,13 @@ the count the task sent before the run, or 0. A 429 stops the script.
 ```
 AZURE_REQUESTS=0 ./record.sh oss_tool_choice_required oss_parallel_tool_calls parallel_tool_calls
 ```
+
+Run on 2026-11-18:
+
+- `oss_tool_choice_required.json`: gpt-oss-120b answered 400, code `UnsupportedToolUse`,
+  "tool_choice 'required' is not supported for the model." It backs `NoToolChoiceRequired`.
+- `oss_parallel_tool_calls`, `parallel_tool_calls`: both deployments answered 200, taking
+  `parallel_tool_calls` false, so neither declares a field and nothing is kept.
 
 ## What Foundry departs from
 

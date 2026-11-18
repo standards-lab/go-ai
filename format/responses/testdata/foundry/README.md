@@ -33,8 +33,8 @@ same request sent again, has other token counts and encrypted content.
 ## The gap stem
 
 One stem probes a gap a profile declares, for the format-profiles task: `parallel_tool_calls`. It
-is sent only when named, so a run of no names records the files above and sends none of it, and
-it is not recorded yet. Its request is in the script verbatim, unstreamed and stateless, its
+is sent only when named, so a run of no names records the files above and sends none of it. Its
+request is in the script verbatim, unstreamed and stateless, its
 members in the order `EncodeRequest` gives them: gpt-5-mini, `reasoning.effort` low, asked "What
 is the weather in Paris and in London right now?" with the `get_weather` tool and
 `parallel_tool_calls` false. It is a probe: a 400 is kept, as the backing of
@@ -46,6 +46,9 @@ task sent before the run, or 0.
 ```
 AZURE_REQUESTS=3 ./record.sh parallel_tool_calls
 ```
+
+Run on 2026-11-18, gpt-5-mini answered 200, taking `parallel_tool_calls` false, so it declares no
+field and nothing is kept.
 
 ## What Foundry departs from
 
