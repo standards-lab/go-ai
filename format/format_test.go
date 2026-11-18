@@ -36,3 +36,28 @@ func TestDecodeOpenAIError(t *testing.T) {
 		})
 	}
 }
+
+// TestUnsupportedErrorMessage wants Error to return the refusal's Message when it has one, and
+// otherwise an account of its Format, Feature, and Value, as a Format built outside this module
+// may leave Message empty.
+func TestUnsupportedErrorMessage(t *testing.T) {
+	cases := []struct {
+		name string
+		err  format.UnsupportedError
+		want string
+	}{
+		{"its message", format.UnsupportedError{Format: "f", Feature: "tool choice", Value: "x", Message: "no tools here"},
+			"no tools here"},
+		{"feature and value", format.UnsupportedError{Format: "f", Feature: "tool choice", Value: "x"},
+			"tool choice x has no f form"},
+		{"feature alone", format.UnsupportedError{Format: "f", Feature: "max output tokens"},
+			"max output tokens has no f form"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.err.Error(); got != tc.want {
+				t.Errorf("Error = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
