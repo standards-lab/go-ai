@@ -40,6 +40,8 @@ go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
 - `--max-tokens` from 1 to 15 is refused only under `--format responses`, whose spec sets the
   minimum, as `--max-tokens: responses: request's max output tokens 15 is below the minimum, 16`.
   Through `completions` and `messages` it is sent as given.
+- `transcribe --mode chat` names the mode and format only when go-ai refuses the audio part;
+  any other refusal, such as a file name with no audio extension, is go-ai's error alone.
 - `chat`'s usage line prints `(N reasoning)` when the endpoint reports reasoning tokens, and
   `(reasoning not reported)` only when it reports none and the reply holds a reasoning item, in
   any format. Otherwise it prints no parenthesis, where it printed `(0 reasoning)`, or `(reasoning

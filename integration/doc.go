@@ -67,7 +67,6 @@
 //
 // On that row, the Open Responses round trips, TestFunctionCallRoundTrip/responses,
 // TestReasoningRoundTrip/responses, and TestStreamReasoningRoundTrip/responses, pass under this
-// profile and under the zero profile alike (vLLM 0.34.0, 2026-11-18): they don't depend on the
-// reasoning sent back. Nothing reads this example, and go-ai ships no preset: the profile is the
-// caller's to give.
+// profile and under the zero profile alike: they don't depend on the reasoning sent back. Nothing
+// reads this example, and go-ai ships no preset: the profile is the caller's to give.
 package integration

@@ -72,7 +72,7 @@ func TestChatIncompleteAtMaxTokens(t *testing.T) {
 // refused, the none case skips and low wants the answer alone: Foundry's
 // gpt-5-mini reasons at low through Open Responses but, through Chat
 // Completions, whose spec has no reasoning output, returns none and reports
-// no reasoning tokens (2026-11-18).
+// no reasoning tokens.
 func TestChatReasoningEffort(t *testing.T) {
 	eachChat(t, func(t *testing.T, formatEnv, streamFlag string) {
 		noneRan := false // whether the none case reached the model, not skipped

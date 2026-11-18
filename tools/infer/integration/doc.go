@@ -82,9 +82,9 @@
 //
 // On that row, go-ai's Open Responses round trips, TestFunctionCallRoundTrip,
 // TestReasoningRoundTrip, and TestStreamReasoningRoundTrip, each through
-// responses, pass under this profile and under the zero profile alike
-// (vLLM 0.34.0, 2026-11-18). Nothing reads this example, and go-ai ships no
-// preset: the profile is the caller's to give.
+// responses, pass under this profile and under the zero profile alike.
+// Nothing reads this example, and go-ai ships no preset: the profile is the
+// caller's to give.
 //
 // The scenarios are:
 //
@@ -100,8 +100,9 @@
 //     a completed answer, and an incomplete one at --max-tokens 16, exit 1
 //     with reason max_output_tokens;
 //   - chat on vision at --reasoning none and low, in each format, streamed
-//     and unstreamed, wanting no reasoning item at none and some at low, and
-//     an --image chat in each format naming the image's shapes;
+//     and unstreamed, wanting no reasoning item at none and, where none
+//     ran rather than skipped, some at low, and an --image chat in each
+//     format naming the image's shapes;
 //   - transcribe --mode chat on audio through Chat Completions, and route
 //     mode on the transcription endpoint, each wanting the clip's words;
 //   - embed on the embedding endpoint, wanting one vector per input, the

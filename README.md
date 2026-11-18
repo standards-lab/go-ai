@@ -141,6 +141,10 @@ which an endpoint that lists more than one, such as a cloud account's whole cata
 An endpoint that needs credentials takes them from `AI_<ROLE>_TOKEN`, sent as the bearer token,
 and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value.
 
+A role's [profile](docs/concepts.md#profiles) goes in `AI_<ROLE>_PROFILE`, the JSON object keyed
+by format name that `infer`'s `--profile` takes. Unset, each format follows its spec. A scenario
+whose request the profile refuses before sending skips and names the gap.
+
 ```sh
 AI_AGENT_BASE_URL=https://gateway.example/agent/v1 AI_AGENT_HEADER='api-key: …' mise run integration
 ```

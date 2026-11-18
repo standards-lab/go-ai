@@ -9,7 +9,8 @@
 //     define and mount functions in layer order, lowest first;
 //   - infrastructure.go: defineInfrastructure, the root flags and the
 //     configuration, read from INFER_ variables, the lifecycle
-//     configuration, the retry policy, and the go-ai client of the one
+//     configuration, the retry policy, the format in its spec's form and
+//     under the deployment's profile, and the go-ai client of the one
 //     endpoint a run talks to; the commands' own flags over a variable,
 //     transcribe's --mode and chat's --idle-timeout; and the transcriber
 //     and the chat client, clients of the same endpoint in the
@@ -26,23 +27,25 @@
 // INFER_FORMAT, and INFER_MODEL, when given; --format is completions,
 // messages, or responses, and completions when neither is given. The
 // bearer token is INFER_TOKEN's, never a flag's, and an empty one sends
-// none. The root flag --profile, over INFER_PROFILE, is the deployment's
+// none. INFER_HEADER, never a flag's either, holds headers sent on every
+// request, such as a gateway's api-key, one "Name: value" per line, each
+// line trimmed and a blank one skipped; a line with no colon or no name, a
+// name the client sets (Authorization, Content-Type, or Accept), or a name
+// or value net/http can't send is a usage error naming INFER_HEADER, never
+// its value. The root help's footer names both, as no flag does.
+//
+// The root flag --profile, over INFER_PROFILE, is the deployment's
 // profile: a JSON object keyed by format name, completions, messages, or
-// responses, each member that format's go-ai Options under their
-// snake_case names, as in {"responses":{"refused_efforts":["none"]}}. The
-// format in use is built with its member, or its spec's form when there is
-// none, and unset or empty is no member at all. It is decoded strictly: an
-// unknown key or field, a Go field name, or a value a field refuses is a
-// usage error, exit 2, naming the flag and its variable. Only chat and
+// responses, each member that format's go-ai Options under its snake_case
+// names, as in {"responses":{"refused_efforts":["none"]}}. The format in
+// use is built with its member, or in its spec's form when the member is
+// absent or the profile unset or empty. It is decoded strictly: an unknown
+// key or field, a Go field name, or a value a field refuses is a usage
+// error, exit 2, naming the flag and its variable. Only chat and
 // transcribe, whose requests a profile changes, read it, so a malformed
-// one fails neither models nor embed. INFER_HEADER, never a flag's either,
-// holds headers sent on every request, such as a gateway's api-key, one
-// "Name: value" per line, each line trimmed and a blank one skipped; a line
-// with no colon or no name, a name the client sets (Authorization,
-// Content-Type, or Accept), or a name or value net/http can't send is a
-// usage error naming INFER_HEADER, never its value. The root help's footer
-// names both, as no flag does. The root flags
-// --retries, --retry-base-delay, and --retry-max-delay, over
+// one fails neither models nor embed.
+//
+// The root flags --retries, --retry-base-delay, and --retry-max-delay, over
 // INFER_RETRIES, INFER_RETRY_BASE_DELAY, and INFER_RETRY_MAX_DELAY, set
 // go-ai's retry policy for every command: --retries is the most attempts
 // of a request, the first included, and unset retries nothing. Each is a
