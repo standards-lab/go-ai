@@ -73,7 +73,7 @@ export INFER_HEADER='api-key: <your key>'
 
 ```text
 $ infer models
-openai/gpt-oss-120b
+agent
 ```
 
 ## 4. Chat
@@ -83,9 +83,9 @@ streams the reply to stdout. Then it writes a summary to stderr:
 
 ```text
 $ infer chat "What is a wire format? One sentence."
-A wire format is the standardized, low‑level binary or textual representation of data as it is transmitted across a network or communication channel.
+A wire format is the exact binary or textual encoding scheme that defines how data is structured and serialized for transmission over a network or other communication medium.
 status: completed
-usage: 76 input tokens, 74 output tokens (37 reasoning), 150 total tokens
+usage: 76 input tokens, 100 output tokens (61 reasoning), 176 total tokens
 reasoning items: 1
 ```
 
@@ -103,9 +103,9 @@ waits for the whole reply:
 
 ```text
 $ echo "Summarize: The quick brown fox jumps over the lazy dog. It does this every morning before breakfast." | infer chat --instructions "Answer in French, in one sentence."
-Le renard brun rapide saute par-dessus le chien paresseux chaque matin avant le petit‑déjeuner.
+Chaque matin, le rapide renard brun saute par-dessus le chien paresseux avant le petit‑déjeuner.
 status: completed
-usage: 104 input tokens, 119 output tokens (87 reasoning), 223 total tokens
+usage: 104 input tokens, 90 output tokens (57 reasoning), 194 total tokens
 reasoning items: 1
 ```
 
@@ -118,13 +118,13 @@ changes how much the model spends:
 $ infer chat --reasoning low "Is 1009 prime? Answer yes or no."
 Yes.
 status: completed
-usage: 78 input tokens, 24 output tokens (12 reasoning), 102 total tokens
+usage: 78 input tokens, 20 output tokens (8 reasoning), 98 total tokens
 reasoning items: 1
 
 $ infer chat --reasoning high "Is 1009 prime? Answer yes or no."
 Yes.
 status: completed
-usage: 78 input tokens, 431 output tokens (419 reasoning), 509 total tokens
+usage: 78 input tokens, 107 output tokens (95 reasoning), 185 total tokens
 reasoning items: 1
 ```
 
@@ -133,13 +133,13 @@ more. A reply that reaches the cap ends incomplete and exits 1.
 
 ```text
 $ infer chat --max-tokens 256 "Name three rivers."
-Sure! Here are three well‑known rivers:
+Sure! Here are three well‑known rivers from different parts of the world:
 
-1. **The Nile** – Flowing northward through northeastern Africa, …
-2. **The Amazon** – Running through South America, …
-3. **The Yangtze** – The longest river in Asia, …
+1. **Nile River** – The longest river in Africa (and often considered the longest in the world), …
+2. **Amazon River** – The massive river system in South America, …
+3. **Yangtze River** – China’s longest river, …
 status: completed
-usage: 71 input tokens, 146 output tokens (45 reasoning), 217 total tokens
+usage: 71 input tokens, 191 output tokens (30 reasoning), 262 total tokens
 reasoning items: 1
 ```
 
@@ -148,9 +148,9 @@ cover:
 
 ```text
 $ infer chat --native '{"temperature": 0.2, "top_k": 40}' "Name a color. One word."
-Azure
+Crimson
 status: completed
-usage: 74 input tokens, 45 output tokens (34 reasoning), 119 total tokens
+usage: 74 input tokens, 45 output tokens (33 reasoning), 119 total tokens
 reasoning items: 1
 ```
 
@@ -161,9 +161,9 @@ or `messages`. The same endpoint answers in each one it serves:
 
 ```text
 $ infer --format responses chat "Say hello in five words."
-Hello there wonderful human friend.
+Hello there, nice to meet!
 status: completed
-usage: 73 input tokens, 157 output tokens (141 reasoning), 230 total tokens
+usage: 73 input tokens, 69 output tokens (52 reasoning), 142 total tokens
 reasoning items: 1
 ```
 
@@ -172,9 +172,9 @@ tokens:
 
 ```text
 $ infer --format messages chat --max-tokens 512 "Say hello in five words."
-Hello, dear friend, welcome aboard!
+Hello there, wonderful world today!
 status: completed
-usage: 73 input tokens, 153 output tokens (reasoning not reported), 226 total tokens
+usage: 73 input tokens, 78 output tokens (reasoning not reported), 151 total tokens
 reasoning items: 1
 ```
 
@@ -233,8 +233,8 @@ has no transcription route, so `--mode chat` sends the clip in a chat request in
 
 ```text
 $ infer transcribe --mode chat integration/testdata/phrase.wav
-The access code is 7429.
-usage: 181 input tokens, 11 output tokens, 192 total tokens
+The access code is seven four two nine.
+usage: 181 input tokens, 10 output tokens, 191 total tokens
 ```
 
 `INFER_TRANSCRIPTION_MODE=chat` sets the mode for every run.
@@ -251,8 +251,8 @@ Each argument is one input, and each vector is one line:
 
 ```text
 $ infer embed "first passage" "second passage"
-[0.18457031,-0.6640625,-0.484375,0.46875,0.89453125,…]
-[-0.4453125,-0.76953125,-0.56640625,1.1484375,0.5078125,…]
+[0.18164062,-0.6640625,-0.47851562,0.46484375,0.8828125,…]
+[-0.44921875,-0.78125,-0.55859375,1.1484375,0.49804688,…]
 usage: 8 input tokens, 8 total tokens
 ```
 
@@ -261,7 +261,7 @@ captures only the vectors:
 
 ```text
 $ infer embed < passages.txt > vectors.jsonl
-usage: 16 input tokens, 16 total tokens
+usage: 8 input tokens, 8 total tokens
 $ wc -l vectors.jsonl
 2 vectors.jsonl
 ```
@@ -274,9 +274,9 @@ default alone:
 
 ```text
 $ infer --retries 3 --retry-base-delay 500ms --retry-max-delay 10s chat "Say hello in five words."
-Hello dear friend, have fun.
+Hello, nice to meet you!
 status: completed
-usage: 73 input tokens, 149 output tokens (132 reasoning), 222 total tokens
+usage: 73 input tokens, 97 output tokens (80 reasoning), 170 total tokens
 reasoning items: 1
 ```
 
@@ -320,7 +320,7 @@ infer nothing to send. The wording after an HTTP status is the endpoint's own.
 
 ```text
 $ infer --model gpt-4o chat "Say hello."
-infer chat: ai: generate stream: 404 Not Found: The model `gpt-4o` does not exist. Valid aliases: openai/gpt-oss-120b. (NotFoundError, 404)
+infer chat: ai: generate stream: 404 Not Found: The model `gpt-4o` does not exist. Valid aliases: agent. (NotFoundError, 404)
 ```
 
 Run `infer models` and pass one of its IDs, or drop `--model` on a one-model endpoint.
@@ -365,7 +365,7 @@ written is kept.
 
 ```text
 $ infer chat --max-tokens 16 "Tell me a long story."
-The lighthouse at Crow’s End did not warn ships away from rocks; it
+The lighthouse at Oakhaven did not warn ships of rocks; it warned them
 status: incomplete
 usage: 19 input tokens, 16 output tokens, 35 total tokens
 reasoning items: 0
