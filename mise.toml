@@ -64,8 +64,8 @@ done
 #   messages refused_efforts: effort_none.json, effort_xhigh.json, effort_max.json
 # On that row the Open Responses round trips, TestFunctionCallRoundTrip, TestReasoningRoundTrip,
 # and TestStreamReasoningRoundTrip through responses, pass under this profile and under the zero
-# profile alike (vLLM 0.34.0, 2026-11-18). Nothing reads this example; go-ai ships no preset. Each tier's
-# package doc, integration/doc.go and tools/infer/integration/doc.go, tells it in full. A
+# profile alike (vLLM 0.34.0, 2026-11-18). Nothing reads this example; go-ai ships no preset. Each
+# tier's package doc, integration/doc.go and tools/infer/integration/doc.go, tells it in full. A
 # scenario whose variable is unset skips, so with none set the run skips whole and passes. It runs
 # verbose, so the log lists each scenario passed or skipped, with the variable a skip wants. It
 # never starts a server, and no CI job runs it.

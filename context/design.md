@@ -1035,13 +1035,14 @@ alone:
   different reason, the errors compared whole. Otherwise, as with two flags refused only
   together, go-ai's reason stands alone. It streams through `Client.GenerateStream` by default,
   writing each `OutputTextDelta` as it arrives and folding the events with
-  `protocol.Accumulator`; `--stream=false` sends one request through `Client.Generate`. Either way it writes the reply's status, its usage, and its count of
-  reasoning items to stderr, the reasoning tokens shown as part of the output, as in `usage: 78
-  input tokens, 38 output tokens (27 reasoning), 116 total tokens`. go-ai decodes an absent
-  reasoning count as zero, so when the count is zero and the reply holds a reasoning item, as
-  through `messages`, whose usage has none, the line says `(reasoning not reported)`; with
-  neither, it has no parenthesis. A reply that isn't completed keeps the text written and exits
-  1 naming its status and reason, as in `incomplete: max_output_tokens`.
+  `protocol.Accumulator`; `--stream=false` sends one request through `Client.Generate`. Either way
+  it writes the reply's status, its usage, and its count of reasoning items to stderr, the
+  reasoning tokens shown as part of the output, as in `usage: 78 input tokens, 38 output tokens
+  (27 reasoning), 116 total tokens`. go-ai decodes an absent reasoning count as zero, so when the
+  count is zero and the reply holds a reasoning item, as through `messages`, whose usage has none,
+  the line says `(reasoning not reported)`; with neither, it has no parenthesis. A reply that
+  isn't completed keeps the text written and exits 1 naming its status and reason, as in
+  `incomplete: max_output_tokens`.
 - **`transcribe`** sends one audio file through `Client.Transcribe`, its `Open` opening the file
   again for each attempt, and writes the transcript, with the usage on stderr. `--mode`, over
   `INFER_TRANSCRIPTION_MODE`, sets `Options.TranscriptionMode`: `route`, the default, or `chat`,

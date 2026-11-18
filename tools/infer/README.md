@@ -140,8 +140,8 @@ reasoning items: 1
 
 Reasoning tokens are part of the output tokens. When the endpoint reports none but the reply
 holds a reasoning item, as through `messages`, which doesn't count them, the usage line says
-`(reasoning not reported)`. With neither, it has no parenthesis. A reply that isn't completed keeps the text already
-written, prints its summary, and exits 1.
+`(reasoning not reported)`. With neither, it has no parenthesis. A reply that isn't completed
+keeps the text already written, prints its summary, and exits 1.
 
 ## transcribe
 

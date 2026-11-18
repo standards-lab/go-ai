@@ -193,8 +193,8 @@ type chatFlags struct {
 // go-ai's reason, as [refusedRequest] finds it, as in "--max-tokens:
 // responses: request's max output tokens 15 is below the minimum, 16", and,
 // for a refusal the deployment's profile declares, the setting that
-// declared it after the reason. The model isn't resolved yet when the request is checked, so an unset one is
-// checked as a stand-in name.
+// declared it after the reason. The model isn't resolved yet when the
+// request is checked, so an unset one is checked as a stand-in name.
 //
 // A reply that isn't completed keeps the text already written, and its
 // summary, and exits 1 naming its status, with the reason an incomplete

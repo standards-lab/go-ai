@@ -35,12 +35,13 @@
 // unknown key or field, a Go field name, or a value a field refuses is a
 // usage error, exit 2, naming the flag and its variable. Only chat and
 // transcribe, whose requests a profile changes, read it, so a malformed
-// one fails neither models nor embed. INFER_HEADER, never a flag's either, holds headers sent on every
-// request, such as a gateway's api-key, one "Name: value" per line, each
-// line trimmed and a blank one skipped; a line with no colon or no name, a
-// name the client sets (Authorization, Content-Type, or Accept), or a name
-// or value net/http can't send is a usage error naming INFER_HEADER, never
-// its value. The root help's footer names both, as no flag does. The root flags
+// one fails neither models nor embed. INFER_HEADER, never a flag's either,
+// holds headers sent on every request, such as a gateway's api-key, one
+// "Name: value" per line, each line trimmed and a blank one skipped; a line
+// with no colon or no name, a name the client sets (Authorization,
+// Content-Type, or Accept), or a name or value net/http can't send is a
+// usage error naming INFER_HEADER, never its value. The root help's footer
+// names both, as no flag does. The root flags
 // --retries, --retry-base-delay, and --retry-max-delay, over
 // INFER_RETRIES, INFER_RETRY_BASE_DELAY, and INFER_RETRY_MAX_DELAY, set
 // go-ai's retry policy for every command: --retries is the most attempts
