@@ -1,8 +1,6 @@
 package completions_test
 
 import (
-	"context"
-	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"testing"
@@ -19,38 +17,15 @@ import (
 // caller, and under the profile that declares the gap the format refuses or narrows the request
 // before the token source is called or anything is sent.
 
-// tokenCounter is a token source that counts its calls.
-type tokenCounter struct{ calls int }
-
-func (c *tokenCounter) token(context.Context) (string, error) {
-	c.calls++
-	return "secret", nil
-}
-
 // newProfileClient returns a Client of the server at base speaking the completions format under
 // opts, with the token source tokens.
-func newProfileClient(t *testing.T, base string, opts completions.Options, tokens *tokenCounter) *ai.Client {
+func newProfileClient(t *testing.T, base string, opts completions.Options, tokens *aitest.TokenCounter) *ai.Client {
 	t.Helper()
-	c, err := ai.New(base, http.DefaultClient, completions.New(opts), ai.Options{Token: tokens.token})
+	c, err := ai.New(base, http.DefaultClient, completions.New(opts), ai.Options{Token: tokens.Token})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	return c
-}
-
-// recordedMessage returns the error message of the recorded reply, read from its body apart from
-// the client's own decoding.
-func recordedMessage(t *testing.T, reply []byte) string {
-	t.Helper()
-	var body struct {
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(reply, &body); err != nil || body.Error.Message == "" {
-		t.Fatalf("recorded reply %s has no error message: %v", reply, err)
-	}
-	return body.Error.Message
 }
 
 // gap is a recorded gap: its reply, a request of the shape it was recorded for, the profile that
@@ -115,7 +90,7 @@ func TestGenerateRecordedGapUnderZeroProfile(t *testing.T) {
 		t.Run(g.name, func(t *testing.T) {
 			reply := aitest.ReadTestdata(t, g.reply)
 			srv := aitest.NewServer(t, http.StatusBadRequest, string(reply))
-			tokens := &tokenCounter{}
+			tokens := &aitest.TokenCounter{}
 			_, err := newProfileClient(t, srv.URL+"/v1", completions.Options{}, tokens).Generate(t.Context(), g.req)
 			apiErr, ok := errors.AsType[*ai.APIError](err)
 			if !ok {
@@ -124,11 +99,11 @@ func TestGenerateRecordedGapUnderZeroProfile(t *testing.T) {
 			if apiErr.Status != http.StatusBadRequest {
 				t.Errorf("APIError.Status = %d, want %d", apiErr.Status, http.StatusBadRequest)
 			}
-			if want := recordedMessage(t, reply); apiErr.Message != want {
+			if want := aitest.ReplyMessage(t, reply); apiErr.Message != want {
 				t.Errorf("APIError.Message = %q, want %q", apiErr.Message, want)
 			}
-			if tokens.calls != 1 {
-				t.Errorf("token source called %d times, want 1", tokens.calls)
+			if tokens.Calls != 1 {
+				t.Errorf("token source called %d times, want 1", tokens.Calls)
 			}
 			srv.Only(t)
 		})
@@ -145,7 +120,7 @@ func TestGenerateRecordedGapDeclared(t *testing.T) {
 		}
 		t.Run(g.name, func(t *testing.T) {
 			srv := aitest.NewServer(t, http.StatusBadRequest, string(aitest.ReadTestdata(t, g.reply)))
-			tokens := &tokenCounter{}
+			tokens := &aitest.TokenCounter{}
 			_, err := newProfileClient(t, srv.URL+"/v1", g.opts, tokens).Generate(t.Context(), g.req)
 			got, ok := errors.AsType[*format.UnsupportedError](err)
 			if !ok {
@@ -154,8 +129,8 @@ func TestGenerateRecordedGapDeclared(t *testing.T) {
 			if got.Format != g.refusal.Format || got.Feature != g.refusal.Feature || got.Value != g.refusal.Value || !got.Declared {
 				t.Errorf("UnsupportedError = %+v, want %+v", *got, *g.refusal)
 			}
-			if tokens.calls != 0 {
-				t.Errorf("token source called %d times for a refused request, want 0", tokens.calls)
+			if tokens.Calls != 0 {
+				t.Errorf("token source called %d times for a refused request, want 0", tokens.Calls)
 			}
 			if n := len(srv.Requests()); n != 0 {
 				t.Errorf("server received %d requests, want 0", n)
@@ -175,7 +150,7 @@ func TestGenerateAllowedToolsNarrowed(t *testing.T) {
 		}
 	}
 	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm/tool_call.json")))
-	tokens := &tokenCounter{}
+	tokens := &aitest.TokenCounter{}
 	resp, err := newProfileClient(t, srv.URL+"/v1", g.opts, tokens).Generate(t.Context(), g.req)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)

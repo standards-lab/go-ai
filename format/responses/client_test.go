@@ -3,7 +3,6 @@ package responses_test
 import (
 	"context"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"reflect"
@@ -95,38 +94,15 @@ func TestGenerateAPIError(t *testing.T) {
 	}
 }
 
-// tokenCounter is a token source that counts its calls.
-type tokenCounter struct{ calls int }
-
-func (c *tokenCounter) token(context.Context) (string, error) {
-	c.calls++
-	return "secret", nil
-}
-
 // newProfileClient returns a Client of the server at base speaking the responses format under
 // opts, with the token source tokens.
-func newProfileClient(t *testing.T, base string, opts responses.Options, tokens *tokenCounter) *ai.Client {
+func newProfileClient(t *testing.T, base string, opts responses.Options, tokens *aitest.TokenCounter) *ai.Client {
 	t.Helper()
-	c, err := ai.New(base, http.DefaultClient, responses.New(opts), ai.Options{Token: tokens.token})
+	c, err := ai.New(base, http.DefaultClient, responses.New(opts), ai.Options{Token: tokens.Token})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	return c
-}
-
-// recordedMessage returns the error message of the recorded reply, read from its body apart from
-// the client's own decoding.
-func recordedMessage(t *testing.T, reply []byte) string {
-	t.Helper()
-	var body struct {
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(reply, &body); err != nil || body.Error.Message == "" {
-		t.Fatalf("recorded reply %s has no error message: %v", reply, err)
-	}
-	return body.Error.Message
 }
 
 // The tools of the recorded allowed_tools request, as record.sh sends them, get_time on the wire
@@ -175,7 +151,7 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 		t.Run(string(e), func(t *testing.T) {
 			reply := aitest.ReadTestdata(t, "vllm-0.34.0/effort_"+string(e)+".json")
 			srv := aitest.NewServer(t, http.StatusBadRequest, string(reply))
-			tokens := &tokenCounter{}
+			tokens := &aitest.TokenCounter{}
 			_, err := newProfileClient(t, srv.URL+"/v1", responses.Options{}, tokens).Generate(t.Context(), recordedEffort(e))
 			apiErr, ok := errors.AsType[*ai.APIError](err)
 			if !ok {
@@ -184,11 +160,11 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 			if apiErr.Status != http.StatusBadRequest {
 				t.Errorf("APIError.Status = %d, want %d", apiErr.Status, http.StatusBadRequest)
 			}
-			if want := recordedMessage(t, reply); apiErr.Message != want {
+			if want := aitest.ReplyMessage(t, reply); apiErr.Message != want {
 				t.Errorf("APIError.Message = %q, want %q", apiErr.Message, want)
 			}
-			if tokens.calls != 1 {
-				t.Errorf("token source called %d times, want 1", tokens.calls)
+			if tokens.Calls != 1 {
+				t.Errorf("token source called %d times, want 1", tokens.Calls)
 			}
 			srv.Only(t)
 		})
@@ -202,7 +178,7 @@ func TestGenerateRecordedEffortDeclared(t *testing.T) {
 		t.Run(string(e), func(t *testing.T) {
 			srv := aitest.NewServer(t, http.StatusBadRequest,
 				string(aitest.ReadTestdata(t, "vllm-0.34.0/effort_"+string(e)+".json")))
-			tokens := &tokenCounter{}
+			tokens := &aitest.TokenCounter{}
 			opts := responses.Options{RefusedEfforts: []protocol.ReasoningEffort{e}}
 			_, err := newProfileClient(t, srv.URL+"/v1", opts, tokens).Generate(t.Context(), recordedEffort(e))
 			got, ok := errors.AsType[*format.UnsupportedError](err)
@@ -213,8 +189,8 @@ func TestGenerateRecordedEffortDeclared(t *testing.T) {
 			if got.Format != want.Format || got.Feature != want.Feature || got.Value != want.Value || !got.Declared {
 				t.Errorf("UnsupportedError = %+v, want %+v", *got, want)
 			}
-			if tokens.calls != 0 {
-				t.Errorf("token source called %d times for a refused request, want 0", tokens.calls)
+			if tokens.Calls != 0 {
+				t.Errorf("token source called %d times for a refused request, want 0", tokens.Calls)
 			}
 			if n := len(srv.Requests()); n != 0 {
 				t.Errorf("server received %d requests, want 0", n)
@@ -229,7 +205,7 @@ func TestGenerateRecordedEffortDeclared(t *testing.T) {
 // set.
 func TestGenerateAllowedToolsUnderZeroProfile(t *testing.T) {
 	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm-0.34.0/allowed_tools.json")))
-	resp, err := newProfileClient(t, srv.URL+"/v1", responses.Options{}, &tokenCounter{}).Generate(t.Context(), recordedAllowedTools())
+	resp, err := newProfileClient(t, srv.URL+"/v1", responses.Options{}, &aitest.TokenCounter{}).Generate(t.Context(), recordedAllowedTools())
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -268,7 +244,7 @@ func TestGenerateAllowedToolsUnderZeroProfile(t *testing.T) {
 // vLLM 0.34.0 has no tool outside the set to call. The recorded reply stands in for the host's.
 func TestGenerateAllowedToolsNarrowed(t *testing.T) {
 	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm-0.34.0/allowed_tools.json")))
-	tokens := &tokenCounter{}
+	tokens := &aitest.TokenCounter{}
 	c := newProfileClient(t, srv.URL+"/v1", responses.Options{NoAllowedTools: true}, tokens)
 	if _, err := c.Generate(t.Context(), recordedAllowedTools()); err != nil {
 		t.Fatalf("Generate: %v", err)

@@ -164,38 +164,15 @@ type roundTripper func(*http.Request) (*http.Response, error)
 
 func (f roundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// tokenCounter is a token source that counts its calls.
-type tokenCounter struct{ calls int }
-
-func (c *tokenCounter) token(context.Context) (string, error) {
-	c.calls++
-	return "secret", nil
-}
-
 // newProfileClient returns a Client of the server at base speaking the messages format under
 // opts, with the token source tokens.
-func newProfileClient(t *testing.T, base string, opts messages.Options, tokens *tokenCounter) *ai.Client {
+func newProfileClient(t *testing.T, base string, opts messages.Options, tokens *aitest.TokenCounter) *ai.Client {
 	t.Helper()
-	c, err := ai.New(base, http.DefaultClient, messages.New(opts), ai.Options{Token: tokens.token})
+	c, err := ai.New(base, http.DefaultClient, messages.New(opts), ai.Options{Token: tokens.Token})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	return c
-}
-
-// recordedMessage returns the error message of the recorded reply, read from its body apart from
-// the client's own decoding.
-func recordedMessage(t *testing.T, reply []byte) string {
-	t.Helper()
-	var body struct {
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(reply, &body); err != nil || body.Error.Message == "" {
-		t.Fatalf("recorded reply %s has no error message: %v", reply, err)
-	}
-	return body.Error.Message
 }
 
 // recordedEffort is the request of the recorded effort gaps, of effort e, as record.sh sends it.
@@ -217,7 +194,7 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 		t.Run(string(e), func(t *testing.T) {
 			reply := aitest.ReadTestdata(t, "vllm-0.34.0/effort_"+string(e)+".json")
 			srv := aitest.NewServer(t, http.StatusBadRequest, string(reply))
-			tokens := &tokenCounter{}
+			tokens := &aitest.TokenCounter{}
 			_, err := newProfileClient(t, srv.URL+"/v1", messages.Options{}, tokens).Generate(t.Context(), recordedEffort(e))
 			apiErr, ok := errors.AsType[*ai.APIError](err)
 			if !ok {
@@ -226,11 +203,11 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 			if apiErr.Status != http.StatusBadRequest {
 				t.Errorf("APIError.Status = %d, want %d", apiErr.Status, http.StatusBadRequest)
 			}
-			if want := recordedMessage(t, reply); apiErr.Message != want {
+			if want := aitest.ReplyMessage(t, reply); apiErr.Message != want {
 				t.Errorf("APIError.Message = %q, want %q", apiErr.Message, want)
 			}
-			if tokens.calls != 1 {
-				t.Errorf("token source called %d times, want 1", tokens.calls)
+			if tokens.Calls != 1 {
+				t.Errorf("token source called %d times, want 1", tokens.Calls)
 			}
 			srv.Only(t)
 		})
@@ -244,7 +221,7 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 func TestGenerateRecordedEffortNoneUnderZeroProfile(t *testing.T) {
 	reply := aitest.ReadTestdata(t, "vllm-0.34.0/effort_none.json")
 	srv := aitest.NewServer(t, http.StatusOK, string(reply))
-	tokens := &tokenCounter{}
+	tokens := &aitest.TokenCounter{}
 	resp, err := newProfileClient(t, srv.URL+"/v1", messages.Options{}, tokens).
 		Generate(t.Context(), recordedEffort(protocol.ReasoningEffortNone))
 	if err != nil {
@@ -295,8 +272,8 @@ func TestGenerateRecordedEffortNoneUnderZeroProfile(t *testing.T) {
 	if !reflect.DeepEqual(resp, want) {
 		t.Errorf("Generate = %#v\nwant       %#v", resp, want)
 	}
-	if tokens.calls != 1 {
-		t.Errorf("token source called %d times, want 1", tokens.calls)
+	if tokens.Calls != 1 {
+		t.Errorf("token source called %d times, want 1", tokens.Calls)
 	}
 	var sent struct {
 		Thinking map[string]any `json:"thinking"`
@@ -325,7 +302,7 @@ func TestGenerateRecordedEffortDeclared(t *testing.T) {
 		e := tc.effort
 		t.Run(string(e), func(t *testing.T) {
 			srv := aitest.NewServer(t, tc.status, string(aitest.ReadTestdata(t, "vllm-0.34.0/effort_"+string(e)+".json")))
-			tokens := &tokenCounter{}
+			tokens := &aitest.TokenCounter{}
 			opts := messages.Options{RefusedEfforts: []protocol.ReasoningEffort{e}}
 			_, err := newProfileClient(t, srv.URL+"/v1", opts, tokens).Generate(t.Context(), recordedEffort(e))
 			got, ok := errors.AsType[*format.UnsupportedError](err)
@@ -336,8 +313,8 @@ func TestGenerateRecordedEffortDeclared(t *testing.T) {
 			if got.Format != want.Format || got.Feature != want.Feature || got.Value != want.Value || !got.Declared {
 				t.Errorf("UnsupportedError = %+v, want %+v", *got, want)
 			}
-			if tokens.calls != 0 {
-				t.Errorf("token source called %d times for a refused request, want 0", tokens.calls)
+			if tokens.Calls != 0 {
+				t.Errorf("token source called %d times for a refused request, want 0", tokens.Calls)
 			}
 			if n := len(srv.Requests()); n != 0 {
 				t.Errorf("server received %d requests, want 0", n)

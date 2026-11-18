@@ -262,7 +262,7 @@ func TestReasoningRoundTripRecorded(t *testing.T) {
 		for _, p := range profiles {
 			t.Run(tc.name+"/"+p.name, func(t *testing.T) {
 				srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, tc.reply)))
-				c := newProfileClient(t, srv.URL+"/v1", p.opts, &tokenCounter{})
+				c := newProfileClient(t, srv.URL+"/v1", p.opts, &aitest.TokenCounter{})
 				resp, err := c.Generate(t.Context(), ask(question))
 				if err != nil {
 					t.Fatalf("Generate: %v", err)
