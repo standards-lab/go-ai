@@ -196,9 +196,38 @@ of layers' surface to go-ai's.
     anything is sent: its format, the feature refused and its value, and whether the gap is the
     spec's or one a deployment declares, matched with `errors.As` through the format's and the
     client's wrapping. Each refusal keeps its own wording in `Message`.
-29. **`responses.New(opts Options)` takes one options struct whose zero value is the spec's form**
-    (`format/responses/format.go`). Against `construction-and-execution.md`, "The rule". **kept**:
-    it already has the rule's shape.
+29. **Each format's `New(opts Options)` takes one options struct whose zero value is the spec's
+    form** (`format/*/format.go`). Against `construction-and-execution.md`, "The rule". **kept** for
+    `responses.New`, which already had the rule's shape. **changed**: `completions.New` and
+    `messages.New` take their own `Options` too, and each `Options` is a profile, the gaps of the
+    one deployment the format sends to. Each field declares one gap that a recorded reply from a
+    deployment backs (finding 43):
+    - `RefusedEfforts` (all three formats) lists the reasoning efforts the deployment refuses or
+      ignores.
+    - `NoToolChoiceRequired` (`completions`) declares that the deployment refuses `tool_choice`
+      `required`.
+    - `NoAllowedTools` (`completions`, `responses`) declares that it refuses or ignores an
+      `allowed_tools` choice.
+    - `ResendReasoningText` (`responses`) sends reasoning text back as content.
+
+    A declared gap is handled before anything is sent or any token is fetched. A request of a
+    refused effort, or of `tool_choice` `required` in any form (plain, in `allowed_tools`, or
+    narrowed), is refused as an `UnsupportedError` with `Declared` true, its feature `reasoning
+    effort` or `tool choice`.
+    The effort check runs first in each encoder, so a refused request sets no header. An effort or
+    mode the format's spec has no form for stays the spec's refusal, `Declared` false, listed or
+    not; a profile never widens the spec. Under `NoAllowedTools`, an `allowed_tools` choice is
+    narrowed: only its tools go out, in the request's order, and its mode goes out as a plain tool
+    choice, as Messages sends one. Chat Completions' `allowed_tools` has no form for mode none, so
+    that mode stays the spec's refusal there; Open Responses' has one, so it narrows every mode.
+    Each `Options` decodes from JSON under snake_case names alone, every tag carrying
+    `case:strict`, since json/v2's case-insensitive matching also ignores `_` and `-`; a caller
+    that decodes with `RejectUnknownMembers` gets an error for a Go field name or any other
+    unknown member.
+    `protocol.ReasoningEffort`'s `UnmarshalText` accepts only the seven efforts, so a mistyped
+    `refused_efforts` entry always fails. go-ai ships no loader and no presets. A profile binds a
+    format to one deployment, so a caller of several builds one format and one client per
+    deployment, sharing the `*http.Client`. `New` copies `RefusedEfforts`.
 30. **`format/messages` refuses a request with no `MaxOutputTokens` and one with audio input, and
     drops the hints it has no form for** (`format/messages/encode.go`, `doc.go`). Against
     `principles/validation-first.md`. **kept**: what would change the request's meaning is refused
@@ -320,6 +349,17 @@ of layers' surface to go-ai's.
     stream adds a reasoning item with `encrypted_content`, which the spec allows to be incomplete
     while the item is in progress, so the decoder adds the item with none, and the envelope holds
     the `encrypted_content` of its `output_item.done`.
+    Each profile field (finding 29) is backed by one unstreamed reply recorded from the deployment
+    it was seen on: a 400, or a 200 whose reply shows the departure. vLLM 0.34.0's gap replies
+    from gpt-oss-120b form a set of their own in each format's `testdata/vllm-0.34.0`, beside the
+    unchanged 0.33.0 set, and Foundry gpt-oss-120b's refusal of `tool_choice` `required` joins
+    `format/completions/testdata/foundry`. The 0.34.0 sets' `record.sh` first checks that the host
+    reports vLLM 0.34.0. Each record script keeps only a gap's expected reply, its status and a jq
+    test of its body, and stops on any other. A gap that didn't reproduce declares no field, and
+    its set's README says so. The unit tier serves each recorded reply on loopback through
+    `Client.Generate`. Under the zero profile, a 400 reaches the caller as an `*APIError` and a
+    200 decodes as recorded. With the gap declared, a refusing gap is refused before the token
+    source is called, an `allowed_tools` choice is narrowed, and reasoning text is resent.
 
 ### Check, CI, and release
 
@@ -396,9 +436,9 @@ The nine items the evaluation left open, each decided with its reason:
    value the caller keeps, not a configured thing run once, so the struct-with-a-method form
    doesn't apply. The struct is `Options`, not `Config`: in Go Elemental a `Config` is a go-core
    configuration block, as go-storage's and go-database's are, which go-ai takes none of
-   (finding 10), and `responses.Options` already names the format's. A nil HTTP client or format
-   panics by name (`lifecycle-and-context.md`, "The wiring rule"); a base URL, policy, or header
-   that can't be used is an error.
+   (finding 10), and each format's `Options` names its profile (finding 29). A nil HTTP client or
+   format panics by name (`lifecycle-and-context.md`, "The wiring rule"); a base URL, policy, or
+   header that can't be used is an error.
 3. **`Options.Header` carries fixed request headers.** It serves Anthropic's `x-api-key` and a
    gateway's consumer-key header, should the gateway ask for one, without a `RoundTripper` of the
    caller's. `Token` stays the bearer token, called once per attempt. Names that differ only in
@@ -781,23 +821,37 @@ func (e *UnsupportedError) Error() string
 func DecodeOpenAIError(body []byte) (message, typ, code string)
 
 package completions // import "github.com/standards-lab/go-ai/format/completions"
-type Format struct{}
+// Options is the profile of one deployment: the gaps where it departs from Chat Completions'
+// spec. The zero value declares none and is the spec's form (finding 29).
+type Options struct {
+    RefusedEfforts       []protocol.ReasoningEffort `json:"refused_efforts,omitzero,case:strict"`
+    NoToolChoiceRequired bool                       `json:"no_tool_choice_required,omitzero,case:strict"`
+    NoAllowedTools       bool                       `json:"no_allowed_tools,omitzero,case:strict"`
+}
+type Format struct{ /* unexported */ }
 // New is Chat Completions, on "chat/completions". It reads a reply's reasoning from
 // reasoning_content, llama.cpp's name, or reasoning, vLLM's (finding 43).
-func New() *Format
+func New(opts Options) *Format
 
 package messages // import "github.com/standards-lab/go-ai/format/messages"
-type Format struct{}
+// Options is the profile of one deployment: the gaps where it departs from the Messages API. The
+// zero value declares none and is the spec's form (finding 29).
+type Options struct {
+    RefusedEfforts []protocol.ReasoningEffort `json:"refused_efforts,omitzero,case:strict"`
+}
+type Format struct{ /* unexported */ }
 // New is Anthropic Messages, on "messages", sending its anthropic-version header. It refuses a
 // request with no MaxOutputTokens, with audio input, with the minimal effort, or with a system or
 // developer message after the conversation has begun, and drops the hints it has no form for.
-func New() *Format
+func New(opts Options) *Format
 
 package responses // import "github.com/standards-lab/go-ai/format/responses"
-// Options adjusts the format to an endpoint that departs from the spec; the zero value is the
-// spec's form.
+// Options is the profile of one deployment: the gaps where it departs from the Open Responses
+// spec. The zero value declares none and is the spec's form (finding 29).
 type Options struct {
-    ResendReasoningText bool // send a reasoning item's text back, for llama.cpp's router and vLLM
+    RefusedEfforts      []protocol.ReasoningEffort `json:"refused_efforts,omitzero,case:strict"`
+    NoAllowedTools      bool                       `json:"no_allowed_tools,omitzero,case:strict"`
+    ResendReasoningText bool                       `json:"resend_reasoning_text,omitzero,case:strict"` // for llama.cpp's router and vLLM
 }
 type Format struct{ /* unexported */ }
 func New(opts Options) *Format // Open Responses, on "responses"
@@ -885,7 +939,7 @@ go-ai/                        module github.com/standards-lab/go-ai
 ├── *.go                      package ai
 ├── protocol/
 ├── format/
-│   ├── completions/testdata/ llama.cpp b11669's recordings, vLLM 0.33.0's in vllm/, and Foundry's in foundry/
+│   ├── completions/testdata/ llama.cpp b11669's recordings, vLLM 0.33.0's in vllm/, vLLM 0.34.0's gap replies in vllm-0.34.0/, and Foundry's in foundry/
 │   ├── messages/testdata/
 │   └── responses/testdata/   as completions'
 ├── integration/              the integration tier, behind the integration build tag
@@ -905,8 +959,9 @@ go-ai/                        module github.com/standards-lab/go-ai
         └── apptest/
 ```
 
-Each format's testdata is recorded from llama.cpp b11669's router and from vLLM 0.33.0, and Chat
-Completions' and Open Responses' also from Azure AI Foundry, each set with a README that names its engine and build, says how it was recorded, and records what the
+Each format's testdata is recorded from llama.cpp b11669's router, from vLLM 0.33.0, and, for the
+profiles' gaps, from vLLM 0.34.0, and Chat Completions' and Open Responses' also from Azure AI
+Foundry, each set with a README that names its engine and build, says how it was recorded, and records what the
 engine departs from (findings 31 and 43). The integration tier is a root-level package of the
 base module, as the spike's is: the check builds, vets, and lints it under its build tag (finding
 45), and `mise run integration` runs it against the endpoints its `AI_<ROLE>_BASE_URL` variables
@@ -1054,6 +1109,11 @@ What the review rules out, one line each with its reason, cited as the sections 
   decision 1).
 - **A format registry, or a format chosen by name.** A provider is selected by construction, and a
   new format is one import at the caller's composition root (finding 3).
+- **One capability struct shared by the formats and read by the root package.** Each format's gaps
+  differ, so each format holds its own `Options` (finding 29).
+- **A profile loader, host presets, or a profile keyed by model.** Where a program keeps its
+  profiles, and which deployments it meets, are the program's; a profile binds one deployment, so
+  a program builds one client per deployment (finding 29).
 - **`client` as the root package's name.** Under go-ai's path every importer would alias it; `ai`
   reads with the repository (finding 2; decision 1).
 - **The spike's slug on the wire.** Open Responses prefixes an extension with its implementor's

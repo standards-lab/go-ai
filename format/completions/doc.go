@@ -22,10 +22,10 @@
 // ParallelToolCalls, when set, as parallel_tool_calls, and audio input as its own input_audio part.
 // Native's members, the native tier, are merged into the body's top level.
 //
-// It refuses, before anything is sent, the gaps its Options declare, an allowed tool choice of
-// mode none, which Chat Completions' allowed_tools has no form for, and a Native member that
-// clashes with one the typed fields set, stream and stream_options among them, and
-// parallel_tool_calls when ParallelToolCalls is set.
+// It refuses, before anything is sent, the efforts and the required tool choice its Options
+// declare as gaps; an allowed tool choice of mode none, which Chat Completions' allowed_tools has
+// no form for; and a Native member that clashes with one the typed fields set, stream and
+// stream_options among them, and parallel_tool_calls when ParallelToolCalls is set.
 //
 // It drops the hint Chat Completions has no form for, never refusing it: reasoning's summary. It
 // drops a reasoning item whose encrypted_content isn't its own envelope, and a run of reasoning

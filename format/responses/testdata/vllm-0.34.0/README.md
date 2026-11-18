@@ -29,7 +29,7 @@ reply is discarded, so it never replaces a recording, and stops the script. Name
   comma-separated, nothing else." with `reasoning.effort` none and xhigh, two of the spec's
   efforts. Each is a 400 of type `BadRequestError`, param `reasoning_effort`:
   "reasoning_effort='none' is not supported by Harmony. Supported values are: high, medium,
-  low.". vLLM 0.33.0 refused neither with a 400. They back `RefusedEfforts` (`refused_efforts`)
+  low.". vLLM 0.33.0 refused only none. They back `RefusedEfforts` (`refused_efforts`)
   of none and xhigh.
 - `allowed_tools.json`: gpt-oss-120b, `reasoning.effort` low, asked "What is the weather in Paris
   right now?" with the tools `get_weather` and `get_time` and the tool choice

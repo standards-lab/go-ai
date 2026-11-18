@@ -18,7 +18,10 @@ client and processing layers").
   incomplete reason.
 - **Formats**: Chat Completions, Anthropic Messages, and Open Responses on the wire. Each format
   declares the event stream its replies arrive in, `format.SSE` for all three, and refuses what
-  its spec has no form for with a `*format.UnsupportedError` before anything is sent.
+  its spec has no form for with a `*format.UnsupportedError` before anything is sent. Each takes
+  its own `Options`, the profile of one deployment, whose zero value is the spec: the format
+  refuses a declared gap before sending, as an `UnsupportedError` with `Declared` true, or narrows
+  an `allowed_tools` choice to the allowed tools.
 - **Client**: construction with `Options`, including fixed request headers; Generate,
   GenerateStream with its accumulator, Embed, Transcribe by the route or over chat, and the
   /models listing.
