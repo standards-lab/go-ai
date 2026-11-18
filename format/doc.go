@@ -1,8 +1,9 @@
 // Package format is the contract a wire format meets: [Format] encodes the protocol package's
 // request in one API's wire shape and decodes the reply into its response, whole or streamed as
-// the protocol's events. It imports only protocol; each implementation is a package below it,
-// named for the endpoint it targets: completions for Chat Completions, messages for Anthropic
-// Messages, and responses for Open Responses. None imports the client.
+// the protocol's events. It imports only protocol, and the module's internal SSE decoder, which
+// [SSE] wraps; each implementation is a package below it, named for the endpoint it targets:
+// completions for Chat Completions, messages for Anthropic Messages, and responses for Open
+// Responses. None imports the client.
 //
 // It holds the contract and what the formats share: the OpenAI-style error body, which every
 // OpenAI-compatible endpoint answers with, so completions decodes its errors, and its streams'
@@ -16,5 +17,10 @@
 //
 //   - [Format] is a wire format, the adapter between the protocol and one API's shape.
 //   - [StreamDecoder] turns one streamed reply's events into the protocol's streaming events.
+//   - [WireEvent] is one event of a streamed reply as its framing delivers it.
+//   - [WireEventReader] reads a streamed reply's events, one per call.
+//   - [EventStream] is a streamed reply's framing: its media type and its reader.
+//   - [SSE] is the server-sent event stream, the EventStream of every format here.
+//   - [UnsupportedError] is a format's refusal of a request feature, before anything is sent.
 //   - [DecodeOpenAIError] decodes an OpenAI-style error body's message, type, and code.
 package format

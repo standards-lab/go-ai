@@ -56,6 +56,8 @@ func TestDecodeVLLM(t *testing.T) {
 			// A message alone: Gemma's reasoning is null.
 			file: "text.json",
 			want: &protocol.Response{
+				ID:     "chatcmpl-82796f247e0d0dae",
+				Model:  "nvidia/Gemma-4-26B-A4B-NVFP4",
 				Output: []protocol.Item{message("chatcmpl-82796f247e0d0dae/0", "Paris, Lyon, Marseille")},
 				Status: protocol.StatusCompleted,
 				Usage:  protocol.Usage{InputTokens: 25, OutputTokens: 6, TotalTokens: 31},
@@ -64,6 +66,8 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "reasoning.json",
 			want: &protocol.Response{
+				ID:    "chatcmpl-aa5f6f9517187b26",
+				Model: "openai/gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("chatcmpl-aa5f6f9517187b26/0", vllmCitiesReasoning),
 					message("chatcmpl-aa5f6f9517187b26/1", "Paris, Lyon, Marseille"),
@@ -78,6 +82,8 @@ func TestDecodeVLLM(t *testing.T) {
 			// JSON vLLM wrote back.
 			file: "tool_call.json",
 			want: &protocol.Response{
+				ID:    "chatcmpl-828cc59b58a5c335",
+				Model: "openai/gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("chatcmpl-828cc59b58a5c335/0", vllmWeatherReasoning),
 					protocol.FunctionCall{
@@ -96,6 +102,8 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "structured.json",
 			want: &protocol.Response{
+				ID:    "chatcmpl-bde98257390e0f4e",
+				Model: "openai/gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("chatcmpl-bde98257390e0f4e/0", "Simple."),
 					message("chatcmpl-bde98257390e0f4e/1", "{\n  \"name\": \"Paris\"\n}"),
@@ -108,6 +116,8 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "image.json",
 			want: &protocol.Response{
+				ID:     "chatcmpl-8794636c5d1e5203",
+				Model:  "nvidia/Gemma-4-26B-A4B-NVFP4",
 				Output: []protocol.Item{message("chatcmpl-8794636c5d1e5203/0", "Red")},
 				Status: protocol.StatusCompleted,
 				Usage:  protocol.Usage{InputTokens: 282, OutputTokens: 2, TotalTokens: 284},
@@ -116,6 +126,8 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "input_audio.json",
 			want: &protocol.Response{
+				ID:     "chatcmpl-8af898a1110dcfce",
+				Model:  "google/gemma-4-E4B-it",
 				Output: []protocol.Item{message("chatcmpl-8af898a1110dcfce/0", "It sounds like a gentle, rhythmic tapping.")},
 				Status: protocol.StatusCompleted,
 				Usage:  protocol.Usage{InputTokens: 44, OutputTokens: 10, TotalTokens: 54},
@@ -137,7 +149,7 @@ func TestDecodeVLLM(t *testing.T) {
 
 // TestStreamVLLM translates the vLLM streams recorded in testdata/vllm to events, and folds
 // them to the Response DecodeResponse gives for the same request unstreamed, given the stream's
-// ids and its calls' arguments text.
+// ids and its calls' arguments text; response.created bears the reply's id and model too.
 func TestStreamVLLM(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -168,6 +180,7 @@ func TestStreamVLLM(t *testing.T) {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
 			aitest.SameArguments(t, got, want)
+			assertCreated(t, r.events, want)
 			aitest.AssertResponse(t, got, want)
 		})
 	}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/internal/native"
 	"github.com/standards-lab/go-ai/protocol"
 )
@@ -48,8 +49,10 @@ import (
 // string, a named function as {"type":"function","function":{"name"}}, and an allowed set as
 // {"type":"allowed_tools","allowed_tools":{"mode","tools"}}, its tools named the same way. An
 // allowed set of mode none has no Chat Completions form, whose allowed_tools modes are auto and
-// required, and is refused. Reasoning's effort goes out as reasoning_effort, and MaxOutputTokens
-// as max_completion_tokens.
+// required, and is refused. Reasoning's effort goes out as reasoning_effort, each of the
+// protocol's seven by its own name, and MaxOutputTokens as max_completion_tokens, any positive
+// bound as it is. ParallelToolCalls goes out as parallel_tool_calls, true or false; nil sends
+// none, leaving it to the endpoint.
 //
 // The hints Chat Completions has no form for are dropped, never refused: reasoning's summary.
 //
@@ -58,8 +61,9 @@ import (
 // with description and strict when set. Text's verbosity goes out as verbosity.
 // The request is unstreamed, sent with stream false; EncodeStreamRequest streams it.
 // Native's members, the native tier, are merged into the top level, and a member named like one
-// the typed fields set is refused, as are stream, which is always set, and stream_options,
-// which the streamed request sets. It adds no headers.
+// the typed fields set is refused, parallel_tool_calls among them when ParallelToolCalls is set,
+// as are stream, which is always set, and stream_options, which the streamed request sets. It
+// adds no headers.
 func (*Format) EncodeRequest(req *protocol.Request, _ http.Header) ([]byte, error) {
 	return encodeRequest(req, false)
 }
@@ -79,6 +83,7 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 		Model:               req.Model,
 		ReasoningEffort:     string(req.Reasoning.Effort),
 		MaxCompletionTokens: req.MaxOutputTokens,
+		ParallelToolCalls:   req.ParallelToolCalls,
 		Verbosity:           string(req.Text.Verbosity),
 		Stream:              stream,
 		Native:              req.Native,
@@ -88,7 +93,8 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	} else if native.Has(req.Native, "stream_options") {
 		// The unstreamed body has no stream_options for the member to clash with, but it is
 		// the stream's, so it is refused in both.
-		return nil, errors.New("completions: native member stream_options clashes with the format's streaming")
+		return nil, fmt.Errorf("completions: %w", refuse("native member", "stream_options",
+			"native member stream_options clashes with the format's streaming"))
 	}
 	if req.Text.Format != nil {
 		if body.ResponseFormat, err = encodeTextFormat(req.Text.Format); err != nil {
@@ -122,6 +128,9 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	}
 	b, err := native.Marshal(body)
 	if err != nil {
+		if clash, ok := errors.AsType[*native.ClashError](err); ok {
+			err = refuse("native member", clash.Member, clash.Error())
+		}
 		return nil, fmt.Errorf("completions: %w", err)
 	}
 	return b, nil
@@ -179,7 +188,8 @@ func encodeInput(items []protocol.Item) ([]message, error) {
 			messages = append(messages, message{Role: "tool", Content: content, ToolCallID: it.CallID})
 			run, reasoning = -1, ""
 		default:
-			return nil, fmt.Errorf("input %d: item %T has no Chat Completions form", i, it)
+			return nil, fmt.Errorf("input %d: %w", i, refuse("input item", fmt.Sprintf("%T", it),
+				fmt.Sprintf("item %T has no Chat Completions form", it)))
 		}
 	}
 	return messages, nil
@@ -222,7 +232,7 @@ func encodeToolChoice(tc protocol.ToolChoice) (jsontext.Value, error) {
 		return json.Marshal(namedChoice(tc))
 	case protocol.AllowedToolChoice:
 		if tc.Mode == protocol.ToolChoiceNone {
-			return nil, errors.New("allowed_tools of mode none has no Chat Completions form")
+			return nil, refuse("allowed_tools mode", string(tc.Mode), "allowed_tools of mode none has no Chat Completions form")
 		}
 		allowed := allowedToolsChoice{
 			Type:         "allowed_tools",
@@ -233,7 +243,7 @@ func encodeToolChoice(tc protocol.ToolChoice) (jsontext.Value, error) {
 		}
 		return json.Marshal(allowed)
 	default:
-		return nil, fmt.Errorf("tool choice %T has no Chat Completions form", tc)
+		return nil, refuse("tool choice", fmt.Sprintf("%T", tc), fmt.Sprintf("tool choice %T has no Chat Completions form", tc))
 	}
 }
 
@@ -250,8 +260,14 @@ func encodeTextFormat(f protocol.TextFormat) (*responseFormat, error) {
 			Strict:      f.Strict,
 		}}, nil
 	default:
-		return nil, fmt.Errorf("text format %T has no Chat Completions form", f)
+		return nil, refuse("text format", fmt.Sprintf("%T", f), fmt.Sprintf("text format %T has no Chat Completions form", f))
 	}
+}
+
+// refuse returns the format's refusal of a request feature, the spec's: Chat Completions has no
+// form for value, of feature, as message says.
+func refuse(feature, value, message string) error {
+	return &format.UnsupportedError{Format: "completions", Feature: feature, Value: value, Message: message}
 }
 
 // namedChoice is f as a Chat Completions named tool choice.
@@ -295,7 +311,8 @@ func encodeContent(parts []protocol.ContentPart) (jsontext.Value, error) {
 		case protocol.Refusal:
 			b, err = json.Marshal(refusalPart{Type: "refusal", Refusal: p.Refusal})
 		default:
-			return nil, fmt.Errorf("content %d: part %T has no Chat Completions form", i, p)
+			return nil, fmt.Errorf("content %d: %w", i, refuse("content part", fmt.Sprintf("%T", p),
+				fmt.Sprintf("part %T has no Chat Completions form", p)))
 		}
 		if err != nil {
 			return nil, fmt.Errorf("content %d: %w", i, err)

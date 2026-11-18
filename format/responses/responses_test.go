@@ -287,6 +287,8 @@ func TestDecodeRecorded(t *testing.T) {
 			// and the item ids the router's.
 			file: "text.json",
 			want: &protocol.Response{
+				ID:    "resp_q5O3zYTjmXMQuu9cwX2U7gz2G9JN4o2R",
+				Model: "ggml-org/gpt-oss-120b-GGUF:MXFP4",
 				Output: []protocol.Item{
 					protocol.Reasoning{
 						ID:      "rs_Pt1rtkP5f8C8yiCOAXqiF7kVKWuw2TVi",
@@ -303,7 +305,8 @@ func TestDecodeRecorded(t *testing.T) {
 					},
 				},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 91, OutputTokens: 80, TotalTokens: 171},
+				Usage: protocol.Usage{InputTokens: 91, OutputTokens: 80, TotalTokens: 171,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 60}},
 			},
 		},
 		{
@@ -311,6 +314,8 @@ func TestDecodeRecorded(t *testing.T) {
 			// format's envelope of the router's, empty, and the reasoning text.
 			file: "tool_call.json",
 			want: &protocol.Response{
+				ID:    "resp_3USexSUkVmyApnlmy8IkSxXfQjo0qkDD",
+				Model: "ggml-org/gpt-oss-120b-GGUF:MXFP4",
 				Output: []protocol.Item{
 					protocol.Reasoning{
 						ID:      "rs_H4pfaCFvrGf1ljLr7M56OB81gR3sEvYK",
@@ -330,13 +335,16 @@ func TestDecodeRecorded(t *testing.T) {
 					},
 				},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 138, OutputTokens: 40, TotalTokens: 178},
+				Usage: protocol.Usage{InputTokens: 138, OutputTokens: 40, TotalTokens: 178,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 136}},
 			},
 		},
 		{
 			// Stopped at max_output_tokens, and completed as the router reports it.
 			file: "length.json",
 			want: &protocol.Response{
+				ID:    "resp_ENy4dMjOdbHrRyBNhZwOgkE8OB595AeI",
+				Model: "ggml-org/gemma-4-E4B-it-GGUF:Q8_0",
 				Output: []protocol.Item{protocol.Message{
 					ID:      "msg_DlxsLumQFHURGkWf3dpu8b4uqhZnpjsM",
 					Status:  protocol.StatusCompleted,
@@ -344,12 +352,15 @@ func TestDecodeRecorded(t *testing.T) {
 					Content: []protocol.ContentPart{protocol.OutputText{Text: "1 2 3 4 5 6 7 8 "}},
 				}},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 29, OutputTokens: 16, TotalTokens: 45},
+				Usage: protocol.Usage{InputTokens: 29, OutputTokens: 16, TotalTokens: 45,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 24}},
 			},
 		},
 		{
 			file: "conversation.json",
 			want: &protocol.Response{
+				ID:    "resp_e6KGKfC9KAUK96ySijdQA0xVfBAY472D",
+				Model: "ggml-org/gemma-4-E4B-it-GGUF:Q8_0",
 				Output: []protocol.Item{protocol.Message{
 					ID:      "msg_P6Nc6UhZ2fauy4qRLHU2lb0oDCEAEKcd",
 					Status:  protocol.StatusCompleted,
@@ -357,7 +368,8 @@ func TestDecodeRecorded(t *testing.T) {
 					Content: []protocol.ContentPart{protocol.OutputText{Text: "ROME"}},
 				}},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 54, OutputTokens: 2, TotalTokens: 56},
+				Usage: protocol.Usage{InputTokens: 54, OutputTokens: 2, TotalTokens: 56,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 49}},
 			},
 		},
 	}
@@ -395,6 +407,7 @@ func TestDecode(t *testing.T) {
 				"usage":{"input_tokens":20,"output_tokens":16,"total_tokens":36,
 					"input_tokens_details":{"cached_tokens":4},"output_tokens_details":{"reasoning_tokens":9}}}`,
 			want: &protocol.Response{
+				ID: "resp_1",
 				Output: []protocol.Item{
 					protocol.Reasoning{
 						ID:               "rs_1",
@@ -415,6 +428,7 @@ func TestDecode(t *testing.T) {
 				Status:            protocol.StatusIncomplete,
 				IncompleteDetails: &protocol.IncompleteDetails{Reason: protocol.ReasonMaxOutputTokens},
 				Usage: protocol.Usage{InputTokens: 20, OutputTokens: 16, TotalTokens: 36,
+					InputTokensDetails:  protocol.InputTokensDetails{CachedTokens: 4},
 					OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 9}},
 			},
 		},
@@ -457,12 +471,13 @@ func TestDecodeRefusesReply(t *testing.T) {
 		reply string
 		want  string
 	}{
-		{"output item of unknown type", `{"status":"completed","output":[
-			{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[]},
-			{"type":"web_search_call","id":"ws_1","status":"completed"}]}`, `output item 1: unknown type "web_search_call"`},
-		{"message part of unknown type", `{"status":"completed","output":[
-			{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"input_text","text":"x"}]}]}`,
-			`output item 0: message content 0 has unknown type "input_text"`},
+		{"message part of a type a message doesn't take", `{"status":"completed","output":[
+			{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"reasoning_text","text":"x"}]}]}`,
+			`output item 0: message content 0 has type "reasoning_text", which a message doesn't take`},
+		{"a malformed item after a skipped one", `{"status":"completed","output":[
+			{"type":"web_search_call","id":"ws_1","status":"completed"},
+			{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"reasoning_text","text":"x"}]}]}`,
+			`output item 1: message content 0 has type "reasoning_text"`},
 		{"reasoning part of unknown type", `{"status":"completed","output":[
 			{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"output_text","text":"x"}]}]}`,
 			`output item 0: reasoning content 0 has unknown type "output_text"`},

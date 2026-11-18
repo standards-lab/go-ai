@@ -356,6 +356,11 @@ func TestEncode(t *testing.T) {
 			want: `{"model":"m","stream":false,"messages":[{"role":"user","content":"hi"}],"reasoning_effort":"xhigh"}`,
 		},
 		{
+			name: "max_output_tokens of 1, Chat Completions having no minimum",
+			req:  &protocol.Request{Model: "m", Input: []protocol.Item{text(protocol.RoleUser, "hi")}, MaxOutputTokens: 1},
+			want: `{"model":"m","stream":false,"messages":[{"role":"user","content":"hi"}],"max_completion_tokens":1}`,
+		},
+		{
 			name: "reasoning summary dropped",
 			req: &protocol.Request{
 				Model:     "m",
@@ -690,7 +695,7 @@ func TestDecode(t *testing.T) {
 		want  *protocol.Response
 	}{
 		{
-			name: "llama.cpp reply with reasoning_content and usage",
+			name: "llama.cpp reply with reasoning_content, usage, and cached tokens, its id and model",
 			reply: `{"choices":[{"finish_reason":"stop","index":0,"message":{"role":"assistant",
 				"content":"Paris","reasoning_content":"The user asks."}}],
 				"created":1793041885,"model":"m","object":"chat.completion",
@@ -698,6 +703,8 @@ func TestDecode(t *testing.T) {
 					"prompt_tokens_details":{"cached_tokens":56}},
 				"id":"chatcmpl-1","timings":{"prompt_n":27}}`,
 			want: &protocol.Response{
+				ID:    "chatcmpl-1",
+				Model: "m",
 				Output: []protocol.Item{
 					protocol.Reasoning{
 						ID:               "chatcmpl-1/0",
@@ -713,7 +720,8 @@ func TestDecode(t *testing.T) {
 					},
 				},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 83, OutputTokens: 20, TotalTokens: 103},
+				Usage: protocol.Usage{InputTokens: 83, OutputTokens: 20, TotalTokens: 103,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 56}},
 			},
 		},
 		{
@@ -721,6 +729,7 @@ func TestDecode(t *testing.T) {
 			reply: `{"id":"chatcmpl-1","choices":[{"finish_reason":"stop","message":{"role":"assistant",
 				"content":"Paris","refusal":null,"reasoning":"The user asks."}}]}`,
 			want: &protocol.Response{
+				ID: "chatcmpl-1",
 				Output: []protocol.Item{
 					protocol.Reasoning{
 						ID:               "chatcmpl-1/0",
@@ -744,6 +753,7 @@ func TestDecode(t *testing.T) {
 			reply: `{"id":"chatcmpl-1","choices":[{"finish_reason":"stop","message":{"role":"assistant",
 				"reasoning_content":"The user asks.","reasoning":"The user asks."}}]}`,
 			want: &protocol.Response{
+				ID: "chatcmpl-1",
 				Output: []protocol.Item{protocol.Reasoning{
 					ID:               "chatcmpl-1/0",
 					Status:           protocol.StatusCompleted,
@@ -759,6 +769,7 @@ func TestDecode(t *testing.T) {
 				"content":"Checking.","reasoning_content":"Need the weather tool.",
 				"tool_calls":[{"id":"c1","type":"function","function":{"name":"get_weather","arguments":"{}"}}]}}]}`,
 			want: &protocol.Response{
+				ID: "chatcmpl-2",
 				Output: []protocol.Item{
 					protocol.Reasoning{
 						ID:               "chatcmpl-2/0",
@@ -923,6 +934,37 @@ func TestDecode(t *testing.T) {
 	}
 }
 
+// TestDecodeUsageCachedTokens covers the cached input tokens, read from
+// prompt_tokens_details.cached_tokens, and 0 when the details are absent, null, or give none.
+func TestDecodeUsageCachedTokens(t *testing.T) {
+	cases := []struct {
+		name  string
+		usage string
+		want  int
+	}{
+		{"given", `,"prompt_tokens_details":{"cached_tokens":4,"audio_tokens":0}`, 4},
+		{"given as 0", `,"prompt_tokens_details":{"cached_tokens":0}`, 0},
+		{"details of none", `,"prompt_tokens_details":{}`, 0},
+		{"details null", `,"prompt_tokens_details":null`, 0},
+		{"no details", ``, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reply := `{"choices":[{"message":{"content":"Paris"},"finish_reason":"stop"}],
+				"usage":{"prompt_tokens":5,"completion_tokens":16,"total_tokens":21` + tc.usage + `}}`
+			resp, err := decode(reply)
+			if err != nil {
+				t.Fatalf("DecodeResponse: %v", err)
+			}
+			want := protocol.Usage{InputTokens: 5, OutputTokens: 16, TotalTokens: 21,
+				InputTokensDetails: protocol.InputTokensDetails{CachedTokens: tc.want}}
+			if resp.Usage != want {
+				t.Errorf("Usage = %+v, want %+v", resp.Usage, want)
+			}
+		})
+	}
+}
+
 // TestDecodeUsageReasoningTokens covers where a usage's reasoning tokens are read from:
 // completion_tokens_details.reasoning_tokens, or the usage's top-level reasoning_tokens when the
 // details give none; the details' count wins, even 0, and a usage of neither gives 0.
@@ -979,6 +1021,51 @@ func TestDecodeRefusesReply(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("DecodeResponse error = %q, want it to contain %q", err, tc.want)
 			}
+		})
+	}
+}
+
+// TestEncodeEfforts wants each of the protocol's efforts sent as reasoning_effort by its own name.
+func TestEncodeEfforts(t *testing.T) {
+	efforts := []protocol.ReasoningEffort{
+		protocol.ReasoningEffortNone, protocol.ReasoningEffortMinimal, protocol.ReasoningEffortLow,
+		protocol.ReasoningEffortMedium, protocol.ReasoningEffortHigh, protocol.ReasoningEffortXHigh,
+		protocol.ReasoningEffortMax,
+	}
+	for _, e := range efforts {
+		t.Run(string(e), func(t *testing.T) {
+			req := &protocol.Request{Model: "m", Input: []protocol.Item{text(protocol.RoleUser, "hi")},
+				Reasoning: protocol.ReasoningParam{Effort: e}}
+			aitest.AssertJSON(t, encode(t, req),
+				`{"model":"m","stream":false,"messages":[{"role":"user","content":"hi"}],"reasoning_effort":"`+string(e)+`"}`)
+		})
+	}
+}
+
+// TestEncodeParallelToolCalls covers ParallelToolCalls: true and false as the top-level
+// parallel_tool_calls, and nil sending nothing, leaving it to the endpoint; and a Native
+// parallel_tool_calls beside nil, the native tier's to send.
+func TestEncodeParallelToolCalls(t *testing.T) {
+	cases := []struct {
+		name     string
+		parallel *bool
+		native   string
+		want     string
+	}{
+		{"nil sends nothing", nil, "", ``},
+		{"true", new(true), "", `,"parallel_tool_calls":true`},
+		{"false", new(false), "", `,"parallel_tool_calls":false`},
+		{"nil beside a Native member, sent from the native tier", nil, `{"parallel_tool_calls":false}`, `,"parallel_tool_calls":false`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &protocol.Request{Model: "m", Input: []protocol.Item{text(protocol.RoleUser, "hi")},
+				ParallelToolCalls: tc.parallel}
+			if tc.native != "" {
+				req.Native = jsontext.Value(tc.native)
+			}
+			aitest.AssertJSON(t, encode(t, req),
+				`{"model":"m","stream":false,"messages":[{"role":"user","content":"hi"}]`+tc.want+`}`)
 		})
 	}
 }

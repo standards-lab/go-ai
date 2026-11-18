@@ -7,8 +7,10 @@ type request struct {
 	Model string `json:"model"`
 	// MaxTokens carries max_output_tokens. Messages requires it, so it is always sent.
 	MaxTokens int `json:"max_tokens"`
-	// System carries instructions, omitted when there are none.
-	System   string    `json:"system,omitzero"`
+	// System carries instructions and the input's leading system and developer messages: a
+	// string of the instructions alone, or an array of text blocks once the input gives any,
+	// and omitted when there are none.
+	System   any       `json:"system,omitzero"`
 	Messages []message `json:"messages"`
 	Tools    []tool    `json:"tools,omitzero"`
 	// ToolChoice carries the tool choice, omitted when the request sets none.
@@ -36,15 +38,19 @@ type tool struct {
 }
 
 // toolChoice is a Messages tool_choice: of type auto, any, or none, or of type tool with the
-// name of the tool the model must call.
+// name of the tool the model must call. DisableParallelToolUse, which the spec defines on auto,
+// any, and tool, is sent only when set.
 type toolChoice struct {
-	Type string `json:"type"`
-	Name string `json:"name,omitzero"`
+	Type                   string `json:"type"`
+	Name                   string `json:"name,omitzero"`
+	DisableParallelToolUse bool   `json:"disable_parallel_tool_use,omitzero"`
 }
 
-// thinking is a Messages thinking configuration: of type disabled or adaptive.
+// thinking is a Messages thinking configuration: of type disabled or adaptive, and for adaptive
+// the display of the thinking the reply gives, summarized, or omitted when unset.
 type thinking struct {
-	Type string `json:"type"`
+	Type    string `json:"type"`
+	Display string `json:"display,omitzero"`
 }
 
 // outputConfig is a Messages output_config: an effort level and an output format, each omitted
@@ -122,10 +128,12 @@ type imageSource struct {
 }
 
 // response is the part of a Messages response body the format reads. Members it doesn't read,
-// such as model and stop_sequence, are ignored.
+// such as stop_sequence, are ignored.
 type response struct {
 	// ID is the reply's id, such as msg_abc, from which the format derives its items' ids.
-	ID         string  `json:"id"`
+	ID string `json:"id"`
+	// Model is the model that answered.
+	Model      string  `json:"model"`
 	Content    []block `json:"content"`
 	StopReason string  `json:"stop_reason"`
 	Usage      usage   `json:"usage"`
@@ -146,12 +154,36 @@ type block struct {
 }
 
 // usage is a reply's token counts. InputTokens counts the input tokens neither read from nor
-// written to the prompt cache, which the two cache counts count.
+// written to the prompt cache, which the two cache counts count. Each count is nil when the
+// reply omits it or gives null, so a streamed message_delta, whose counts are cumulative, keeps
+// the counts it omits at what they were.
 type usage struct {
-	InputTokens              int `json:"input_tokens"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-	OutputTokens             int `json:"output_tokens"`
+	InputTokens              *int                `json:"input_tokens"`
+	CacheReadInputTokens     *int                `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens *int                `json:"cache_creation_input_tokens"`
+	OutputTokens             *int                `json:"output_tokens"`
+	OutputTokensDetails      outputTokensDetails `json:"output_tokens_details"`
+}
+
+// outputTokensDetails breaks a reply's output tokens down: ThinkingTokens counts those spent
+// thinking, nil when the reply omits it.
+type outputTokensDetails struct {
+	ThinkingTokens *int `json:"thinking_tokens"`
+}
+
+// update sets each count next gives into u, keeping the counts next omits.
+func (u *usage) update(next usage) {
+	for _, c := range []struct{ to, from **int }{
+		{&u.InputTokens, &next.InputTokens},
+		{&u.CacheReadInputTokens, &next.CacheReadInputTokens},
+		{&u.CacheCreationInputTokens, &next.CacheCreationInputTokens},
+		{&u.OutputTokens, &next.OutputTokens},
+		{&u.OutputTokensDetails.ThinkingTokens, &next.OutputTokensDetails.ThinkingTokens},
+	} {
+		if *c.from != nil {
+			*c.to = *c.from
+		}
+	}
 }
 
 // envelopePrefix opens every envelope this format writes: the implementor slug, the format, and
@@ -192,15 +224,16 @@ type streamEvent struct {
 	Usage        usage          `json:"usage"`
 }
 
-// streamMessage is the part of message_start's message the format reads: the reply's id and its
-// usage, whose input counts the terminal Response takes.
+// streamMessage is the part of message_start's message the format reads: the reply's id and
+// model, and its usage so far, which message_delta's counts update.
 type streamMessage struct {
 	ID    string `json:"id"`
+	Model string `json:"model"`
 	Usage usage  `json:"usage"`
 }
 
 // streamDelta is a content_block_delta's delta, of a type and the member that type carries, or
-// message_delta's, of the stop_reason.
+// message_delta's, of the stop_reason, empty when it is null.
 type streamDelta struct {
 	Type        string `json:"type"`
 	Text        string `json:"text"`

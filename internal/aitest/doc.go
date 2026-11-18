@@ -1,6 +1,6 @@
 // Package aitest holds the test helpers the module's test packages share: a loopback HTTP
 // server that answers with a fixed reply and records the requests it receives, and the
-// assertions the format packages' tests make of encoded bodies and decoded responses.
+// assertions the format packages' tests make of encoded bodies, refusals, and decoded responses.
 //
 // Its exported identifiers:
 //
@@ -14,6 +14,8 @@
 //   - [AssertResponse] fails the test unless two responses are the same.
 //   - [AssertJSON] fails the test unless a body is the JSON wanted, whatever its member order
 //     and spacing.
+//   - [AssertUnsupported] fails the test unless an error is a message wrapping a format's
+//     *format.UnsupportedError of the fields wanted.
 //   - [SameArguments] holds two responses' function call arguments to their JSON value, so
 //     an endpoint's respacing of them compares equal.
 package aitest

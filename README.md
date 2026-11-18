@@ -86,7 +86,8 @@ expect:
 - **Formats are chosen by construction.** The caller picks a format by calling its package's
   constructor at the composition root. There is no registry and no lookup by name.
 - **Validation comes first.** A request the model or the format can't express is refused before
-  the token source is called or anything is sent
+  the token source is called or anything is sent, a format's refusal as a
+  `*format.UnsupportedError`
   ([validation first](https://github.com/standards-lab/architecture/blob/main/principles/validation-first.md)).
 
 ## Packages
@@ -95,7 +96,8 @@ expect:
   `Models`, and `Transcribe`, the `RetryPolicy`, and `APIError`.
 - `protocol` is the request and response model, the streaming events, and the `Accumulator`
   that folds a stream into a response.
-- `format` is the contract a wire format meets.
+- `format` is the contract a wire format meets, with the event stream a format's replies arrive
+  in, `SSE`, and `UnsupportedError`, a format's refusal.
 - `format/completions`, `format/messages`, and `format/responses` are the Chat Completions,
   Anthropic Messages, and Open Responses formats. Each package comment states what its format
   sends, refuses, drops, and normalizes.

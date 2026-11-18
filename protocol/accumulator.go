@@ -9,7 +9,8 @@ import (
 
 // Accumulator folds a stream's events into the Response they describe, in the caller's own loop:
 // Add takes each event in turn, and Response returns the Response folded so far. After a
-// terminal event it is that event's Response; before one, it is the created Response holding the
+// terminal event it is that event's Response, with the created Response's ID and Model where the
+// terminal one leaves them empty; before one, it is the created Response holding the
 // output so far, the items not yet done, and the parts not yet done, in StatusInProgress, so a
 // stream that breaks leaves the partial output.
 //
@@ -199,8 +200,17 @@ func (a *Accumulator) end(r *Response, closed bool) error {
 			return fmt.Errorf("the response has %d output items, want the %d streamed", len(r.Output), len(a.items))
 		}
 	}
+	// A terminal response that doesn't report the reply's id or model keeps the created
+	// response's, so a stream that names them once still folds into a Response that has them.
+	id, model := a.resp.ID, a.resp.Model
 	a.resp, a.ended = *r, true
 	a.resp.Output = slices.Clone(r.Output)
+	if a.resp.ID == "" {
+		a.resp.ID = id
+	}
+	if a.resp.Model == "" {
+		a.resp.Model = model
+	}
 	return nil
 }
 
@@ -520,13 +530,13 @@ func sameKind(p, kind ContentPart) bool {
 	return false
 }
 
-// Response returns the response folded so far, a new value each call. After a terminal event it
-// is that event's Response. Before one it is the created Response, in StatusInProgress, holding
-// the output so far, in output order, an index not yet added left out: each item done as it was
-// done, and each item still open with the content, or the arguments, its events have made, in
-// StatusInProgress. A reasoning item still open has no
-// encrypted content, which its format gives only at its done event. Before response.created it is
-// empty.
+// Response returns the response folded so far, a new value each call. After a terminal event it is
+// that event's Response, its ID and Model the created Response's where it leaves them empty. Before
+// one it is the created Response, in StatusInProgress, holding the output so far, in output order,
+// an index not yet added left out: each item done as it was done, and each item still open with the
+// content, or the arguments, its events have made, in StatusInProgress. A reasoning item still open
+// has no encrypted content, which its format gives only at its done event. Before response.created
+// it is empty.
 func (a *Accumulator) Response() *Response {
 	r := a.resp
 	if a.ended {

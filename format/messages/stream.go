@@ -16,8 +16,9 @@ import (
 // naming its type in its data, which it turns into the protocol's streaming events in the spec's
 // order.
 //
-// message_start opens the stream with response.created, its response in_progress, and gives the
-// reply's id and its input usage. Each content block then becomes what DecodeResponse makes of
+// message_start opens the stream with response.created, its response in_progress and of the
+// reply's id and model, and gives the reply's usage so far, its output counts left to
+// message_delta. Each content block then becomes what DecodeResponse makes of
 // the same block, in the same output order:
 //
 //	thinking           a reasoning item: output_item.added, in progress and with no content,
@@ -45,24 +46,28 @@ import (
 // argument delta of the input its start gave, or {} when it gave none, so the call's arguments are
 // the empty object DecodeResponse gives a call of no input, never empty.
 //
-// Items and parts may be open at once: llama.cpp's router stops every block only at the end of
-// the reply, after the last block began, where Anthropic stops each before the next begins. Each
-// part closes at its own block's stop, in whatever order the stops arrive. An item's
-// output_item.done, carrying the whole item, follows once its blocks have stopped, a message's
-// once it has ended too, and once its status is known: an item that a later item follows is
-// completed, and the last item waits for message_delta's stop_reason, which gives the response's
-// status as DecodeResponse maps it, so only the last item can be incomplete, as the spec has it.
-// A second part of a message beginning while its first is open, which neither endpoint sends, is
-// an error, as the spec adds a part only once the one ahead of it is done.
+// Items and parts may be open at once: llama.cpp's router stops every block only at the end of the
+// reply, after the last block began, where Anthropic stops each before the next begins. Each part
+// closes at its own block's stop, in whatever order the stops arrive. An item's output_item.done,
+// carrying the whole item, follows once its blocks have stopped, a message's once it has ended too,
+// and once its status is known: an item that a later item follows is completed, and the last item
+// waits for message_stop, by which the stop_reason that gives the response's status as
+// DecodeResponse maps it is final, so only the last item can be incomplete, as the spec has it. A
+// second part of a message beginning while its first is open, which neither endpoint sends, is an
+// error, as the spec adds a part only once the one ahead of it is done.
 //
-// message_delta's stop_reason and usage join the terminal Response: its input tokens are
-// message_start's input_tokens with its cache_read_input_tokens and cache_creation_input_tokens
-// added, as DecodeResponse counts them, its output tokens message_delta's output_tokens, and its
-// total their sum. message_delta closes the items still to close, and message_stop then closes the
-// stream with the terminal event: response.completed or response.incomplete, as the stop_reason
-// gives, its response holding the output and the usage. The stream ends there; Messages sends no
-// [DONE]. A stop_reason of pause_turn, which has no place in a stateless response, or one
-// DecodeResponse doesn't map, is an error, as it is to DecodeResponse.
+// A stream may send several message_delta events after its last block. The last stop_reason one
+// gives that isn't null is the reply's, and each count a delta's usage gives is cumulative and
+// replaces the one before, a count it omits keeping its value. The usage counts as DecodeResponse
+// counts it: input tokens are input_tokens with cache_read_input_tokens and
+// cache_creation_input_tokens added, cached tokens cache_read_input_tokens, output tokens
+// output_tokens, reasoning tokens output_tokens_details.thinking_tokens, and the total the input
+// and output tokens' sum. message_stop closes the items still to close and then the stream, with
+// the terminal event: response.completed or response.incomplete, as the stop_reason gives, its
+// response of the reply's id and model, holding the output and the usage. The stream ends there;
+// Messages sends no [DONE]. A stop_reason of pause_turn, which has no place in a stateless
+// response, or one DecodeResponse doesn't map, is an error at the message_delta that gives it, as
+// it is to DecodeResponse.
 //
 // ping events make nothing, as the comments the router sends to keep the connection alive never
 // reach the decoder, and an event of a type the decoder doesn't know, or a delta of a type it
@@ -84,7 +89,7 @@ import (
 // An event that isn't JSON, any event but ping before message_start, a second message_start, a
 // block whose index began before, a delta or a stop of a block that didn't begin or has stopped,
 // a delta of a known type for a block of another type, message_delta while a block is open, a
-// block or a second message_delta after message_delta, message_stop before message_delta, and an
+// block after message_delta, message_stop before a message_delta has given a stop_reason, and an
 // event after message_stop are errors, after which the stream is broken. A stream that ends before
 // message_stop is io.ErrUnexpectedEOF. Each item's id, its events' item_id, is the one
 // DecodeResponse gives it: itemID derives it from the reply's id and the item's output index.
@@ -99,12 +104,17 @@ type streamDecoder struct {
 	// created is set once response.created is made, started once message_start is read, and
 	// ended once the terminal event is made or an error has broken the stream.
 	created, started, ended bool
-	// id is the reply's id, message_start's.
-	id string
-	// usage is message_start's usage, its output_tokens message_delta's once that arrives.
+	// id and model are the reply's id and model, message_start's.
+	id, model string
+	// usage is the reply's usage so far: message_start's input counts, each updated by the
+	// counts each message_delta gives.
 	usage usage
-	// stopped is set once message_delta has arrived, giving status and details.
-	stopped bool
+	// stopped is set once a message_delta has arrived, and stopReason is the last stop_reason
+	// one gave that isn't null.
+	stopped    bool
+	stopReason string
+	// final is set at message_stop, once the stop_reason is final and gives status and details.
+	final   bool
 	status  protocol.Status
 	details *protocol.IncompleteDetails
 	// blocks are the content blocks begun, by index.
@@ -164,11 +174,12 @@ var eventTypes = map[string]bool{
 	"error":               true,
 }
 
-// Decode decodes one event of the stream, as NewStreamDecoder describes. With an error, the
-// events it returns are those it made before it.
-func (d *streamDecoder) Decode(data []byte) ([]protocol.Event, error) {
+// Decode decodes one event of the stream, as NewStreamDecoder describes, from its data alone:
+// the format names its events, where it does, in the data. With an error, the events it returns
+// are those it made before it.
+func (d *streamDecoder) Decode(e format.WireEvent) ([]protocol.Event, error) {
 	d.events = nil
-	if err := d.decode(data); err != nil {
+	if err := d.decode(e.Data); err != nil {
 		d.ended = true
 		return d.events, fmt.Errorf("messages: stream: %w", err)
 	}
@@ -208,7 +219,7 @@ func (d *streamDecoder) decode(data []byte) error {
 	case "content_block_stop":
 		return d.stopBlock(e.Index)
 	case "message_delta":
-		return d.messageDelta(e.Delta.StopReason, e.Usage.OutputTokens)
+		return d.messageDelta(e.Delta.StopReason, e.Usage)
 	default: // message_stop
 		return d.end()
 	}
@@ -225,8 +236,10 @@ func (d *streamDecoder) start(message jsontext.Value) error {
 			return fmt.Errorf("decode message_start's message: %v", err)
 		}
 	}
-	d.started, d.id, d.usage = true, m.ID, m.Usage
-	d.usage.OutputTokens = 0
+	d.started, d.id, d.model, d.usage = true, m.ID, m.Model, m.Usage
+	// message_start's output counts are placeholders, such as Anthropic's output_tokens of 1;
+	// message_delta gives the reply's.
+	d.usage.OutputTokens, d.usage.OutputTokensDetails = nil, outputTokensDetails{}
 	d.blocks = map[int]*streamBlock{}
 	d.create()
 	return nil
@@ -238,7 +251,7 @@ func (d *streamDecoder) create() {
 		return
 	}
 	d.created = true
-	d.emit(protocol.ResponseCreated{SequenceNumber: d.next(), Response: &protocol.Response{Status: protocol.StatusInProgress}})
+	d.emit(protocol.ResponseCreated{SequenceNumber: d.next(), Response: &protocol.Response{ID: d.id, Model: d.model, Status: protocol.StatusInProgress}})
 }
 
 // startBlock begins the content block at index, b, as NewStreamDecoder describes.
@@ -436,32 +449,32 @@ func (d *streamDecoder) stopBlock(index int) error {
 	return d.settle(len(d.items))
 }
 
-// messageDelta reads message_delta's stop_reason and output tokens, and closes the items still
-// to close: the last of the status the stop_reason gives, those before it completed.
-func (d *streamDecoder) messageDelta(stopReason string, outputTokens int) error {
-	if d.stopped {
-		return errors.New("a second message_delta")
-	}
+// messageDelta reads a message_delta: its stop_reason, kept unless it is null, and its usage's
+// cumulative counts. The first ends the message open, which takes no more parts. Its items'
+// statuses wait for message_stop, as a later message_delta may give another stop_reason.
+func (d *streamDecoder) messageDelta(stopReason string, u usage) error {
 	for i, it := range d.items {
 		if !it.stoppedAll() {
 			return fmt.Errorf("message_delta while a content block of output %d is open", i)
 		}
 	}
-	var ok bool
-	if d.status, d.details, ok = decodeStop(stopReason); !ok {
-		return fmt.Errorf("message_delta has unknown stop_reason %q", stopReason)
+	if stopReason != "" {
+		if _, _, ok := decodeStop(stopReason); !ok {
+			return fmt.Errorf("message_delta has unknown stop_reason %q", stopReason)
+		}
+		d.stopReason = stopReason
 	}
 	d.stopped = true
-	d.usage.OutputTokens = outputTokens
+	d.usage.update(u)
 	if m := d.openMessage(); m != nil {
 		m.ended = true
 	}
-	return d.settle(len(d.items))
+	return nil
 }
 
 // settle closes, in output order, each of the first n items that may close: each not done
 // whose blocks have stopped and that has ended, and whose status is known, completed when an
-// item follows it among the n, and the stop_reason's once message_delta has given it.
+// item follows it among the n, and the stop_reason's once message_stop has made it final.
 func (d *streamDecoder) settle(n int) error {
 	for _, it := range d.items[:n] {
 		if it.done || !it.ended || !it.stoppedAll() {
@@ -469,7 +482,7 @@ func (d *streamDecoder) settle(n int) error {
 		}
 		status := protocol.StatusCompleted
 		if it.index == len(d.items)-1 {
-			if !d.stopped {
+			if !d.final {
 				continue
 			}
 			status = d.status
@@ -534,13 +547,25 @@ func (d *streamDecoder) End() ([]protocol.Event, error) {
 	return nil, fmt.Errorf("messages: stream: stream ended before message_stop: %w", io.ErrUnexpectedEOF)
 }
 
-// end reads message_stop, closing the stream with its terminal event.
+// end reads message_stop: it closes the items still to close, of the status the stop_reason
+// gives, and then the stream, with its terminal event.
 func (d *streamDecoder) end() error {
-	if !d.stopped {
+	switch {
+	case !d.stopped:
 		return errors.New("message_stop before message_delta")
+	case d.stopReason == "":
+		return errors.New("message_stop before a message_delta gave a stop_reason")
+	}
+	// The stop_reason was mapped at the message_delta that gave it.
+	d.status, d.details, _ = decodeStop(d.stopReason)
+	d.final = true
+	if err := d.settle(len(d.items)); err != nil {
+		return err
 	}
 	d.ended = true
 	resp := &protocol.Response{
+		ID:                d.id,
+		Model:             d.model,
 		Output:            d.output(),
 		Status:            d.status,
 		IncompleteDetails: d.details,
@@ -570,6 +595,8 @@ func (d *streamDecoder) fail(anthropic bool, data []byte) {
 	}
 	d.emit(protocol.ErrorEvent{SequenceNumber: d.next(), Error: payload})
 	d.emit(protocol.ResponseFailed{SequenceNumber: d.next(), Response: &protocol.Response{
+		ID:     d.id,
+		Model:  d.model,
 		Output: d.output(),
 		Status: protocol.StatusFailed,
 		Error:  &protocol.ResponseError{Code: payload.Code, Message: payload.Message},

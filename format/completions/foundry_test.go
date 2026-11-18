@@ -44,6 +44,8 @@ func TestDecodeFoundry(t *testing.T) {
 		{
 			file: "text.json",
 			want: &protocol.Response{
+				ID:     "chatcmpl-ElD2RajNC7lOfavEoT2LWVuR7np9O",
+				Model:  "gpt-5-mini-2025-08-07",
 				Output: []protocol.Item{message("chatcmpl-ElD2RajNC7lOfavEoT2LWVuR7np9O/0", "Paris, Lyon, Marseille")},
 				Status: protocol.StatusCompleted,
 				Usage: protocol.Usage{InputTokens: 17, OutputTokens: 142, TotalTokens: 159,
@@ -53,6 +55,8 @@ func TestDecodeFoundry(t *testing.T) {
 		{
 			file: "reasoning.json",
 			want: &protocol.Response{
+				ID:     "chatcmpl-ElD2Vp1SbMDykZjWRiP2okbaIsm9B",
+				Model:  "gpt-5-mini-2025-08-07",
 				Output: []protocol.Item{message("chatcmpl-ElD2Vp1SbMDykZjWRiP2okbaIsm9B/0", "Paris, Lyon, Marseille")},
 				Status: protocol.StatusCompleted,
 				Usage: protocol.Usage{InputTokens: 17, OutputTokens: 78, TotalTokens: 95,
@@ -62,6 +66,8 @@ func TestDecodeFoundry(t *testing.T) {
 		{
 			file: "oss_reasoning.json",
 			want: &protocol.Response{
+				ID:    "6fa1f6f05ae2411c932c26011d5474a7",
+				Model: "gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("6fa1f6f05ae2411c932c26011d5474a7/0", protocol.StatusCompleted, foundryCitiesReasoning),
 					message("6fa1f6f05ae2411c932c26011d5474a7/1", "Paris, Lyon, Marseille"),
@@ -77,6 +83,8 @@ func TestDecodeFoundry(t *testing.T) {
 			// reasoning_tokens, 18, exceeds its completion_tokens, 16, and is taken as given.
 			file: "oss_length.json",
 			want: &protocol.Response{
+				ID:    "79d4bb81100a4cf1afc6a40330a9b0ab",
+				Model: "gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("79d4bb81100a4cf1afc6a40330a9b0ab/0", protocol.StatusIncomplete, foundryLengthReasoning),
 				},
@@ -106,7 +114,8 @@ func TestDecodeFoundry(t *testing.T) {
 // differ in their reasoning and their token counts, so those are pinned from the stream.
 //
 // gpt-5-mini's streams open with a chunk of an empty id and no choices, its prompt's content
-// filter results, which claims nothing about the reply: the stream's id is the next chunk's.
+// filter results, which claims nothing about the reply: the stream's id and model are the next
+// chunk's, which response.created bears.
 func TestStreamFoundry(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -152,6 +161,7 @@ func TestStreamFoundry(t *testing.T) {
 				}
 			}
 			want.Usage = tc.usage
+			assertCreated(t, r.events, want)
 			aitest.AssertResponse(t, got, want)
 		})
 	}

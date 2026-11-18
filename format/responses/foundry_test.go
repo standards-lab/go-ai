@@ -58,6 +58,8 @@ func TestDecodeFoundry(t *testing.T) {
 			// No reasoning asked for: the deployment's default effort, medium.
 			file: "text.json",
 			want: &protocol.Response{
+				ID:    "resp_0ed6014bde04d50e016afc4f69fad08195a25bbe0fe3a1e843",
+				Model: "gpt-5-mini",
 				Output: []protocol.Item{
 					protocol.Reasoning{ID: "rs_0ed6014bde04d50e016afc4f6a824881958b5e07baea04f688"},
 					message("msg_0ed6014bde04d50e016afc4f6bdf6081958ef937be11a8c82e", "Paris, Lyon, Marseille"),
@@ -70,6 +72,8 @@ func TestDecodeFoundry(t *testing.T) {
 		{
 			file: "reasoning.json",
 			want: &protocol.Response{
+				ID:    "resp_09fe9f588dbdce2a016afc4f6e75908194bd8c15239bc3ea2f",
+				Model: "gpt-5-mini",
 				Output: []protocol.Item{
 					protocol.Reasoning{ID: "rs_09fe9f588dbdce2a016afc4f6efd2481948e7b488124601fb2"},
 					message("msg_09fe9f588dbdce2a016afc4f6f78a88194aa0c2a08ab7d1e55", "Paris, Lyon, Marseille"),

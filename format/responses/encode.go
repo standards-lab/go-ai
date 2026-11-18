@@ -4,10 +4,13 @@ import (
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/internal/native"
 	"github.com/standards-lab/go-ai/protocol"
 )
@@ -61,11 +64,17 @@ import (
 // The tool choice goes out as tool_choice: a mode as its string, auto, none, or required; a
 // named function as {"type":"function","name"}; and an allowed set as
 // {"type":"allowed_tools","tools","mode"}, its tools named the same way. Reasoning's effort and
-// summary go out as reasoning's effort and summary.
+// summary go out as reasoning's effort and summary. The spec's efforts are none, low, medium,
+// high, and xhigh, so minimal and max are refused.
 //
-// Native's members, the native tier, are merged into the top level, and a member named like one
-// the typed fields set is refused, as are stream, store, and include, which are always set.
-// previous_response_id and background are refused too, as the package documentation explains.
+// MaxOutputTokens goes out as max_output_tokens, and one below MinMaxOutputTokens, the spec's
+// minimum, is refused. ParallelToolCalls goes out as parallel_tool_calls, true or false; nil
+// sends none, leaving it to the endpoint.
+//
+// Native's members, the native tier, are merged into the top level, and a member named like one the
+// typed fields set is refused, parallel_tool_calls among them when ParallelToolCalls is set, as are
+// stream, store, and include, which are always set. previous_response_id and background are refused
+// too, as the package documentation explains.
 func (f *Format) EncodeRequest(req *protocol.Request, _ http.Header) ([]byte, error) {
 	return f.encode(req, false)
 }
@@ -91,6 +100,15 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 	if err := refuseStateful(req.Native); err != nil {
 		return nil, err
 	}
+	if n := req.MaxOutputTokens; n > 0 && n < MinMaxOutputTokens {
+		return nil, refuse("max output tokens", strconv.Itoa(n),
+			fmt.Sprintf("request's max output tokens %d is below the minimum, %d", n, MinMaxOutputTokens))
+	}
+	switch e := req.Reasoning.Effort; e {
+	case protocol.ReasoningEffortMinimal, protocol.ReasoningEffortMax:
+		return nil, refuse("reasoning effort", string(e),
+			fmt.Sprintf("reasoning effort %s has no Open Responses form", e))
+	}
 	input, err := f.encodeInput(req.Input)
 	if err != nil {
 		return nil, err
@@ -104,16 +122,17 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 		return nil, err
 	}
 	body := request{
-		Model:           req.Model,
-		Instructions:    req.Instructions,
-		Input:           input,
-		ToolChoice:      choice,
-		Text:            text,
-		MaxOutputTokens: req.MaxOutputTokens,
-		Stream:          stream,
-		Store:           false,
-		Include:         include,
-		Native:          req.Native,
+		Model:             req.Model,
+		Instructions:      req.Instructions,
+		Input:             input,
+		ToolChoice:        choice,
+		Text:              text,
+		MaxOutputTokens:   req.MaxOutputTokens,
+		ParallelToolCalls: req.ParallelToolCalls,
+		Stream:            stream,
+		Store:             false,
+		Include:           include,
+		Native:            req.Native,
 	}
 	for _, t := range req.Tools {
 		body.Tools = append(body.Tools, functionTool{
@@ -127,8 +146,16 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 	if r := req.Reasoning; r != (protocol.ReasoningParam{}) {
 		body.Reasoning = &reasoningParam{Effort: string(r.Effort), Summary: string(r.Summary)}
 	}
-	return native.Marshal(body)
+	b, err := native.Marshal(body)
+	if clash, ok := errors.AsType[*native.ClashError](err); ok {
+		return nil, refuse("native member", clash.Member, clash.Error())
+	}
+	return b, err
 }
+
+// MinMaxOutputTokens is the least positive MaxOutputTokens the format sends, the spec's minimum
+// for max_output_tokens. EncodeRequest refuses a request whose bound is below it.
+const MinMaxOutputTokens = 16
 
 // refuseStateful refuses a Native, which the client has validated, that has a
 // previous_response_id or background member, each of which asks the endpoint to keep state, as
@@ -136,10 +163,17 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 func refuseStateful(v jsontext.Value) error {
 	for _, name := range []string{"previous_response_id", "background"} {
 		if native.Has(v, name) {
-			return fmt.Errorf("native member %s asks the endpoint to keep state, which a stateless request never does", name)
+			return refuse("native member", name,
+				fmt.Sprintf("native member %s asks the endpoint to keep state, which a stateless request never does", name))
 		}
 	}
 	return nil
+}
+
+// refuse returns the format's refusal of a request feature, the spec's: the format has no form
+// for value, of feature, as message says.
+func refuse(feature, value, message string) error {
+	return &format.UnsupportedError{Format: "responses", Feature: feature, Value: value, Message: message}
 }
 
 // encodeInput encodes the input items as EncodeRequest describes.
@@ -188,7 +222,8 @@ func (f *Format) encodeInput(items []protocol.Item) ([]any, error) {
 			}
 			w = o
 		default:
-			return nil, fmt.Errorf("input %d: item %T has no Open Responses form", i, it)
+			return nil, fmt.Errorf("input %d: %w", i, refuse("input item", fmt.Sprintf("%T", it),
+				fmt.Sprintf("item %T has no Open Responses form", it)))
 		}
 		reasoning = nil
 		out = append(out, w)
@@ -258,7 +293,7 @@ func encodeToolChoice(tc protocol.ToolChoice) (any, error) {
 		}
 		return w, nil
 	default:
-		return nil, fmt.Errorf("tool choice %T has no Open Responses form", tc)
+		return nil, refuse("tool choice", fmt.Sprintf("%T", tc), fmt.Sprintf("tool choice %T has no Open Responses form", tc))
 	}
 }
 
@@ -279,7 +314,8 @@ func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 		case protocol.Refusal:
 			w = refusalPart{Type: "refusal", Refusal: p.Refusal}
 		default:
-			return nil, fmt.Errorf("content %d: part %T has no Open Responses form", i, p)
+			return nil, fmt.Errorf("content %d: %w", i, refuse("content part", fmt.Sprintf("%T", p),
+				fmt.Sprintf("part %T has no Open Responses form", p)))
 		}
 		out = append(out, w)
 	}
@@ -302,7 +338,7 @@ func encodeText(t protocol.TextParam) (*textParam, error) {
 			Strict:      f.Strict,
 		}
 	default:
-		return nil, fmt.Errorf("text format %T has no Open Responses form", f)
+		return nil, refuse("text format", fmt.Sprintf("%T", f), fmt.Sprintf("text format %T has no Open Responses form", f))
 	}
 	w.Verbosity = string(t.Verbosity)
 	if w == (textParam{}) {

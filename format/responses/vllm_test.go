@@ -41,6 +41,8 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "text.json",
 			want: &protocol.Response{
+				ID:     "resp_984f351c1f0f48a8",
+				Model:  "nvidia/Gemma-4-26B-A4B-NVFP4",
 				Output: []protocol.Item{message("msg_830f9ee65cbe4ece", protocol.StatusCompleted, "Paris, Lyon, Marseille")},
 				Status: protocol.StatusCompleted,
 				Usage:  protocol.Usage{InputTokens: 25, OutputTokens: 6, TotalTokens: 31},
@@ -49,18 +51,23 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "reasoning.json",
 			want: &protocol.Response{
+				ID:    "resp_882c2f603538be4e",
+				Model: "openai/gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("rs_aa8461d746adb539", vllmCitiesReasoning),
 					message("msg_a59a9b5ccca1bb9f", protocol.StatusCompleted, "Paris, Lyon, Marseille"),
 				},
 				Status: protocol.StatusCompleted,
 				Usage: protocol.Usage{InputTokens: 78, OutputTokens: 28, TotalTokens: 106,
-					OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 13}},
+					OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 13},
+					InputTokensDetails:  protocol.InputTokensDetails{CachedTokens: 64}},
 			},
 		},
 		{
 			file: "tool_call.json",
 			want: &protocol.Response{
+				ID:    "resp_b61008d27fb7dcf4",
+				Model: "openai/gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("rs_82377d4907887a4d", vllmWeatherReasoning),
 					protocol.FunctionCall{
@@ -73,19 +80,23 @@ func TestDecodeVLLM(t *testing.T) {
 				},
 				Status: protocol.StatusCompleted,
 				Usage: protocol.Usage{InputTokens: 134, OutputTokens: 36, TotalTokens: 170,
-					OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 17}},
+					OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 17},
+					InputTokensDetails:  protocol.InputTokensDetails{CachedTokens: 128}},
 			},
 		},
 		{
 			file: "structured.json",
 			want: &protocol.Response{
+				ID:    "resp_9bf61c03f560e67d",
+				Model: "openai/gpt-oss-120b",
 				Output: []protocol.Item{
 					reasoning("rs_9d945646a40c4fae", "Simple."),
 					message("msg_a8252ac23b460f33", protocol.StatusCompleted, "{\n  \"name\": \"Paris\"\n}"),
 				},
 				Status: protocol.StatusCompleted,
 				Usage: protocol.Usage{InputTokens: 73, OutputTokens: 24, TotalTokens: 97,
-					OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 2}},
+					OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 2},
+					InputTokensDetails:  protocol.InputTokensDetails{CachedTokens: 64}},
 			},
 		},
 		{
@@ -93,6 +104,8 @@ func TestDecodeVLLM(t *testing.T) {
 			// the response and its message incomplete.
 			file: "length.json",
 			want: &protocol.Response{
+				ID:                "resp_94da7688c5813315",
+				Model:             "nvidia/Gemma-4-26B-A4B-NVFP4",
 				Output:            []protocol.Item{message("msg_87b77c8f5d9a7dd0", protocol.StatusIncomplete, "1 2 3 4 ")},
 				Status:            protocol.StatusIncomplete,
 				IncompleteDetails: &protocol.IncompleteDetails{Reason: protocol.ReasonMaxOutputTokens},
@@ -102,9 +115,12 @@ func TestDecodeVLLM(t *testing.T) {
 		{
 			file: "image.json",
 			want: &protocol.Response{
+				ID:     "resp_b0a91a9e368d04dd",
+				Model:  "nvidia/Gemma-4-26B-A4B-NVFP4",
 				Output: []protocol.Item{message("msg_92710856b6965835", protocol.StatusCompleted, "Red")},
 				Status: protocol.StatusCompleted,
-				Usage:  protocol.Usage{InputTokens: 282, OutputTokens: 2, TotalTokens: 284},
+				Usage: protocol.Usage{InputTokens: 282, OutputTokens: 2, TotalTokens: 284,
+					InputTokensDetails: protocol.InputTokensDetails{CachedTokens: 256}},
 			},
 		},
 	}

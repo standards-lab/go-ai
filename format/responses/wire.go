@@ -25,6 +25,10 @@ type request struct {
 	// MaxOutputTokens carries max_output_tokens, omitted when the request leaves the bound to
 	// the endpoint.
 	MaxOutputTokens int `json:"max_output_tokens,omitzero"`
+	// ParallelToolCalls carries parallel_tool_calls, true or false, omitted when the request
+	// leaves it to the endpoint, so a Native parallel_tool_calls member clashes with it only
+	// when it is set.
+	ParallelToolCalls *bool `json:"parallel_tool_calls,omitzero"`
 	// Stream is always sent, false for an unstreamed request, so a Native stream member clashes
 	// with it.
 	Stream bool `json:"stream"`
@@ -157,8 +161,10 @@ type audioPart struct {
 }
 
 // response is the part of a response resource the format reads. Members it doesn't read, such
-// as model and created_at, are ignored.
+// as created_at, are ignored.
 type response struct {
+	ID                string             `json:"id"`
+	Model             string             `json:"model"`
 	Status            string             `json:"status"`
 	Output            []outputItem       `json:"output"`
 	IncompleteDetails *incompleteDetails `json:"incomplete_details"`
@@ -207,7 +213,13 @@ type usage struct {
 	InputTokens         int                 `json:"input_tokens"`
 	OutputTokens        int                 `json:"output_tokens"`
 	TotalTokens         int                 `json:"total_tokens"`
+	InputTokensDetails  inputTokensDetails  `json:"input_tokens_details"`
 	OutputTokensDetails outputTokensDetails `json:"output_tokens_details"`
+}
+
+// inputTokensDetails breaks a response's input tokens down.
+type inputTokensDetails struct {
+	CachedTokens int `json:"cached_tokens"`
 }
 
 // outputTokensDetails breaks a response's output tokens down.

@@ -94,18 +94,6 @@ func TestEncodeConversation(t *testing.T) {
 					{"type":"text","text":"go on"}]}]`,
 		},
 		{
-			name: "a system message ends the user turn",
-			input: []protocol.Item{
-				q, call("c1", "f", `{}`), output("c1", "one"), text(protocol.RoleSystem, "s"), text(protocol.RoleUser, "u"),
-			},
-			want: `[
-				{"role":"user","content":[{"type":"text","text":"q"}]},
-				{"role":"assistant","content":[{"type":"tool_use","id":"c1","name":"f","input":{}}]},
-				{"role":"user","content":[{"type":"tool_result","tool_use_id":"c1","content":"one"}]},
-				{"role":"system","content":[{"type":"text","text":"s"}]},
-				{"role":"user","content":[{"type":"text","text":"u"}]}]`,
-		},
-		{
 			name: "reasoning opens a new run, a message after calls another",
 			input: []protocol.Item{
 				q,
@@ -257,6 +245,54 @@ func TestEncodeTools(t *testing.T) {
 	}
 }
 
+// TestEncodeParallelToolCalls covers ParallelToolCalls: false as tool_choice's
+// disable_parallel_tool_use, on the request's tool choice or on auto when it sets none; true and
+// nil sending nothing; and nothing on a tool choice of none, or for a request of no tools.
+func TestEncodeParallelToolCalls(t *testing.T) {
+	const tools = `"tools":[{"name":"f","input_schema":{"type":"object"}}]`
+	cases := []struct {
+		name     string
+		tools    bool
+		choice   protocol.ToolChoice
+		parallel *bool
+		want     string
+	}{
+		{"nil sends nothing", true, nil, nil, tools},
+		{"true sends nothing", true, nil, new(true), tools},
+		{"false on auto when no choice is set", true, nil, new(false),
+			tools + `,"tool_choice":{"type":"auto","disable_parallel_tool_use":true}`},
+		{"false on the choice auto", true, protocol.ToolChoiceAuto, new(false),
+			tools + `,"tool_choice":{"type":"auto","disable_parallel_tool_use":true}`},
+		{"false on any", true, protocol.ToolChoiceRequired, new(false),
+			tools + `,"tool_choice":{"type":"any","disable_parallel_tool_use":true}`},
+		{"false on a named tool", true, protocol.FunctionToolChoice{Name: "f"}, new(false),
+			tools + `,"tool_choice":{"type":"tool","name":"f","disable_parallel_tool_use":true}`},
+		{"false on allowed_tools' mode", true,
+			protocol.AllowedToolChoice{Tools: []protocol.FunctionToolChoice{{Name: "f"}}, Mode: protocol.ToolChoiceRequired}, new(false),
+			tools + `,"tool_choice":{"type":"any","disable_parallel_tool_use":true}`},
+		{"true on a choice sends the choice alone", true, protocol.ToolChoiceRequired, new(true),
+			tools + `,"tool_choice":{"type":"any"}`},
+		{"false on none sends none alone, which calls no tool", true, protocol.ToolChoiceNone, new(false),
+			tools + `,"tool_choice":{"type":"none"}`},
+		{"false of no tools sends nothing", false, nil, new(false), ``},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := ask(text(protocol.RoleUser, "q"))
+			if tc.tools {
+				req.Tools = []protocol.FunctionTool{{Name: "f"}}
+			}
+			req.ToolChoice = tc.choice
+			req.ParallelToolCalls = tc.parallel
+			want := `{"model":"m","max_tokens":64,"stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"q"}]}]`
+			if tc.want != "" {
+				want += "," + tc.want
+			}
+			aitest.AssertJSON(t, encode(t, req), want+"}")
+		})
+	}
+}
+
 // TestEncodeOptions covers reasoning effort, the text format, verbosity, and the native tier.
 func TestEncodeOptions(t *testing.T) {
 	schema := jsontext.Value(`{"type":"object","properties":{"capital":{"type":"string"}},"required":["capital"]}`)
@@ -280,6 +316,9 @@ func TestEncodeOptions(t *testing.T) {
 		{"effort xhigh", func(r *protocol.Request) {
 			r.Reasoning.Effort = protocol.ReasoningEffortXHigh
 		}, `"thinking":{"type":"adaptive"},"output_config":{"effort":"xhigh"}`},
+		{"effort max", func(r *protocol.Request) {
+			r.Reasoning.Effort = protocol.ReasoningEffortMax
+		}, `"thinking":{"type":"adaptive"},"output_config":{"effort":"max"}`},
 		{"a JSON schema as output_config.format, its name, description, and strict dropped", func(r *protocol.Request) {
 			r.Text.Format = protocol.JSONSchemaFormat{Name: "capital", Description: "A capital.", Schema: schema, Strict: true}
 		}, `"output_config":{"format":{"type":"json_schema","schema":` + string(schema) + `}}`},
@@ -311,4 +350,13 @@ func TestEncodeOptions(t *testing.T) {
 			aitest.AssertJSON(t, encode(t, req), want+"}")
 		})
 	}
+}
+
+// TestEncodeBoundOfOne wants any positive MaxOutputTokens sent as max_tokens, Messages having no
+// minimum above zero.
+func TestEncodeBoundOfOne(t *testing.T) {
+	req := ask(text(protocol.RoleUser, "q"))
+	req.MaxOutputTokens = 1
+	aitest.AssertJSON(t, encode(t, req),
+		`{"model":"m","max_tokens":1,"stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"q"}]}]}`)
 }

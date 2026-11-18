@@ -19,22 +19,25 @@ import (
 // DecodeResponse decodes a Chat Completions response body. Each output item gets the id itemID
 // derives from the reply's id and the item's place in the output, as Chat Completions supplies no
 // item ids. The first choice's message's reasoning, when it has some, becomes a reasoning item
-// ahead of the others, read as reasoningText reads it, from reasoning_content or vLLM's reasoning: its content one reasoning_text part of the text, and its
-// encrypted_content the format's envelope holding it, which EncodeRequest reads back. The message
-// then becomes an assistant message item, its content an output_text part and its refusal a refusal
-// part; a message with neither gives no message item. Each of its tool_calls then becomes a
-// function_call item, in order, its call_id the call's id; a call of a type other than function is
-// an error. The first choice's finish_reason gives the response's status:
+// ahead of the others, read as reasoningText reads it, from reasoning_content or vLLM's reasoning:
+// its content one reasoning_text part of the text, and its encrypted_content the format's envelope
+// holding it, which EncodeRequest reads back. The message then becomes an assistant message item,
+// its content an output_text part and its refusal a refusal part; a message with neither gives no
+// message item. Each of its tool_calls then becomes a function_call item, in order, its call_id the
+// call's id; a call of a type other than function is an error. The first choice's finish_reason
+// gives the response's status:
 //
 //	stop, tool_calls  completed
 //	length            incomplete, reason max_output_tokens
 //	content_filter    incomplete, reason content_filter
 //
-// The last output item takes the response's status, and the items before it are completed, as
-// the spec has only the last item incomplete; a reasoning item takes its status like any other,
-// so a reply of reasoning alone stopped at length is an incomplete reasoning item. Any other
-// finish_reason, or a body with no choices, is an error. The reply's usage gives the response's:
-// prompt_tokens, completion_tokens, total_tokens, and the reasoning tokens, from
+// The last output item takes the response's status, and the items before it are completed, as the
+// spec has only the last item incomplete; a reasoning item takes its status like any other, so a
+// reply of reasoning alone stopped at length is an incomplete reasoning item. Any other
+// finish_reason, or a body with no choices, is an error. The reply's id and model give the
+// response's ID and Model. The reply's usage gives the response's: prompt_tokens,
+// completion_tokens, total_tokens, the cached input tokens from
+// prompt_tokens_details.cached_tokens, and the reasoning tokens, from
 // completion_tokens_details.reasoning_tokens or, when that is absent, the usage's top-level
 // reasoning_tokens.
 func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
@@ -46,7 +49,7 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 		return nil, errors.New("completions: response has no choices")
 	}
 	choice := wire.Choices[0]
-	resp := &protocol.Response{Usage: decodeUsage(wire.Usage)}
+	resp := &protocol.Response{ID: wire.ID, Model: wire.Model, Usage: decodeUsage(wire.Usage)}
 	// id is the next output item's id.
 	id := func() string { return itemID(wire.ID, len(resp.Output)) }
 	var ok bool
@@ -140,7 +143,8 @@ func itemID(reply string, output int) string {
 	return reply + "/" + strconv.Itoa(output)
 }
 
-// decodeUsage returns a reply's usage as the protocol's. Its reasoning tokens are
+// decodeUsage returns a reply's usage as the protocol's. Its cached input tokens are
+// prompt_tokens_details.cached_tokens, or 0 when the usage gives none. Its reasoning tokens are
 // completion_tokens_details.reasoning_tokens when the usage gives that member, even as 0, and
 // otherwise the usage's top-level reasoning_tokens, or 0 when it gives neither. A count is taken
 // as given, never clamped, though a server's may exceed completion_tokens.
@@ -157,6 +161,9 @@ func decodeUsage(u usage) protocol.Usage {
 		InputTokens:  u.PromptTokens,
 		OutputTokens: u.CompletionTokens,
 		TotalTokens:  u.TotalTokens,
+		InputTokensDetails: protocol.InputTokensDetails{
+			CachedTokens: u.PromptTokensDetails.CachedTokens,
+		},
 		OutputTokensDetails: protocol.OutputTokensDetails{
 			ReasoningTokens: reasoningTokens,
 		},
@@ -198,7 +205,9 @@ func (*Format) DecodeError(body []byte) (message, typ, code string) {
 // order. Chat Completions names no event types: every event's data is a chunk, or the [DONE] that
 // ends the stream. Of each chunk it reads the id, the first choice, index 0, and the usage.
 //
-// The first event opens the stream with response.created, its response in_progress. The choice's
+// The stream opens with response.created, its response in_progress and bearing the stream's id
+// and model, made at the first event that claims the reply or ends the stream: any but a leading
+// chunk of no id and no choices, which makes no event, as below. The choice's
 // reasoning deltas, each read as reasoningText reads it, from reasoning_content or vLLM's
 // reasoning, make the reasoning item, first in the output, as DecodeResponse orders
 // it: output_item.added, in progress and with no content, when the first of them arrives, then its
@@ -239,30 +248,32 @@ func (*Format) DecodeError(body []byte) (message, typ, code string) {
 // item as any other. It translates the reasoning, the message, and its calls alone: a chunk's
 // other members are ignored.
 //
-// The stream ends at data [DONE], or at the end of the stream once the finish_reason has
-// arrived, where it closes with the terminal event: response.completed or
-// response.incomplete, as the finish_reason gives, its response holding the output and the
-// usage of the chunk that carried it. A stream that ends with no finish_reason is
+// The stream ends at data [DONE], or at the end of the stream once the finish_reason has arrived,
+// where it closes with the terminal event: response.completed or response.incomplete, as the
+// finish_reason gives, its response bearing the stream's id and model and holding the output and
+// the usage of the chunk that carried it. A stream that ends with no finish_reason is
 // io.ErrUnexpectedEOF; so is [DONE] without one.
 //
-// An error frame, an event whose data is an OpenAI-style error body, {"error": {...}}, as
-// llama.cpp sends when generation fails mid-stream, is the endpoint's report that the response
-// failed, and closes the stream as the spec has it: the error event, its payload the frame's
-// type, code, message, and param, then the terminal response.failed, its response failed, its
-// error the frame's code and message, holding the output made before the frame and the usage
-// given so far. The items open at the frame get no done event: they are in the output in
-// progress, in output order, with the content or arguments they had, as the Accumulator holds an
-// item still open, since the spec keeps incomplete for an item of an incomplete response and has
-// no failed item status. A
-// frame as the first event follows response.created, which every stream opens with, and an
-// event after the frame is an error, as one after [DONE] is.
+// An error frame, an event whose data is an OpenAI-style error body, {"error": {...}}, as llama.cpp
+// sends when generation fails mid-stream, is the endpoint's report that the response failed, and
+// closes the stream as the spec has it: the error event, its payload the frame's type, code,
+// message, and param, then the terminal response.failed, its response failed and bearing the
+// stream's id and model, its error the frame's code and message, holding the output made before the
+// frame and the usage given so far. The items open at the frame get no done event: they are in the
+// output in progress, in output order, with the content or arguments they had, as the Accumulator
+// holds an item still open, since the spec keeps incomplete for an item of an incomplete response
+// and has no failed item status. A frame as the first event follows response.created, which every
+// stream opens with, and an event after the frame is an error, as one after [DONE] is.
 //
 // A chunk that isn't JSON, an unknown finish_reason, a delta after the finish_reason, or an event
 // after [DONE] is an error. The stream's id is the first id a chunk carries, which every chunk
-// repeats; a chunk with another id is an error. A chunk with no id and no choices, which some
-// endpoints send ahead of the reply with only the prompt's content filter verdict, claims nothing
-// about the reply: it neither sets the stream's id nor is checked against it, and its usage, if
-// it carries any, is read. A chunk with no id but with choices is held to the stream's id as any
+// repeats; a chunk with another id is an error. The stream's model is the model of the chunk
+// that set its id, which every chunk repeats too, and isn't checked. A chunk with no id and no
+// choices, which some endpoints send ahead of the reply with only the prompt's content filter
+// verdict, claims nothing about the reply: it neither sets the stream's id or model nor is
+// checked against them, and its usage, if it carries any, is read. Leading the stream, it makes
+// no event, not even response.created, so that response.created bears the id and model of the
+// chunk after it. A chunk with no id but with choices is held to the stream's id as any
 // other. Each item's id, its events' item_id, is the one DecodeResponse gives it: itemID derives
 // it from the stream's id and the item's output index, as Chat Completions supplies no item ids.
 func (*Format) NewStreamDecoder() format.StreamDecoder {
@@ -273,10 +284,13 @@ func (*Format) NewStreamDecoder() format.StreamDecoder {
 type streamDecoder struct {
 	// seq is the next event's sequence number.
 	seq int
-	// id is the reply's id, the first chunk's that carries an id or choices; chunked is set once
-	// that chunk is read.
-	id      string
-	chunked bool
+	// id and model are the reply's id and model, the first chunk's that carries an id or
+	// choices; chunked is set once that chunk is read.
+	id, model string
+	chunked   bool
+	// received is set once any event is decoded, so End opens a stream that had only chunks of
+	// no id and no choices before it reports it incomplete.
+	received bool
 	// created is set once response.created is made, and ended once the terminal event is, or
 	// an error has broken the stream.
 	created, ended bool
@@ -343,11 +357,12 @@ const (
 	partRefusal
 )
 
-// Decode decodes one event of the stream, as NewStreamDecoder describes. With an error, the
-// events it returns are those it made before it.
-func (d *streamDecoder) Decode(data []byte) ([]protocol.Event, error) {
+// Decode decodes one event of the stream, as NewStreamDecoder describes, from its data alone:
+// the format names its events, where it does, in the data. With an error, the events it returns
+// are those it made before it.
+func (d *streamDecoder) Decode(e format.WireEvent) ([]protocol.Event, error) {
 	d.events = nil
-	if err := d.decode(data); err != nil {
+	if err := d.decode(e.Data); err != nil {
 		d.ended = true
 		return d.events, fmt.Errorf("completions: stream: %w", err)
 	}
@@ -359,15 +374,14 @@ func (d *streamDecoder) decode(data []byte) error {
 	if d.ended {
 		return errors.New("event after the end of the stream")
 	}
-	if !d.created {
-		d.created = true
-		d.emit(protocol.ResponseCreated{SequenceNumber: d.next(), Response: &protocol.Response{Status: protocol.StatusInProgress}})
-	}
+	d.received = true
 	if string(data) == "[DONE]" {
+		d.open()
 		return d.end()
 	}
 	var c chunk
 	if err := json.Unmarshal(data, &c); err != nil {
+		d.open()
 		// The JSON error is formatted, not wrapped: a chunk cut short wraps io.ErrUnexpectedEOF,
 		// which in a stream means the stream ended before its terminal event, and this chunk
 		// arrived whole.
@@ -376,15 +390,18 @@ func (d *streamDecoder) decode(data []byte) error {
 	// An error frame is the endpoint's report that the response failed, ahead of its end; its
 	// body is an OpenAI-style error's, which DecodeOpenAIError reads.
 	if len(c.Error) > 0 && c.Error.Kind() != jsontext.KindNull {
+		d.open()
 		d.fail(data, c.Error)
 		return nil
 	}
 	switch {
 	case c.ID == "" && len(c.Choices) == 0:
 		// A chunk of no id and no choices claims nothing about the reply, so it neither sets
-		// the stream's id nor is checked against it; its usage, if any, is still read.
+		// the stream's id and model nor is checked against them, and it opens nothing, so
+		// response.created bears the reply's; its usage, if any, is still read.
 	case !d.chunked:
-		d.id, d.chunked = c.ID, true
+		d.id, d.model, d.chunked = c.ID, c.Model, true
+		d.open()
 	case c.ID != d.id:
 		return fmt.Errorf("chunk of reply %q in the stream of reply %q", c.ID, d.id)
 	}
@@ -443,10 +460,23 @@ func (d *streamDecoder) End() ([]protocol.Event, error) {
 		return nil, nil
 	}
 	d.events = nil
+	if d.received {
+		d.open()
+	}
 	if err := d.end(); err != nil {
 		return d.events, fmt.Errorf("completions: stream: %w", err)
 	}
 	return d.events, nil
+}
+
+// open opens the stream with response.created, bearing the stream's id and model, unless it is
+// open already.
+func (d *streamDecoder) open() {
+	if d.created {
+		return
+	}
+	d.created = true
+	d.emit(protocol.ResponseCreated{SequenceNumber: d.next(), Response: &protocol.Response{ID: d.id, Model: d.model, Status: protocol.StatusInProgress}})
 }
 
 // end closes the stream with its terminal event, or reports it incomplete.
@@ -456,6 +486,8 @@ func (d *streamDecoder) end() error {
 		return fmt.Errorf("stream ended with no finish_reason: %w", io.ErrUnexpectedEOF)
 	}
 	resp := &protocol.Response{
+		ID:                d.id,
+		Model:             d.model,
 		Output:            slices.Clone(d.output),
 		Status:            d.status,
 		IncompleteDetails: d.details,
@@ -487,6 +519,8 @@ func (d *streamDecoder) fail(data []byte, frame jsontext.Value) {
 	d.emit(protocol.ErrorEvent{SequenceNumber: d.next(), Error: payload})
 	output := append(slices.Clone(d.output), d.openItems()...)
 	d.emit(protocol.ResponseFailed{SequenceNumber: d.next(), Response: &protocol.Response{
+		ID:     d.id,
+		Model:  d.model,
 		Output: output,
 		Status: protocol.StatusFailed,
 		Error:  &protocol.ResponseError{Code: payload.Code, Message: payload.Message},

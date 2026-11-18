@@ -107,14 +107,19 @@ func TestValidateAccepts(t *testing.T) {
 			)
 		})},
 		{"reasoning effort none", with(func(r *protocol.Request) { r.Reasoning.Effort = protocol.ReasoningEffortNone })},
+		{"reasoning effort minimal", with(func(r *protocol.Request) { r.Reasoning.Effort = protocol.ReasoningEffortMinimal })},
 		{"reasoning effort low", with(func(r *protocol.Request) { r.Reasoning.Effort = protocol.ReasoningEffortLow })},
 		{"reasoning effort medium", with(func(r *protocol.Request) { r.Reasoning.Effort = protocol.ReasoningEffortMedium })},
 		{"reasoning effort high", with(func(r *protocol.Request) { r.Reasoning.Effort = protocol.ReasoningEffortHigh })},
 		{"reasoning effort xhigh", with(func(r *protocol.Request) { r.Reasoning.Effort = protocol.ReasoningEffortXHigh })},
+		{"reasoning effort max", with(func(r *protocol.Request) { r.Reasoning.Effort = protocol.ReasoningEffortMax })},
 		{"reasoning summary auto", with(func(r *protocol.Request) { r.Reasoning.Summary = protocol.ReasoningSummaryAuto })},
 		{"reasoning summary concise", with(func(r *protocol.Request) { r.Reasoning.Summary = protocol.ReasoningSummaryConcise })},
 		{"reasoning summary detailed", with(func(r *protocol.Request) { r.Reasoning.Summary = protocol.ReasoningSummaryDetailed })},
-		{"max output tokens at the minimum", with(func(r *protocol.Request) { r.MaxOutputTokens = 16 })},
+		// The least positive bound is each format's, so the protocol takes any.
+		{"max output tokens 1", with(func(r *protocol.Request) { r.MaxOutputTokens = 1 })},
+		{"max output tokens 15", with(func(r *protocol.Request) { r.MaxOutputTokens = 15 })},
+		{"max output tokens 16", with(func(r *protocol.Request) { r.MaxOutputTokens = 16 })},
 		{"max output tokens zero", with(func(r *protocol.Request) { r.MaxOutputTokens = 0 })},
 		{"plain text format", with(func(r *protocol.Request) { r.Text.Format = protocol.PlainTextFormat{} })},
 		{"json_schema format, every field set", with(func(r *protocol.Request) {
@@ -232,8 +237,8 @@ func TestValidateRefuses(t *testing.T) {
 		{"pointer reasoning", with(func(r *protocol.Request) {
 			r.Input = []protocol.Item{&protocol.Reasoning{EncryptedContent: "opaque"}}
 		}), "unsupported item *protocol.Reasoning"},
-		{"unknown reasoning effort", with(func(r *protocol.Request) { r.Reasoning.Effort = "minimal" }),
-			`unknown reasoning effort "minimal"`},
+		{"unknown reasoning effort", with(func(r *protocol.Request) { r.Reasoning.Effort = "extreme" }),
+			`unknown reasoning effort "extreme"`},
 		{"unknown reasoning summary", with(func(r *protocol.Request) { r.Reasoning.Summary = "brief" }),
 			`unknown reasoning summary "brief"`},
 		{"pointer function call", with(func(r *protocol.Request) {
@@ -338,10 +343,6 @@ func TestValidateRefuses(t *testing.T) {
 		{"unknown verbosity", with(func(r *protocol.Request) { r.Text.Verbosity = "max" }),
 			`text: unknown verbosity "max"`},
 		{"negative max output tokens", with(func(r *protocol.Request) { r.MaxOutputTokens = -1 }), "negative"},
-		{"max output tokens 1", with(func(r *protocol.Request) { r.MaxOutputTokens = 1 }),
-			"max output tokens 1 is below the minimum, 16"},
-		{"max output tokens 15", with(func(r *protocol.Request) { r.MaxOutputTokens = 15 }),
-			"max output tokens 15 is below the minimum, 16"},
 		{"native array", with(func(r *protocol.Request) { r.Native = []byte(`[1]`) }), "native field"},
 		{"native invalid", with(func(r *protocol.Request) { r.Native = []byte(`{"a":`) }), "native field"},
 		{"native duplicate", with(func(r *protocol.Request) { r.Native = []byte(`{"a":1,"a":2}`) }), "native field"},

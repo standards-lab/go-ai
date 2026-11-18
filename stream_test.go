@@ -122,7 +122,8 @@ func TestGenerateStreamSendsHeaderAndToken(t *testing.T) {
 }
 
 // TestGenerateStreamIgnoresEventNames wants a stream whose events are named folded as the same
-// stream unnamed: the client hands the format each event's data alone.
+// stream unnamed: Chat Completions names no events, so its decoder reads each event's data
+// alone.
 func TestGenerateStreamIgnoresEventNames(t *testing.T) {
 	var b strings.Builder
 	for _, c := range streamed {
@@ -258,19 +259,23 @@ func TestGenerateStreamBreakClosesBody(t *testing.T) {
 
 // TestGenerateStreamEndsEarly wants a stream that ends before its terminal event to end the
 // sequence with io.ErrUnexpectedEOF, after the events it made, which fold to the partial
-// response.
+// response, under each framing.
 func TestGenerateStreamEndsEarly(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, eventStream(streamed[:3]...))
-	c := newClient(t, srv.URL, ai.Options{})
-	events, resp, errs := collect(t, c.GenerateStream(t.Context(), hello()))
-	if len(errs) != 1 || !errors.Is(errs[0], io.ErrUnexpectedEOF) {
-		t.Fatalf("GenerateStream errors = %v, want one io.ErrUnexpectedEOF", errs)
-	}
-	if len(events) == 0 {
-		t.Fatal("GenerateStream made no events, want those before the end")
-	}
-	if want := partial("Paris"); !reflect.DeepEqual(resp, want) {
-		t.Errorf("Response = %#v\nwant       %#v", resp, want)
+	for _, fr := range framings {
+		t.Run(fr.name, func(t *testing.T) {
+			srv := aitest.NewServer(t, http.StatusOK, fr.encode(streamed[:3]...))
+			c := newClientFormat(t, srv.URL, http.DefaultClient, fr.format(), ai.Options{})
+			events, resp, errs := collect(t, c.GenerateStream(t.Context(), hello()))
+			if len(errs) != 1 || !errors.Is(errs[0], io.ErrUnexpectedEOF) {
+				t.Fatalf("GenerateStream errors = %v, want one io.ErrUnexpectedEOF", errs)
+			}
+			if len(events) == 0 {
+				t.Fatal("GenerateStream made no events, want those before the end")
+			}
+			if want := partial("Paris"); !reflect.DeepEqual(resp, want) {
+				t.Errorf("Response = %#v\nwant       %#v", resp, want)
+			}
+		})
 	}
 }
 
@@ -326,14 +331,14 @@ func (b *body) Close() error {
 // TestGenerateStreamError covers each error that breaks a stream once it has begun, in a bubble
 // whose transport is in memory, so a goroutine left behind would fail the test: the error ends
 // the sequence as its last pair, after the events before it, which fold to the partial Response
-// in progress, and the body is closed.
+// in progress, and the body is closed. Each holds under each framing.
 func TestGenerateStreamError(t *testing.T) {
-	broken := eventStream(streamed[:3]...)
+	broken := streamed[:3]
 	cases := []struct {
 		name string
-		// reply is the body, read before err; hang waits after it for the context, which
-		// timeout ends; cancel cancels the context at the first output_text delta.
-		reply   string
+		// reply is the chunks of the body, read before err; hang waits after it for the
+		// context, which timeout ends; cancel cancels the context at the first output_text delta.
+		reply   []string
 		err     error
 		hang    bool
 		timeout time.Duration
@@ -357,12 +362,12 @@ func TestGenerateStreamError(t *testing.T) {
 				t.Errorf("error = %v, want io.ErrUnexpectedEOF wrapping the reset", err)
 			}
 		}},
-		{name: "chunk the format can't decode", reply: eventStream(append(streamed[:3:3], `{"choices":`)...), text: "Paris", check: func(t *testing.T, err error) {
+		{name: "chunk the format can't decode", reply: append(streamed[:3:3], `{"choices":`), text: "Paris", check: func(t *testing.T, err error) {
 			if !strings.Contains(err.Error(), "decode chunk") || errors.Is(err, io.ErrUnexpectedEOF) {
 				t.Errorf("error = %v, want the format's decode error", err)
 			}
 		}},
-		{name: "context cancelled", reply: eventStream(streamed...), cancel: true, text: "Par", check: func(t *testing.T, err error) {
+		{name: "context cancelled", reply: streamed, cancel: true, text: "Par", check: func(t *testing.T, err error) {
 			if !errors.Is(err, context.Canceled) {
 				t.Errorf("error = %v, want context.Canceled", err)
 			}
@@ -373,63 +378,73 @@ func TestGenerateStreamError(t *testing.T) {
 			}
 		}},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				ctx, cancel := context.WithCancel(t.Context())
-				defer cancel()
-				if tc.timeout > 0 {
-					ctx, cancel = context.WithTimeout(ctx, tc.timeout)
+	for _, fr := range framings {
+		for _, tc := range cases {
+			t.Run(fr.name+"/"+tc.name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					ctx, cancel := context.WithCancel(t.Context())
 					defer cancel()
-				}
-				var b *body
-				c := newClientWith(t, "http://router/v1", &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
-					b = &body{text: strings.NewReader(tc.reply), err: tc.err, hang: tc.hang, ctx: r.Context()}
-					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: b, Request: r}, nil
-				})}, ai.Options{})
-				var acc protocol.Accumulator
-				var errs []error
-				for e, err := range c.GenerateStream(ctx, hello()) {
-					if err != nil {
-						errs = append(errs, err)
-						continue
+					if tc.timeout > 0 {
+						ctx, cancel = context.WithTimeout(ctx, tc.timeout)
+						defer cancel()
 					}
-					if len(errs) > 0 || ctx.Err() != nil {
-						t.Errorf("event %#v follows the error or the cancel", e)
+					var b *body
+					c := newClientFormat(t, "http://router/v1", &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+						b = &body{text: strings.NewReader(fr.encode(tc.reply...)), err: tc.err, hang: tc.hang, ctx: r.Context()}
+						return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: b, Request: r}, nil
+					})}, fr.format(), ai.Options{})
+					var acc protocol.Accumulator
+					var errs []error
+					for e, err := range c.GenerateStream(ctx, hello()) {
+						if err != nil {
+							errs = append(errs, err)
+							continue
+						}
+						if len(errs) > 0 || ctx.Err() != nil {
+							t.Errorf("event %#v follows the error or the cancel", e)
+						}
+						if err := acc.Add(e); err != nil {
+							t.Errorf("Accumulator.Add: %v", err)
+						}
+						if _, ok := e.(protocol.OutputTextDelta); ok && tc.cancel {
+							cancel()
+						}
 					}
-					if err := acc.Add(e); err != nil {
-						t.Errorf("Accumulator.Add: %v", err)
+					if len(errs) != 1 {
+						t.Fatalf("GenerateStream errors = %v, want one", errs)
 					}
-					if _, ok := e.(protocol.OutputTextDelta); ok && tc.cancel {
-						cancel()
+					tc.check(t, errs[0])
+					if got, want := acc.Response(), partial(tc.text); !reflect.DeepEqual(got, want) {
+						t.Errorf("Response = %#v\nwant       %#v", got, want)
 					}
-				}
-				if len(errs) != 1 {
-					t.Fatalf("GenerateStream errors = %v, want one", errs)
-				}
-				tc.check(t, errs[0])
-				if got, want := acc.Response(), partial(tc.text); !reflect.DeepEqual(got, want) {
-					t.Errorf("Response = %#v\nwant       %#v", got, want)
-				}
-				if !b.closed.Load() {
-					t.Error("the body is open after the sequence ended")
-				}
+					if !b.closed.Load() {
+						t.Error("the body is open after the sequence ended")
+					}
+				})
 			})
-		})
+		}
 	}
 }
 
 // TestGenerateStreamCancel cancels the context mid-stream, against a server that keeps
 // generating until the client goes, and wants the context's error, the partial Response holding
-// the text so far, and the connection closed, which stops the generation.
+// the text so far, and the connection closed, which stops the generation, under each framing.
 func TestGenerateStreamCancel(t *testing.T) {
+	for _, fr := range framings {
+		t.Run(fr.name, func(t *testing.T) { testGenerateStreamCancel(t, fr) })
+	}
+}
+
+// testGenerateStreamCancel is TestGenerateStreamCancel under fr.
+func testGenerateStreamCancel(t *testing.T, fr framing) {
+	wf := fr.format()
 	gone := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer close(gone)
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = fmt.Fprintf(w, "data: %s\n\n", streamed[0])
+		w.Header().Set("Content-Type", wf.EventStream().MediaType())
+		_, _ = io.WriteString(w, fr.encode(streamed[0]))
 		for {
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", streamed[1])
+			_, _ = io.WriteString(w, fr.encode(streamed[1]))
 			w.(http.Flusher).Flush()
 			select {
 			case <-r.Context().Done():
@@ -439,7 +454,7 @@ func TestGenerateStreamCancel(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := newClient(t, srv.URL, ai.Options{})
+	c := newClientFormat(t, srv.URL, http.DefaultClient, wf, ai.Options{})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var acc protocol.Accumulator

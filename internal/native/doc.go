@@ -10,4 +10,5 @@
 //   - [Has] reports whether a Native field has a member of a name.
 //   - [Marshal] encodes a wire body that embeds a Native field, refusing a member that clashes
 //     with one the body's typed fields set.
+//   - [ClashError] is the member Marshal refuses, by name.
 package native

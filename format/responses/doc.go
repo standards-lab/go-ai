@@ -5,9 +5,9 @@
 // such as llama.cpp's router. A caller builds it with New at the composition root, as ai.New's
 // wireFormat.
 //
-// It sends the request under the spec's names: model, instructions, the input items, tools,
-// tool choice, reasoning, text, and max_output_tokens, with Native's members, the native tier,
-// merged into the body's top level, and a tool's strict flag always sent.
+// It sends the request under the spec's names: model, instructions, the input items, tools, tool
+// choice, parallel_tool_calls, reasoning, text, and max_output_tokens, with Native's members, the
+// native tier, merged into the body's top level, and a tool's strict flag always sent.
 //
 // Every request is stateless: it carries store false and include
 // ["reasoning.encrypted_content"], and never previous_response_id, so the conversation goes out
@@ -34,15 +34,20 @@
 // part: the content part {"type":"go-ai:input_audio","data","format"}, its data the
 // clip's bytes in standard base64 and its format wav or mp3.
 //
-// It refuses, before anything is sent, a Native member that clashes with one the typed fields
-// set, stream, store, and include among them, and a Native previous_response_id or background,
-// as above.
+// It refuses, before anything is sent, a MaxOutputTokens below MinMaxOutputTokens, the spec's
+// minimum of 16; a reasoning effort the spec lacks, minimal or max; a Native member that clashes
+// with one the typed fields set, stream, store, and include among them; and a Native
+// previous_response_id or background, as above.
 //
 // The spec has a form for every hint the protocol carries, so the format drops none: an image's
 // detail, reasoning's summary, text's verbosity, and a JSON-schema format's name, description,
 // and strict flag each go out when set, and whether they reach a model is up to the endpoint. It
 // drops a reasoning item whose encrypted_content isn't its own envelope, and, in the spec's form,
 // one whose server encrypted_content is empty, never an error.
+//
+// A reply's output item of a type the protocol has no form for, such as a hosted tool's call, and
+// a message's content part of a type that isn't an output part, are skipped, whole and streamed,
+// never an error, the output and content indexes after them closing up.
 //
 // The format's Options adjust it to an endpoint that departs from the spec; their zero value is
 // the spec's form.
@@ -71,13 +76,17 @@
 //
 //   - [Format] is the format, a format.Format.
 //   - [Options] adjusts the format to an endpoint that departs from the spec.
+//   - [MinMaxOutputTokens] is the least positive MaxOutputTokens it sends, the spec's 16.
 //   - [New] returns the format.
 //   - [Format.Route] is the route it posts to, responses.
 //   - [Format.EncodeRequest] encodes a request as a create-response body: model, instructions,
-//     input items, tools, tool choice, reasoning, text, max_output_tokens, and the native tier.
-//   - [Format.DecodeResponse] decodes a response resource into a response: messages,
-//     reasoning, and function calls, with their ids and statuses the server's.
+//     input items, tools, tool choice, parallel_tool_calls, reasoning, text, max_output_tokens,
+//     and the native tier.
+//   - [Format.DecodeResponse] decodes a response resource into a response: its id, model, and
+//     usage, and its messages, reasoning, and function calls, with their ids and statuses the
+//     server's.
 //   - [Format.EncodeStreamRequest] encodes a request as EncodeRequest does, with stream true.
+//   - [Format.EventStream] is the framing its replies stream in, format.SSE.
 //   - [Format.NewStreamDecoder] returns a decoder of a streamed reply into the protocol's
 //     streaming events, whose folded Response is DecodeResponse's of the terminal response, an
 //     item of no status there taking its output_item.done's.

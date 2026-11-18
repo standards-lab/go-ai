@@ -35,8 +35,10 @@ recorded beside it.
 - `conversation.json`: Gemma 4 E4B with `system` as one text block, "Answer in one word.", and the
   messages a system message of "Use capital letters only.", the user's "What is the capital of
   France?", the assistant's "PARIS", and the user's "And of Italy?", with `max_tokens` 64; a
-  text block, "ROME", stop_reason `end_turn`, showing the router takes a system message where it
-  stands.
+  text block, "ROME", stop_reason `end_turn`. The format sends no such request: it sends a
+  system message that leads the input in the top-level `system`, and refuses one after the
+  conversation has begun. The tests decode the reply alone.
+
 Neither error body is recorded: the tests write Anthropic's, `{"type":"error","error":{"type",
 "message"}}`, inline in the shape the Messages API documents, and the router's OpenAI-style one,
 `{"error":{"code","message","type"}}`, inline in the shape it answers with.
@@ -53,8 +55,8 @@ chat_template_kwargs are; Anthropic's API reads every member it defines.
 
 Its streamed reply stops every content block only at the end of the reply, after the last block
 began, where Anthropic stops each before the next begins, and its error frame mid-stream is an
-OpenAI-style `{"code","message","type"}` body. It passes a system message through where it
-stands, and makes an assistant message of a run of reasoning, which the reasoning alone leaves
-without content.
+OpenAI-style `{"code","message","type"}` body. It passes a system message in `messages` through
+where it stands, though the Messages spec defines none and the format never sends one. It makes
+an assistant message of a run of reasoning, which the reasoning alone leaves without content.
 
 The replies recorded from vLLM 0.33.0 are in `vllm/`, which has its own README.

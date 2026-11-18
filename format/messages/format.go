@@ -1,5 +1,7 @@
 package messages
 
+import "github.com/standards-lab/go-ai/format"
+
 // version is the Messages API version the format speaks, sent with every request as its
 // anthropic-version header.
 const version = "2026-10-21"
@@ -17,4 +19,9 @@ func New() *Format {
 // "https://api.anthropic.com/v1" or "http://localhost:8080/v1".
 func (*Format) Route() string {
 	return "messages"
+}
+
+// EventStream is format.SSE: Messages streams its reply as server-sent events.
+func (*Format) EventStream() format.EventStream {
+	return format.SSE
 }

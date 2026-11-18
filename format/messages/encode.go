@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/internal/native"
 	"github.com/standards-lab/go-ai/protocol"
 )
@@ -16,19 +17,25 @@ import (
 // EncodeRequest encodes req, which the client has validated, as a Messages request body, and
 // sets the anthropic-version header to the version the format speaks, 2026-10-21. MaxOutputTokens
 // goes out as max_tokens, which Messages requires, so a request with no MaxOutputTokens is
-// refused. Instructions go out as the top-level system string, and the input items as messages:
+// refused; any positive MaxOutputTokens goes out as it is.
+//
+// Messages takes system content only in the top-level system, never as a message. Instructions
+// alone go out as the system string. The system and developer messages that lead the input,
+// before any other item, are hoisted into it, Messages having no developer role: system then goes
+// out as an array of text blocks, a text block of the instructions first if there are any, then
+// one of each hoisted message's input_text parts, in order. A system or developer message after
+// the conversation has begun has no place in a Messages request, and is refused.
+//
+// The other input items go out as messages:
 //
 //	user message          a user message of text and image blocks
-//	system, developer     a system message of text blocks, where it stands in the conversation
 //	assistant run         one assistant message: thinking and redacted_thinking blocks from the
 //	                      reasoning items that open the run, text blocks from its assistant
 //	                      message, an output_text or a refusal each, and tool_use blocks from
 //	                      the function_calls after it
 //	function_call_output  a tool_result block of a user message
 //
-// Messages has no developer role, and llama.cpp's router passes a system message through where
-// it stands, so a developer message goes out as a system message. Every message's content is an
-// array of blocks, even of one text block.
+// Every message's content is an array of blocks, even of one text block.
 //
 // A user turn is a run of adjacent user messages and function_call_outputs, and goes out as one
 // user message: every tool_result block first, in order, then the messages' blocks, in order, as
@@ -66,13 +73,26 @@ import (
 // {"type":"tool","name"}. Messages has no allowed-tools choice, so an allowed_tools choice sends
 // only the tools it allows, in the request's order, with its mode mapped as a mode is.
 //
-// Reasoning's effort none goes out as thinking {"type":"disabled"}, and any other as thinking
-// {"type":"adaptive"} with output_config.effort of the same name. Text's JSON-schema format goes
-// out as output_config.format, {"type":"json_schema","schema"}; plain text, the endpoint's
-// default, sends nothing.
+// ParallelToolCalls false goes out as tool_choice's disable_parallel_tool_use true: on the tool
+// choice's tool_choice, or on {"type":"auto"}, the spec's default choice, when the request sets
+// none. True is the spec's default, so it sends nothing, as nil does. The spec defines
+// disable_parallel_tool_use on auto, any, and tool alone, so a tool choice of none, under which
+// no tool is called, sends none, and so does a request that sends no tools, as tool_choice is
+// only for tools. A Native tool_choice beside a ParallelToolCalls is refused, clashing with the
+// member ParallelToolCalls sets, whether or not this request sends it.
 //
-// The hints Messages has no form for are dropped, never refused: an image's detail; reasoning's
-// summary; text's verbosity; and a JSON-schema format's name, description, and strict flag.
+// Reasoning's effort none goes out as thinking {"type":"disabled"}, and low, medium, high, xhigh,
+// and max as thinking {"type":"adaptive"} with output_config.effort of the same name, the
+// spec's efforts. Messages has no minimal effort, so minimal is refused. A reasoning summary, of
+// any detail, goes out as the adaptive thinking's display "summarized", Messages' one display of
+// summarized thinking; a request that sends no adaptive thinking, of effort empty or none, has no
+// thinking to display, and its summary is dropped. Text's JSON-schema format goes out as
+// output_config.format, {"type":"json_schema","schema"}; plain text, the endpoint's default,
+// sends nothing.
+//
+// The hints Messages has no form for are dropped, never refused: an image's detail; a reasoning
+// summary's detail, and a summary of no adaptive thinking; ParallelToolCalls false where no tool
+// can be called; text's verbosity; and a JSON-schema format's name, description, and strict flag.
 //
 // The request is unstreamed, sent with stream false; EncodeStreamRequest streams it. Native's
 // members, the native tier, are merged into the top level, and a member named like one the typed
@@ -106,17 +126,21 @@ func encode(req *protocol.Request, stream bool, header http.Header) ([]byte, err
 func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	// The input is encoded first, so a request whose content Messages has no form for is
 	// refused for that content, whatever else it lacks.
+	system, err := encodeSystem(req.Instructions, req.Input)
+	if err != nil {
+		return nil, err
+	}
 	messages, err := encodeInput(req.Input)
 	if err != nil {
 		return nil, err
 	}
 	if req.MaxOutputTokens == 0 {
-		return nil, errors.New("request has no max output tokens, which Messages requires as max_tokens")
+		return nil, refuse("max output tokens", "", "request has no max output tokens, which Messages requires as max_tokens")
 	}
 	body := request{
 		Model:     req.Model,
 		MaxTokens: req.MaxOutputTokens,
-		System:    req.Instructions,
+		System:    system,
 		Stream:    stream,
 		Native:    req.Native,
 		Messages:  messages,
@@ -124,13 +148,31 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	if body.Tools, body.ToolChoice, err = encodeTools(req.Tools, req.ToolChoice); err != nil {
 		return nil, err
 	}
+	if req.ParallelToolCalls != nil && native.Has(req.Native, "tool_choice") {
+		// ParallelToolCalls sets tool_choice, so a Native one clashes with it, as Marshal
+		// would report were this request to send it.
+		clash := &native.ClashError{Member: "tool_choice"}
+		return nil, refuse("native member", clash.Member, clash.Error())
+	}
+	if p := req.ParallelToolCalls; p != nil && !*p && len(body.Tools) > 0 {
+		if body.ToolChoice == nil {
+			body.ToolChoice = &toolChoice{Type: "auto"}
+		}
+		body.ToolChoice.DisableParallelToolUse = body.ToolChoice.Type != "none"
+	}
 	var config outputConfig
 	switch effort := req.Reasoning.Effort; effort {
 	case "":
 	case protocol.ReasoningEffortNone:
 		body.Thinking = &thinking{Type: "disabled"}
+	case protocol.ReasoningEffortMinimal:
+		return nil, refuse("reasoning effort", string(effort),
+			fmt.Sprintf("reasoning effort %s has no Messages form", effort))
 	default:
 		body.Thinking = &thinking{Type: "adaptive"}
+		if req.Reasoning.Summary != "" {
+			body.Thinking.Display = "summarized"
+		}
 		config.Effort = string(effort)
 	}
 	switch f := req.Text.Format.(type) {
@@ -138,16 +180,57 @@ func encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	case protocol.JSONSchemaFormat:
 		config.Format = &outputFormat{Type: "json_schema", Schema: f.Schema}
 	default:
-		return nil, fmt.Errorf("text format %T has no Messages form", f)
+		return nil, refuse("text format", fmt.Sprintf("%T", f), fmt.Sprintf("text format %T has no Messages form", f))
 	}
 	if config != (outputConfig{}) {
 		body.OutputConfig = &config
 	}
-	return native.Marshal(body)
+	b, err := native.Marshal(body)
+	if clash, ok := errors.AsType[*native.ClashError](err); ok {
+		return nil, refuse("native member", clash.Member, clash.Error())
+	}
+	return b, err
+}
+
+// isSystem reports whether it is a system or a developer message.
+func isSystem(it protocol.Item) bool {
+	m, ok := it.(protocol.Message)
+	return ok && (m.Role == protocol.RoleSystem || m.Role == protocol.RoleDeveloper)
+}
+
+// encodeSystem returns the top-level system, as EncodeRequest describes: nil when there are
+// neither instructions nor leading system messages, the instructions' string when no system
+// message leads the input, and otherwise an array of text blocks.
+func encodeSystem(instructions string, items []protocol.Item) (any, error) {
+	n := 0
+	for n < len(items) && isSystem(items[n]) {
+		n++
+	}
+	if n == 0 {
+		if instructions == "" {
+			return nil, nil
+		}
+		return instructions, nil
+	}
+	var blocks []any
+	if instructions != "" {
+		blocks = append(blocks, textBlock{Type: "text", Text: instructions})
+	}
+	for i, it := range items[:n] {
+		// A valid system or developer message is of input_text parts alone, each a text block.
+		b, err := encodeContent(it.(protocol.Message).Content)
+		if err != nil {
+			return nil, fmt.Errorf("input %d: %w", i, err)
+		}
+		blocks = append(blocks, b...)
+	}
+	return blocks, nil
 }
 
 // encodeInput encodes the input items as messages, joining each user turn into one user message
-// and each assistant run into one assistant message, as EncodeRequest describes.
+// and each assistant run into one assistant message, as EncodeRequest describes. The system and
+// developer messages that lead the input are encodeSystem's, and are skipped; one after them is
+// refused.
 func encodeInput(items []protocol.Item) ([]message, error) {
 	var messages []message
 	// results and content are the open user turn's tool_result blocks and its messages' blocks,
@@ -170,7 +253,18 @@ func encodeInput(items []protocol.Item) ([]message, error) {
 		messages = append(messages, message{Role: string(protocol.RoleAssistant), Content: reasoning})
 		run, reasoning = len(messages)-1, nil
 	}
+	// leading is set while the items are the system and developer messages that lead the input.
+	leading := true
 	for i, it := range items {
+		if isSystem(it) {
+			if leading {
+				continue
+			}
+			role := it.(protocol.Message).Role
+			return nil, fmt.Errorf("input %d: %w", i, refuse("system message placement", string(role),
+				fmt.Sprintf("%s message after the conversation has begun has no Messages form, as Messages takes system content only ahead of the messages", role)))
+		}
+		leading = false
 		switch it := it.(type) {
 		case protocol.Reasoning:
 			b, ok := openEnvelope(it.EncryptedContent)
@@ -189,14 +283,9 @@ func encodeInput(items []protocol.Item) ([]message, error) {
 			case protocol.RoleUser:
 				run, reasoning = -1, nil
 				content = append(content, blocks...)
-			case protocol.RoleAssistant:
+			default: // assistant: system and developer messages were taken above
 				openRun()
 				messages[run].Content = append(messages[run].Content, blocks...)
-			default:
-				// System and developer messages stand alone, as system messages.
-				closeTurn()
-				run, reasoning = -1, nil
-				messages = append(messages, message{Role: string(protocol.RoleSystem), Content: blocks})
 			}
 		case protocol.FunctionCall:
 			if run < 0 {
@@ -220,7 +309,8 @@ func encodeInput(items []protocol.Item) ([]message, error) {
 			run, reasoning = -1, nil
 			results = append(results, b)
 		default:
-			return nil, fmt.Errorf("input %d: item %T has no Messages form", i, it)
+			return nil, fmt.Errorf("input %d: %w", i, refuse("input item", fmt.Sprintf("%T", it),
+				fmt.Sprintf("item %T has no Messages form", it)))
 		}
 	}
 	closeTurn()
@@ -286,7 +376,7 @@ func encodeTools(tools []protocol.FunctionTool, choice protocol.ToolChoice) ([]t
 			allowed[f.Name] = true
 		}
 	default:
-		return nil, nil, fmt.Errorf("tool choice %T has no Messages form", c)
+		return nil, nil, refuse("tool choice", fmt.Sprintf("%T", c), fmt.Sprintf("tool choice %T has no Messages form", c))
 	}
 	var out []tool
 	for _, t := range tools {
@@ -300,6 +390,12 @@ func encodeTools(tools []protocol.FunctionTool, choice protocol.ToolChoice) ([]t
 		out = append(out, tool{Name: t.Name, Description: t.Description, InputSchema: schema, Strict: t.Strict})
 	}
 	return out, wire, nil
+}
+
+// refuse returns the format's refusal of a request feature, the spec's: Messages has no form for
+// value, of feature, as message says.
+func refuse(feature, value, message string) error {
+	return &format.UnsupportedError{Format: "messages", Feature: feature, Value: value, Message: message}
 }
 
 // toolChoiceType returns the tool_choice type of a mode: auto as auto, required as any, and none
@@ -331,7 +427,8 @@ func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 			}
 			b = imageBlock{Type: "image", Source: source}
 		default:
-			return nil, fmt.Errorf("content %d: part %T has no Messages form", i, p)
+			return nil, fmt.Errorf("content %d: %w", i, refuse("content part", fmt.Sprintf("%T", p),
+				fmt.Sprintf("part %T has no Messages form", p)))
 		}
 		blocks = append(blocks, b)
 	}
@@ -340,7 +437,8 @@ func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 
 // encodeImageSource returns the image source of an input_image's URL: a base64 source for a
 // base64 data URL, data:<media type>;base64,<data>, and a url source for any other URL. A data
-// URL that isn't base64, or has no media type, is an error.
+// URL that isn't base64, or has no media type, is refused, as a base64 source needs both; one of
+// no data is malformed, an error but not a refusal.
 func encodeImageSource(url string) (imageSource, error) {
 	rest, ok := strings.CutPrefix(url, "data:")
 	if !ok {
@@ -352,13 +450,14 @@ func encodeImageSource(url string) (imageSource, error) {
 	}
 	mediaType, ok := strings.CutSuffix(meta, ";base64")
 	if !ok {
-		return imageSource{}, errors.New("image data URL isn't base64, as a base64 source requires")
+		return imageSource{}, refuse("image data URL encoding", "", "image data URL isn't base64, as a base64 source requires")
 	}
 	// A media type's parameters, such as a charset, precede ;base64; the source takes the type
 	// alone.
 	mediaType, _, _ = strings.Cut(mediaType, ";")
 	if mediaType == "" {
-		return imageSource{}, errors.New("image data URL has no media type, which a base64 source requires")
+		return imageSource{}, refuse("image data URL media type", "",
+			"image data URL has no media type, which a base64 source requires")
 	}
 	return imageSource{Type: "base64", MediaType: mediaType, Data: data}, nil
 }
