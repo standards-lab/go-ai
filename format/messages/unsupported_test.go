@@ -96,7 +96,7 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 			"text format", "messages_test.unknownFormat",
 			"messages: text format messages_test.unknownFormat has no Messages form"},
 	}
-	f := messages.New()
+	f := messages.New(messages.Options{})
 	encodings := map[string]func(*protocol.Request, http.Header) ([]byte, error){
 		"EncodeRequest":       f.EncodeRequest,
 		"EncodeStreamRequest": f.EncodeStreamRequest,
@@ -123,7 +123,7 @@ func TestEncodeMalformedDataURLIsNotUnsupported(t *testing.T) {
 	req := ask(protocol.Message{Role: protocol.RoleUser, Content: []protocol.ContentPart{
 		protocol.InputImage{ImageURL: "data:image/png;base64"},
 	}})
-	_, err := messages.New().EncodeRequest(req, make(http.Header))
+	_, err := messages.New(messages.Options{}).EncodeRequest(req, make(http.Header))
 	if want := "messages: input 0: content 0: image data URL has no data"; err == nil || err.Error() != want {
 		t.Fatalf("EncodeRequest error = %v, want %q", err, want)
 	}

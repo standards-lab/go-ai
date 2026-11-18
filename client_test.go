@@ -283,7 +283,7 @@ func TestGenerateSendsFixedHeaders(t *testing.T) {
 // anthropic-version, to replace a fixed one of the same name, whatever its case.
 func TestGenerateFormatHeaderReplacesFixed(t *testing.T) {
 	srv := aitest.NewServer(t, http.StatusOK, `{"type":"message","role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`)
-	c, err := ai.New(srv.URL, http.DefaultClient, messages.New(), ai.Options{
+	c, err := ai.New(srv.URL, http.DefaultClient, messages.New(messages.Options{}), ai.Options{
 		Header: http.Header{"anthropic-version": {"1999-01-01"}, "x-api-key": {"k"}},
 	})
 	if err != nil {
@@ -555,7 +555,7 @@ func TestGenerateReturnsUnsupportedError(t *testing.T) {
 			format.UnsupportedError{Format: "completions", Feature: "allowed_tools mode", Value: "none"},
 			"ai: generate: completions: tool choice: allowed_tools of mode none has no Chat Completions form"},
 		// hello sets no MaxOutputTokens, which Messages requires.
-		{"messages", messages.New(), hello(),
+		{"messages", messages.New(messages.Options{}), hello(),
 			format.UnsupportedError{Format: "messages", Feature: "max output tokens"},
 			"ai: generate: messages: request has no max output tokens, which Messages requires as max_tokens"},
 		{"responses", responses.New(responses.Options{}), stateful,

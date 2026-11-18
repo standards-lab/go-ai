@@ -320,7 +320,7 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 			}
 			var wireFormat format.Format = completions.New(completions.Options{})
 			if tc.messages {
-				wireFormat = messages.New()
+				wireFormat = messages.New(messages.Options{})
 			}
 			c, err := ai.New(srv.URL, http.DefaultClient, wireFormat, opts)
 			if err != nil {

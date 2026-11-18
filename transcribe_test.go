@@ -225,7 +225,7 @@ func TestTranscribeDecodesReply(t *testing.T) {
 // the OpenAI-compatible transcription route on a Client of a format whose own route is
 // elsewhere, with none of the format's headers, and decode the route's reply.
 func TestTranscribeAnyFormat(t *testing.T) {
-	formats := map[string]format.Format{"messages": messages.New(), "responses": responses.New(responses.Options{})}
+	formats := map[string]format.Format{"messages": messages.New(messages.Options{}), "responses": responses.New(responses.Options{})}
 	for name, wireFormat := range formats {
 		t.Run(name, func(t *testing.T) {
 			srv := aitest.NewServer(t, http.StatusOK, transcribeReply)

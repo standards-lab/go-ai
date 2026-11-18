@@ -235,7 +235,7 @@ func TestEmbedWrapsCancelledContext(t *testing.T) {
 // a format whose own route is elsewhere, with none of the format's headers.
 func TestEmbedAnyFormat(t *testing.T) {
 	srv := aitest.NewServer(t, http.StatusOK, embedReply)
-	c, err := ai.New(srv.URL+"/v1", http.DefaultClient, messages.New(), ai.Options{})
+	c, err := ai.New(srv.URL+"/v1", http.DefaultClient, messages.New(messages.Options{}), ai.Options{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

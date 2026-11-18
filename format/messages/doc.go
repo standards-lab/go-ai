@@ -4,6 +4,14 @@
 // header, and it targets Anthropic's API and the endpoints compatible with it. A caller builds it
 // with New at the composition root, as ai.New's wireFormat.
 //
+// New takes Options, a profile of the one deployment the format targets: the gaps where that
+// deployment departs from the spec. The zero Options declare none and are the spec's form.
+// RefusedEfforts declares the reasoning efforts the deployment refuses or ignores; a request of
+// one is refused before anything is sent, a format.UnsupportedError of Declared true. A profile
+// binds the format to one deployment, so a caller of several deployments builds one format and
+// one client per deployment, sharing the http.Client. Options decodes from JSON under
+// refused_efforts; the module ships no loader of it.
+//
 // It sends instructions, and the system and developer messages that lead the input, as the
 // top-level system, MaxOutputTokens as max_tokens, the other input items as messages of content
 // blocks, a user turn's tool results ahead of its other blocks, and a run of assistant items as
@@ -14,12 +22,12 @@
 // JSON-schema text format as output_config.format. Native's members, the native tier, are merged
 // into the body's top level.
 //
-// It refuses, before anything is sent and before it sets a header, a request with no
-// MaxOutputTokens, as Messages requires max_tokens; a minimal reasoning effort, which Messages
-// lacks; a system or developer message after the conversation has begun, which Messages has no
-// place for; audio input, which has no Messages form; an image data URL that isn't base64 or has no
-// media type; and a Native member that clashes with one the typed fields set, stream among them, or
-// a Native tool_choice beside ParallelToolCalls.
+// It refuses, before anything is sent and before it sets a header, the efforts its Options
+// declare refused; a request with no MaxOutputTokens, as Messages requires max_tokens; a minimal
+// reasoning effort, which Messages lacks; a system or developer message after the conversation has
+// begun, which Messages has no place for; audio input, which has no Messages form; an image data
+// URL that isn't base64 or has no media type; and a Native member that clashes with one the typed
+// fields set, stream among them, or a Native tool_choice beside ParallelToolCalls.
 //
 // It drops the hints Messages has no form for, never refusing them: an image's detail; a reasoning
 // summary's detail, and a summary of no adaptive thinking; ParallelToolCalls false where no tool
@@ -48,7 +56,8 @@
 // Its exported identifiers:
 //
 //   - [Format] is the format, a format.Format.
-//   - [New] returns the format.
+//   - [Options] is the profile of the deployment the format targets, its zero value the spec.
+//   - [New] returns the format under a profile.
 //   - [Format.Route] is the route it posts to, messages.
 //   - [Format.EncodeRequest] encodes a request as a Messages body: messages, tools, tool choice,
 //     reasoning effort, text format, and the native tier.

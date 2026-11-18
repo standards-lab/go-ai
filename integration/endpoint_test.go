@@ -117,7 +117,7 @@ var completionsFormat = testFormat{name: "completions", new: func() format.Forma
 
 // messagesFormat is the Messages format; a scenario of its own, such as the allowed_tools
 // choice's, runs it alone.
-var messagesFormat = testFormat{name: "messages", new: func() format.Format { return messages.New() }}
+var messagesFormat = testFormat{name: "messages", new: func() format.Format { return messages.New(messages.Options{}) }}
 
 // openResponses is the Open Responses format with ResendReasoningText, as vLLM reads a reasoning
 // item's text from its content and gives no encrypted_content to send back instead; a scenario
