@@ -20,7 +20,9 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
   query. Each operation appends its route.
 - `httpClient` sends every request. Its transport carries the timeouts and any
   instrumentation.
-- `wireFormat` is a format's constructor result, such as `completions.New()`.
+- `wireFormat` is a format's constructor result, such as `completions.New(completions.Options{})`.
+  A format's `Options`, its profile, binds it to one deployment, so a program uses one client per
+  deployment and shares the `*http.Client` among them.
 - A nil `httpClient` or `wireFormat` panics, naming the argument. An unusable base URL, retry
   policy, header, or transcription mode returns an error.
 
@@ -138,7 +140,8 @@ its cause. Three causes are typed, matched with `errors.As`:
   and `Code`, the raw `Body`, and `RetryAfter`, the wait the reply asked for.
 - `*ai.IncompleteTranscriptError` is chat-mode transcription's incomplete reply.
 - `*format.UnsupportedError` is a format's refusal of a request feature, before anything is
-  sent: its `Format`, `Feature`, and `Value`.
+  sent: its `Format`, `Feature`, and `Value`, and `Declared`, true when the gap is one the
+  format's profile declares and false when it is the spec's.
 
 ## protocol: the model
 
@@ -197,8 +200,8 @@ it. `Accumulator.Response` returns the response folded so far.
 
 ## The formats
 
-Each format is a package with a `New` constructor. Its package comment lists exactly what it
-sends, refuses, drops, and normalizes. In short:
+Each format is a package with a `New` constructor, which takes the format's `Options`. Its
+package comment lists exactly what it sends, refuses, drops, and normalizes. In short:
 
 | | `completions` | `messages` | `responses` |
 | --- | --- | --- | --- |
@@ -211,17 +214,39 @@ sends, refuses, drops, and normalizes. In short:
 | Audio input | its own `input_audio` part | refused | the `go-ai:input_audio` extension |
 | Hints dropped | a reasoning summary request | an image's detail, a reasoning summary's detail and a summary without adaptive thinking, `ParallelToolCalls` false where no tool can be called, verbosity, and a JSON schema's name, description, and strict flag | nothing |
 | Item ids | derived from the reply's id | derived from the reply's id | the server's |
-
-`responses.Options` adjusts the Open Responses format to an endpoint that departs from the
-spec. `ResendReasoningText` sends reasoning text back as content, for llama.cpp's router, which
-gives no encrypted content. The zero value is the spec's form.
+| `Options` | `RefusedEfforts`, `NoToolChoiceRequired`, `NoAllowedTools` | `RefusedEfforts` | `RefusedEfforts`, `NoAllowedTools`, `ResendReasoningText` |
 
 Every Open Responses request is stateless. It sends `store: false`, and a `Native`
 `previous_response_id` or `background` is refused.
 
 A format refuses a request before anything is sent or any token is fetched, and each refusal
 is a `*format.UnsupportedError`, matched with `errors.As`, naming the `Format`, the `Feature`
-refused, and its `Value`.
+refused, and its `Value`, and whether the gap is the profile's (`Declared`).
+
+### Profiles
+
+A deployment that departs from its format's spec declares its gaps in the format's `Options`,
+its profile. The zero value is the spec, and declares none. A declared gap is handled before
+anything is sent or any token is fetched: it is refused as a `*format.UnsupportedError` with
+`Declared` true, or, for `allowed_tools`, narrowed to the allowed tools.
+
+| Field | Formats | What a request that needs the gap gets |
+| --- | --- | --- |
+| `RefusedEfforts` (`refused_efforts`) | all three | An effort in the list is refused, `Feature` `reasoning effort` and `Value` the effort. An effort the format's spec lacks stays the spec's refusal, `Declared` false, listed or not. A request of no effort is never refused. |
+| `NoToolChoiceRequired` (`no_tool_choice_required`) | `completions` | `tool_choice` `required` is refused, `Feature` `tool choice` and `Value` `required`, and so is an `allowed_tools` choice of mode `required`, sent or narrowed. |
+| `NoAllowedTools` (`no_allowed_tools`) | `completions`, `responses` | An `allowed_tools` choice is narrowed: only its tools go out, in the request's order, and its mode goes out as a plain tool choice. A mode the spec has no form for stays the spec's refusal. |
+| `ResendReasoningText` (`resend_reasoning_text`) | `responses` | A reasoning item goes back with its reasoning text as content, for an endpoint that gives no encrypted content, such as llama.cpp's router or vLLM 0.34.0. |
+
+Each `Options` decodes from JSON under the snake_case names in the table, and only those. Decode
+it strictly, with `encoding/json/v2`'s `json.RejectUnknownMembers(true)`, so that an unknown
+member is an error. A `refused_efforts` entry that isn't one of the seven efforts is always an
+error: `protocol.ReasoningEffort` decodes only those. go-ai ships no loader and no presets; the
+[concepts](concepts.md#profiles) show a profile for each format.
+
+A profile binds a format to one deployment. A program that talks to several builds one client
+per deployment, each with its own format and profile, and shares one `*http.Client` among them.
+
+### Streams and error bodies
 
 All three stream their replies as server-sent events, `format.SSE`. All three decode an
 OpenAI-style error body, and `messages` also decodes Anthropic's.

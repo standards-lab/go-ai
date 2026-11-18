@@ -5,11 +5,15 @@ All notable changes to `github.com/standards-lab/go-ai` are documented here. The
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). This changelog covers the base module
 only; `tools/infer` keeps its own.
 
-## [Unreleased]
+## [v0.2.0] - 2026-11-18
 
 This release conforms each format to its own spec: a format declares the framing its replies
 stream in, types every refusal it makes before sending, and sends or refuses each reasoning effort
-and token cap as its spec has it.
+and token cap as its spec has it. It also gives each format a profile, its `Options`, in which a
+deployment that departs from the spec declares its gaps. The zero value is the spec. A declared
+gap is refused before sending, as an `UnsupportedError` with `Declared` true, or, for
+`allowed_tools`, narrowed to the allowed tools. Each field is backed by a reply recorded from the
+deployment it was seen on, vLLM 0.34.0 or Azure AI Foundry. go-ai ships no loader and no presets.
 
 ### Added
 
@@ -19,8 +23,8 @@ and token cap as its spec has it.
 - `format.UnsupportedError`, the type of every refusal a format makes while it encodes a request,
   before anything is sent or any token is fetched, matched with `errors.As` through the format's
   and the client's wrapping. It names the `Format`, the refused `Feature` and its `Value`, and
-  whether the refusal is of a gap a deployment declares (`Declared`) or of one the format's spec
-  has (`Declared` false, every refusal so far). Each refusal's message is unchanged.
+  whether the refusal is of a gap a deployment's profile declares (`Declared`) or of one the
+  format's spec has (`Declared` false). Each refusal's message is unchanged.
 - The reasoning efforts `protocol.ReasoningEffortMinimal` and `protocol.ReasoningEffortMax`. An
   effort is the protocol's when an implemented format's spec defines it. Chat Completions sends
   all seven as `reasoning_effort`; Open Responses refuses `minimal` and `max`, and Messages
@@ -41,9 +45,34 @@ and token cap as its spec has it.
 - `protocol.ReasonContextWindow`, `go-ai:context_window`, a reply cut off by the model's context
   window, a client extension the spec defines no reason for. Messages reports its
   `model_context_window_exceeded` stop reason as it.
+- `completions.Options`, the Chat Completions profile: `RefusedEfforts` (`refused_efforts`), the
+  reasoning efforts the deployment refuses; `NoToolChoiceRequired` (`no_tool_choice_required`),
+  which refuses `tool_choice` `required` and an `allowed_tools` choice of mode `required`; and
+  `NoAllowedTools` (`no_allowed_tools`), which narrows an `allowed_tools` choice to its tools,
+  in the request's order, its mode sent as a plain tool choice.
+- `responses.Options` gains `RefusedEfforts` (`refused_efforts`) and `NoAllowedTools`
+  (`no_allowed_tools`), as Chat Completions has them.
+- `messages.Options`, the Messages profile: `RefusedEfforts` (`refused_efforts`), the reasoning
+  efforts the deployment refuses or ignores.
+- A declared gap's refusal is an `UnsupportedError` with `Declared` true, its `Feature`
+  `reasoning effort` or `tool choice`. An effort a format's spec lacks stays the spec's refusal,
+  `Declared` false, listed or not.
+- `protocol.ReasoningEffort.UnmarshalText`, which accepts only the seven protocol efforts, so a
+  mistyped entry in a profile's `refused_efforts` fails to decode.
+- Each `Options` decodes from JSON under its snake_case names only, and a caller decoding a
+  profile strictly, with json/v2's `RejectUnknownMembers(true)`, gets an error for an unknown
+  member.
 
 ### Changed
 
+- **Breaking:** `completions.New` and `messages.New` take their format's `Options`, as
+  `responses.New` does. `completions.New(completions.Options{})` and
+  `messages.New(messages.Options{})` send what `completions.New()` and `messages.New()` sent.
+- **Breaking:** `responses.Options` decodes from JSON only under its snake_case names, so
+  `ResendReasoningText` is `resend_reasoning_text`, matched case-sensitively; a profile that
+  named it `ResendReasoningText`, or in another case, no longer sets it.
+- **Breaking:** `protocol.ReasoningEffort` decodes from JSON or text only as one of the seven
+  protocol efforts, and refuses any other name, the empty one included, where it took any string.
 - **Breaking:** `format.Format` requires `EventStream`. The client asks for its media type in a
   streamed request's Accept header and reads the reply only through its reader, never reading the
   reply's Content-Type; it no longer hard-codes server-sent events.
@@ -61,6 +90,10 @@ and token cap as its spec has it.
   among them, as the feature `native member`. A caller that matched a refusal by its text
   still can; one that matched the protocol's refusal of a cap of 1 to 15 gets the Open Responses
   format's instead.
+- Each format's unit tests also run against the gap replies recorded from vLLM 0.34.0, in a new
+  set beside the vLLM 0.33.0 one, which is unchanged, and from Azure AI Foundry gpt-oss-120b's
+  refusal of `tool_choice` `required`: each recorded gap reaches the caller as recorded under the
+  zero profile, and is refused before sending with it declared.
 - `format/messages` sends a reasoning summary as adaptive thinking's display `summarized`, where
   it dropped the summary, and reads `thinking_tokens` as reasoning tokens.
 - `format/messages` accepts several `message_delta` events in a stream, keeping the last
@@ -177,6 +210,6 @@ one.
 - The release workflow, which makes a GitHub release from `CHANGELOG.md` for a `v*` tag and from
   `tools/infer/CHANGELOG.md` for a `tools/infer/v*` tag.
 
-[Unreleased]: https://github.com/standards-lab/go-ai/compare/v0.1.1...HEAD
+[v0.2.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.2.0
 [v0.1.1]: https://github.com/standards-lab/go-ai/releases/tag/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.1.0
