@@ -13,7 +13,7 @@ go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.2.0
 ```sh
 export INFER_BASE_URL=http://localhost:8000/v1
 
-infer models                                  # each model ID, one per line
+infer models                                  # each model ID, one per line, a tab and its root where listed
 infer chat "Is 1009 prime?"                   # the reply, streamed; its summary on stderr
 infer embed "first passage" "second passage"  # one JSON vector per input, one per line
 infer transcribe --mode chat clip.wav         # the transcript
@@ -26,7 +26,7 @@ output, and ends with the common failures and their fixes. This README is the re
 
 | Command | Input | stdout | stderr |
 | --- | --- | --- | --- |
-| `models` | none | each model ID, in the endpoint's order | |
+| `models` | none | each model ID, in the endpoint's order, followed by a tab and the entry's `root` where the listing carries one | |
 | `chat` | the prompt: the arguments joined by spaces, or stdin | the reply's text | the reply's status, usage, and reasoning item count |
 | `embed` | each argument, or each line of stdin | one JSON array per input, in input order | the token usage |
 | `transcribe` | one audio file, `.wav` or `.mp3` in chat mode | the transcript | the token usage |

@@ -65,7 +65,8 @@
 // several named in the endpoint's order, as in "several models: agent,
 // vision; pass --model". A set model lists nothing first. models writes
 // each model ID the endpoint lists, one per line, in the endpoint's order,
-// and needs no model. embed sends its inputs, each argument or else each
+// followed by a tab and the entry's root where it carries a non-empty
+// string one, as vLLM does for an alias, and needs no model. embed sends its inputs, each argument or else each
 // line of stdin, as one batch, and writes one JSON array of numbers per
 // input, one per line, in input order, and the token usage to stderr, as
 // in "usage: 22 input tokens, 22 total tokens".

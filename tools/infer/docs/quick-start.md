@@ -33,7 +33,7 @@ Usage:
 
 Commands:
   version      Print the infer version
-  models       List the endpoint's model IDs, one per line
+  models       List the endpoint's model IDs, one per line, each with its root where listed
   embed        Embed each argument, or each line of stdin, writing one JSON vector per line
   chat         Send a prompt, from the arguments or stdin, and write the model's reply
   transcribe   Transcribe an audio file, writing its transcript
@@ -73,8 +73,12 @@ export INFER_HEADER='api-key: <your key>'
 
 ```text
 $ infer models
-agent
+agent	openai/gpt-oss-120b
 ```
+
+Each line is a model ID, the one `--model` takes. Where the endpoint's listing gives the model an
+alias's root, as vLLM does for a `--served-model-name`, a tab and that root follow the ID; an
+endpoint that lists IDs alone gets the ID alone.
 
 ## 4. Chat
 

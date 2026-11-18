@@ -12,7 +12,8 @@ import (
 )
 
 // models writes each model ID the endpoint lists, one per line, in the
-// endpoint's order, from one GET of the models route.
+// endpoint's order, from one GET of the models route; an id-only entry is
+// its ID alone.
 func TestModels_WritesEachID(t *testing.T) {
 	e := apptest.Serve(t, apptest.Models("agent", "vision", "embedding"))
 
@@ -31,6 +32,58 @@ func TestModels_WritesEachID(t *testing.T) {
 	}
 	if reqs[0].Method != http.MethodGet || reqs[0].Path != "/v1/models" {
 		t.Errorf("request = %s %s, want GET /v1/models", reqs[0].Method, reqs[0].Path)
+	}
+}
+
+// listing returns a handler that answers the models route with a list of
+// entries, each written as given, as an endpoint that sends more than an
+// entry's id does, such as vLLM.
+func listing(entries ...string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[` + strings.Join(entries, ",") + `]}`))
+	})
+}
+
+// An entry with a non-empty string root, as vLLM lists a served alias, is
+// written as its ID, a tab, and its root; an id-only entry beside it is
+// written as its ID alone.
+func TestModels_WritesEachRoot(t *testing.T) {
+	e := apptest.Serve(t, listing(
+		`{"id":"agent","object":"model","owned_by":"vllm","root":"openai/gpt-oss-120b","parent":null,"max_model_len":131072}`,
+		`{"id":"vision","object":"model"}`,
+	))
+
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
+
+	wantCode(t, r, process.ExitOK)
+	if want := "agent\topenai/gpt-oss-120b\nvision\n"; r.stdout != want {
+		t.Errorf("stdout = %q, want %q", r.stdout, want)
+	}
+	if r.stderr != "" {
+		t.Errorf("stderr = %q, want empty", r.stderr)
+	}
+}
+
+// A root that is null, empty, or not a string is no root: the entry is
+// written as its ID alone, and the run succeeds.
+func TestModels_NoStringRoot(t *testing.T) {
+	for _, tc := range []struct{ name, root string }{
+		{"null", `null`},
+		{"empty", `""`},
+		{"number", `7`},
+		{"object", `{"name":"openai/gpt-oss-120b"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := apptest.Serve(t, listing(`{"id":"agent","object":"model","root":`+tc.root+`}`))
+
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
+
+			wantCode(t, r, process.ExitOK)
+			if want := "agent\n"; r.stdout != want {
+				t.Errorf("stdout = %q, want %q", r.stdout, want)
+			}
+		})
 	}
 }
 

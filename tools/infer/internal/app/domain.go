@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -37,12 +38,14 @@ func mountDomain(root *cli.Command, n *Nodes, cmdFlags commandFlags) {
 	root.Add(modelsCommand(n), embedCommand(n), chatCommand(n, cmdFlags.idleTimeout), transcribeCommand(n, cmdFlags.mode))
 }
 
-// modelsCommand returns the models command, which writes the ID of each
-// model the endpoint lists, one per line, in the endpoint's order.
+// modelsCommand returns the models command, which writes each model the
+// endpoint lists, one per line, in the endpoint's order: its ID, then a
+// tab and its root where the listing entry carries one, as vLLM's does
+// for a served alias, as in "agent\topenai/gpt-oss-120b".
 func modelsCommand(n *Nodes) *cli.Command {
 	return (&cli.Command{
 		Name:    "models",
-		Summary: "List the endpoint's model IDs, one per line",
+		Summary: "List the endpoint's model IDs, one per line, each with its root where listed",
 		Args:    cli.NoArgs,
 		Run: func(ctx context.Context, inv *cli.Invocation) error {
 			models, err := inv.Get(n.Client).Models(ctx)
@@ -50,13 +53,33 @@ func modelsCommand(n *Nodes) *cli.Command {
 				return err
 			}
 			for _, m := range models {
-				if _, err := fmt.Fprintln(inv.Stdout, m.ID); err != nil {
+				line := m.ID
+				if root := modelRoot(m); root != "" {
+					line += "\t" + root
+				}
+				if _, err := fmt.Fprintln(inv.Stdout, line); err != nil {
 					return err
 				}
 			}
 			return nil
 		},
 	}).Use(n.Client)
+}
+
+// modelRoot returns the string member root of m's listing entry, the
+// model a vLLM alias serves, or "" when the entry has none: a root that is
+// missing, null, or not a string is no root, as is an entry that doesn't
+// decode, so models writes the ID alone rather than failing on a member
+// only some endpoints send.
+func modelRoot(m ai.Model) string {
+	var entry struct {
+		Root any `json:"root"`
+	}
+	if err := jsonv2.Unmarshal(m.Native, &entry); err != nil {
+		return ""
+	}
+	root, _ := entry.Root.(string)
+	return root
 }
 
 // resolveModel returns the model a request to client names: model, the
