@@ -143,6 +143,13 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
 	}, nil
 }
 
+// TranscriptionMode returns the mode the Client transcribes in, the one Options.TranscriptionMode
+// gave New, TranscribeRoute by default. A caller that records transcripts can key them by the
+// mode the Client actually uses, rather than by the configuration it meant to build it with.
+func (c *Client) TranscriptionMode() TranscriptionMode {
+	return c.transcription
+}
+
 // fixedHeader returns a copy of h under canonical names, refusing one the Client sets itself.
 // Names that differ only in case are one header, their values in the order of the names'
 // spellings, so the copy doesn't depend on the map's order.

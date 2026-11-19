@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -113,6 +114,90 @@ func TestNewRefusesTranscriptionMode(t *testing.T) {
 	c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(completions.Options{}), ai.Options{TranscriptionMode: 2})
 	if err == nil || !strings.Contains(err.Error(), "unknown transcription mode 2") || !strings.HasPrefix(err.Error(), "ai: ") {
 		t.Errorf("New = %v, %v; want an error naming the unknown transcription mode", c, err)
+	}
+}
+
+// TestClientTranscriptionMode wants the mode the Client was built with: the route by default,
+// and chat when Options asks for it.
+func TestClientTranscriptionMode(t *testing.T) {
+	for _, want := range []ai.TranscriptionMode{ai.TranscribeRoute, ai.TranscribeChat} {
+		opts := ai.Options{}
+		if want != ai.TranscribeRoute {
+			opts.TranscriptionMode = want
+		}
+		c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(completions.Options{}), opts)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		if got := c.TranscriptionMode(); got != want {
+			t.Errorf("TranscriptionMode() = %v, want %v", got, want)
+		}
+	}
+}
+
+// TestTranscriptionModeText wants each mode's name from String and MarshalText, and the mode
+// back from UnmarshalText.
+func TestTranscriptionModeText(t *testing.T) {
+	for mode, name := range map[ai.TranscriptionMode]string{ai.TranscribeRoute: "route", ai.TranscribeChat: "chat"} {
+		if got := mode.String(); got != name {
+			t.Errorf("TranscriptionMode(%d).String() = %q, want %q", int(mode), got, name)
+		}
+		text, err := mode.MarshalText()
+		if err != nil || string(text) != name {
+			t.Errorf("TranscriptionMode(%d).MarshalText() = %q, %v; want %q", int(mode), text, err, name)
+		}
+		got := ai.TranscriptionMode(-1)
+		if err := got.UnmarshalText([]byte(name)); err != nil || got != mode {
+			t.Errorf("UnmarshalText(%q) = %d, %v; want %d", name, int(got), err, int(mode))
+		}
+	}
+}
+
+// TestTranscriptionModeTextRefusesUnknown wants an unknown mode printed by number and refused
+// by MarshalText, and an unknown name refused by UnmarshalText naming both modes, leaving the
+// mode as it was.
+func TestTranscriptionModeTextRefusesUnknown(t *testing.T) {
+	for _, mode := range []ai.TranscriptionMode{2, 7, -1} {
+		want := fmt.Sprintf("TranscriptionMode(%d)", int(mode))
+		if got := mode.String(); got != want {
+			t.Errorf("String() = %q, want %q", got, want)
+		}
+		if text, err := mode.MarshalText(); err == nil || !strings.HasPrefix(err.Error(), "ai: ") {
+			t.Errorf("TranscriptionMode(%d).MarshalText() = %q, %v; want an error", int(mode), text, err)
+		}
+	}
+	for _, name := range []string{"", "Route", "CHAT", "0", "routes"} {
+		mode := ai.TranscribeChat
+		err := mode.UnmarshalText([]byte(name))
+		want := fmt.Sprintf("ai: unknown transcription mode %q, want one of route, chat", name)
+		if err == nil || err.Error() != want {
+			t.Errorf("UnmarshalText(%q) = %v, want %q", name, err, want)
+		}
+		if mode != ai.TranscribeChat {
+			t.Errorf("UnmarshalText(%q) changed the mode to %v", name, mode)
+		}
+	}
+}
+
+// TestTranscriptionModeJSON wants a mode in a JSON struct to round-trip by name.
+func TestTranscriptionModeJSON(t *testing.T) {
+	type config struct {
+		Mode ai.TranscriptionMode `json:"mode"`
+	}
+	for _, mode := range []ai.TranscriptionMode{ai.TranscribeRoute, ai.TranscribeChat} {
+		data, err := json.Marshal(config{Mode: mode})
+		want := `{"mode":"` + mode.String() + `"}`
+		if err != nil || string(data) != want {
+			t.Fatalf("Marshal = %s, %v; want %s", data, err, want)
+		}
+		var got config
+		if err := json.Unmarshal(data, &got); err != nil || got.Mode != mode {
+			t.Errorf("Unmarshal(%s) = %v, %v; want %v", data, got.Mode, err, mode)
+		}
+	}
+	var got config
+	if err := json.Unmarshal([]byte(`{"mode":"speech"}`), &got); err == nil {
+		t.Errorf("Unmarshal of an unknown mode = %v, want an error", got.Mode)
 	}
 }
 
