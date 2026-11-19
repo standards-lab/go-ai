@@ -7,6 +7,23 @@ only; go-ai's base module keeps its own, in the repository's root `CHANGELOG.md`
 
 ## [Unreleased]
 
+## [v0.3.1] - 2026-11-19
+
+This release moves `infer` to go-ai v0.4.0, with no user-visible change: every command's output
+and exit status are as in v0.3.0. It requires go-ai v0.4.0, go-cli-sdk v0.4.0, and go-core
+v0.12.0, and nothing else.
+
+### Changed
+
+- Requires go-ai v0.4.0, in place of v0.3.0.
+- `infer chat` writes an unstreamed reply's text through go-ai's `Response.OutputText`, in place
+  of infer's own copy of it, and the transcription mode setting is read through
+  `ai.TranscriptionMode`'s text form, in place of infer's own map of mode names. An unknown mode
+  is the same usage error as before, naming `--mode`, `INFER_TRANSCRIPTION_MODE`, `route`, and
+  `chat`.
+- The unit tier runs against go-ai's public `aitest` endpoint, in place of the endpoint infer's
+  `internal/apptest` held; `internal/apptest` keeps the graph fixtures alone.
+
 ## [v0.3.0] - 2026-11-18
 
 This release moves `infer` to go-ai v0.3.0, whose listed models keep each listing entry as the
@@ -128,7 +145,8 @@ go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
   `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER` map onto `INFER_TOKEN` and `INFER_HEADER`, and no
   scenario's log shows their values.
 
-[Unreleased]: https://github.com/standards-lab/go-ai/compare/tools/infer/v0.3.0...HEAD
+[Unreleased]: https://github.com/standards-lab/go-ai/compare/tools/infer/v0.3.1...HEAD
+[v0.3.1]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.3.1
 [v0.3.0]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.3.0
 [v0.2.0]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.2.0
 [v0.1.0]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.1.0
