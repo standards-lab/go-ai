@@ -16,13 +16,13 @@ v0.12.0, and nothing else.
 ### Changed
 
 - Requires go-ai v0.4.0, in place of v0.3.0.
-- `infer chat` writes an unstreamed reply's text through go-ai's `Response.OutputText`, in place
-  of infer's own copy of it, and the transcription mode setting is read through
-  `ai.TranscriptionMode`'s text form, in place of infer's own map of mode names. An unknown mode
-  is the same usage error as before, naming `--mode`, `INFER_TRANSCRIPTION_MODE`, `route`, and
-  `chat`.
+- `infer chat` reads an unstreamed reply's text with go-ai's `Response.OutputText`, in place of
+  infer's own copy of it.
+- `infer transcribe` reads the transcription mode setting with `ai.TranscriptionMode`'s text
+  form, in place of infer's own map of mode names. An unknown mode is the same usage error as
+  before, naming `--mode`, `INFER_TRANSCRIPTION_MODE`, `route`, and `chat`.
 - The unit tier runs against go-ai's public `aitest` endpoint, in place of the endpoint infer's
-  `internal/apptest` held; `internal/apptest` keeps the graph fixtures alone.
+  `internal/apptest` held. `internal/apptest` keeps only the graph fixtures.
 
 ## [v0.3.0] - 2026-11-18
 

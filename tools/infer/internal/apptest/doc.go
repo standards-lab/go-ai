@@ -1,8 +1,8 @@
 // Package apptest holds the graph fixtures internal/app's tests share for
 // running infer in-process: over the composition [app.App] publishes, its
-// graph and its nodes, with the environment a run reads. The loopback
-// endpoint a run sends to is go-ai's public aitest package; the tests never
-// reach go-ai's internal helpers.
+// graph and its nodes, with the environment a run reads. The tests serve
+// their loopback endpoint with go-ai's public aitest package, never with
+// go-ai's internal helpers.
 //
 // [Builds] records the handle of every node a run's Build begins, through
 // graph.Graph.Observe, so a test asserts which nodes a command builds,
