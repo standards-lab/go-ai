@@ -1,5 +1,7 @@
 package protocol
 
+import "strings"
+
 // Response is a model's response: Open Responses' response object, in its stateless subset.
 type Response struct {
 	// ID is the reply's id, as the endpoint reports it, and empty when it reports none.
@@ -20,6 +22,26 @@ type Response struct {
 	Error *ResponseError
 	// Usage counts the tokens the request used.
 	Usage Usage
+}
+
+// OutputText returns the text of r's output: every OutputText part of every Message item in
+// Output, in order, joined with nothing between. It reads messages of any role, and nothing
+// else: a Refusal part, a Reasoning item, and a FunctionCall item add nothing. A response with
+// no OutputText part returns "".
+func (r *Response) OutputText() string {
+	var b strings.Builder
+	for _, item := range r.Output {
+		m, ok := item.(Message)
+		if !ok {
+			continue
+		}
+		for _, part := range m.Content {
+			if t, ok := part.(OutputText); ok {
+				b.WriteString(t.Text)
+			}
+		}
+	}
+	return b.String()
 }
 
 // ResponseError is the error a failed response holds: the spec's Error object, which a stream's

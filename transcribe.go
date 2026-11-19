@@ -289,7 +289,7 @@ func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) 
 		return nil, e
 	}
 	return &Transcription{
-		Text: outputText(resp),
+		Text: resp.OutputText(),
 		Usage: TranscriptionUsage{
 			InputTokens:  resp.Usage.InputTokens,
 			OutputTokens: resp.Usage.OutputTokens,
@@ -392,24 +392,6 @@ func chatRequest(req *TranscriptionRequest, data []byte, audioFormat protocol.Au
 			},
 		}},
 	}
-}
-
-// outputText is the text of resp's output: every OutputText part of its messages, joined in
-// order.
-func outputText(resp *protocol.Response) string {
-	var b strings.Builder
-	for _, item := range resp.Output {
-		m, ok := item.(protocol.Message)
-		if !ok {
-			continue
-		}
-		for _, part := range m.Content {
-			if t, ok := part.(protocol.OutputText); ok {
-				b.WriteString(t.Text)
-			}
-		}
-	}
-	return b.String()
 }
 
 // transcriptionFields validates req for TranscribeRoute and returns the form fields it sends

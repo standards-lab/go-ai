@@ -141,8 +141,8 @@ export ASK_MODEL=agent
 
 A request is a `protocol.Request`: the model, optional instructions, and the input, a
 conversation of items. The reply is a `protocol.Response` whose `Output` holds the model's
-items. `generate.go` also defines two helpers that later steps reuse: `userText` builds a user
-message, and `outputText` reads the text back out.
+items, and its `OutputText` method reads their text back out. `generate.go` also defines a
+helper that later steps reuse: `userText` builds a user message.
 
 ```go
 package main
@@ -165,7 +165,7 @@ func generate(ctx context.Context, client *ai.Client, model string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(outputText(resp))
+	fmt.Println(resp.OutputText())
 	fmt.Printf("status: %s, %d tokens\n", resp.Status, resp.Usage.TotalTokens)
 	return nil
 }
@@ -176,21 +176,6 @@ func userText(text string) protocol.Message {
 		Role:    protocol.RoleUser,
 		Content: []protocol.ContentPart{protocol.InputText{Text: text}},
 	}
-}
-
-// outputText joins the text of every message in a response's output.
-func outputText(resp *protocol.Response) string {
-	var text string
-	for _, item := range resp.Output {
-		if m, ok := item.(protocol.Message); ok {
-			for _, part := range m.Content {
-				if t, ok := part.(protocol.OutputText); ok {
-					text += t.Text
-				}
-			}
-		}
-	}
-	return text
 }
 ```
 
@@ -345,7 +330,7 @@ func tools(ctx context.Context, client *ai.Client, model string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(outputText(resp))
+	fmt.Println(resp.OutputText())
 	return nil
 }
 ```
@@ -411,7 +396,7 @@ func structured(ctx context.Context, client *ai.Client, model string) error {
 		return fmt.Errorf("the reply is %s, not completed", resp.Status)
 	}
 	var r river
-	if err := json.Unmarshal([]byte(outputText(resp)), &r); err != nil {
+	if err := json.Unmarshal([]byte(resp.OutputText()), &r); err != nil {
 		return err
 	}
 	fmt.Printf("%+v\n", r)
