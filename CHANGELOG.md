@@ -31,15 +31,20 @@ name.
   arrival number on the route, and any other path below `/v1`, such as `messages` or
   `responses`, as a `RawRequest`. A route without a function answers 404 with an OpenAI-style
   error body, and a body its route can't decode answers 400.
-- `aitest`'s replies: `ChatReply`, text or a refusal with its finish reason and usage, written as
-  a `chat.completion`, or streamed as chunks when the request asks, and able to break off
+- `aitest`'s replies: `ChatReply`, text or a refusal with its reasoning (`Reasoning`, sent as
+  `reasoning_content`), finish reason, and usage, its reasoning tokens (`ReasoningTokens`) as
+  `completion_tokens_details.reasoning_tokens`, written as a `chat.completion`, or streamed as
+  chunks when the request asks, the reasoning as a delta ahead of the text, and able to break off
   mid-stream (`BreakAfter`); `EmbeddingsReply`, `TranscriptionReply`, and `ModelsReply`, each in
   its route's wire shape; `ErrorReply`, an OpenAI-style error of any status with a Retry-After
   written as given; and `RawReply`, a status, headers, and a JSON body or server-sent event
-  `Frame`s, each flushed on its own.
-- `aitest.Gate`, which parks requests inside route functions until the test lets them go
-  (`Release`, `Open`) or their context ends; `Await` blocks the test until n requests are parked,
-  failing it after ten seconds, and `Parked` counts them. Its zero value is ready to use.
+  `Frame`s, each flushed on its own. A streamed `ChatReply` and a `RawReply`'s frames can be held
+  on a `Gate` (`Hold`) after a given piece of text or frame (`HoldAfter`), everything before it
+  flushed, until the gate lets it go; a held stream ends when its request's context does.
+- `aitest.Gate`, which parks requests inside route functions, and holds streams, until the test
+  lets them go (`Release`, `Open`) or their context ends; `Await` blocks the test until n
+  requests are parked, failing it after ten seconds, and `Parked` counts them. Its zero value is
+  ready to use.
 
 ### Changed
 

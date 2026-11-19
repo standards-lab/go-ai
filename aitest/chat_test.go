@@ -356,3 +356,39 @@ func TestChatTranscription(t *testing.T) {
 		t.Errorf("route got %+v, want audio-model, one user message of the wav clip and the instruction", got)
 	}
 }
+
+// TestChatReplyReasoning wants a chat reply's reasoning and reasoning tokens to reach Generate
+// and GenerateStream: the Response a reasoning item of the reasoning ahead of the message, and
+// its usage the reasoning tokens.
+func TestChatReplyReasoning(t *testing.T) {
+	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(context.Context, aitest.ChatRequest) aitest.Reply {
+		return aitest.ChatReply{Reasoning: "France's capital is Paris.", Chunks: []string{"Pa", "ris"},
+			PromptTokens: 5, CompletionTokens: 9, TotalTokens: 14, ReasoningTokens: 6}
+	}})
+	c := chatClient(t, e, ai.Options{})
+	for _, streamed := range []bool{false, true} {
+		var resp *protocol.Response
+		var err error
+		if streamed {
+			resp, err = stream(t, c, userText("m", "Capital of France?"))
+		} else {
+			resp, err = c.Generate(t.Context(), userText("m", "Capital of France?"))
+		}
+		if err != nil {
+			t.Fatalf("streamed %t: %v", streamed, err)
+		}
+		if len(resp.Output) != 2 {
+			t.Fatalf("streamed %t: output %+v, want a reasoning item and a message", streamed, resp.Output)
+		}
+		r, ok := resp.Output[0].(protocol.Reasoning)
+		if !ok || !reflect.DeepEqual(r.Content, []protocol.ReasoningText{{Text: "France's capital is Paris."}}) {
+			t.Errorf("streamed %t: output[0] = %+v, want a reasoning item of the reasoning", streamed, resp.Output[0])
+		}
+		if resp.OutputText() != "Paris" {
+			t.Errorf("streamed %t: text = %q, want Paris", streamed, resp.OutputText())
+		}
+		if got := resp.Usage.OutputTokensDetails.ReasoningTokens; got != 6 || resp.Usage.OutputTokens != 9 {
+			t.Errorf("streamed %t: usage %+v, want 9 output tokens, 6 of them reasoning", streamed, resp.Usage)
+		}
+	}
+}

@@ -16,7 +16,9 @@ const awaitBound = 10 * time.Second
 // Gate parks requests inside route functions until the test lets them go, so a test can hold
 // requests in flight and look at what the caller does meanwhile. A route function calls
 // [Gate.Wait] with its context; the test calls [Gate.Await] to block until the requests it
-// expects are parked, then [Gate.Release] or [Gate.Open] to let them go.
+// expects are parked, then [Gate.Release] or [Gate.Open] to let them go. A streamed
+// [ChatReply] or [RawReply] whose Hold names a Gate parks on it the same way, mid-stream, so a
+// held stream counts as a parked request.
 //
 // The zero Gate is ready to use and parks every request; a Gate must not be copied after first
 // use. Its methods are safe for concurrent use. A parked request also goes when its context ends,

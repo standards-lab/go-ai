@@ -1,6 +1,7 @@
 package aitest
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json/jsontext"
@@ -16,8 +17,9 @@ import (
 // [RawReply]. A typed reply is the wire shape of its route, and is written as that shape whichever
 // route returns it.
 type Reply interface {
-	// write writes the reply to w, shaped as a asks.
-	write(w http.ResponseWriter, a asked)
+	// write writes the reply to w, shaped as a asks. ctx is the request's context, which a
+	// held stream waits on.
+	write(ctx context.Context, w http.ResponseWriter, a asked)
 }
 
 // asked is what a request asked of its reply's shape: what the Chat Completions route decoded of
@@ -44,7 +46,7 @@ type EmbeddingsReply struct {
 	TotalTokens int
 }
 
-func (r EmbeddingsReply) write(w http.ResponseWriter, _ asked) {
+func (r EmbeddingsReply) write(_ context.Context, w http.ResponseWriter, _ asked) {
 	type item struct {
 		Object    string `json:"object"`
 		Index     int    `json:"index"`
@@ -82,7 +84,7 @@ type TranscriptionReply struct {
 	TotalTokens int
 }
 
-func (r TranscriptionReply) write(w http.ResponseWriter, _ asked) {
+func (r TranscriptionReply) write(_ context.Context, w http.ResponseWriter, _ asked) {
 	type usage struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
@@ -101,7 +103,7 @@ type ModelsReply struct {
 	Entries []jsontext.Value
 }
 
-func (r ModelsReply) write(w http.ResponseWriter, _ asked) {
+func (r ModelsReply) write(_ context.Context, w http.ResponseWriter, _ asked) {
 	var b strings.Builder
 	b.WriteString(`{"object":"list","data":[`)
 	for i, e := range r.Entries {
@@ -128,6 +130,16 @@ type RawReply struct {
 	// Frames, when non-nil, makes the reply a stream of server-sent events, each frame written
 	// and flushed in turn, Body unused. An empty, non-nil Frames is a stream of no events.
 	Frames []Frame
+	// Hold, when not nil, holds the stream of Frames once its first HoldAfter frames are
+	// written and flushed, so the client has read them, until the test lets it go with
+	// [Gate.Release] or [Gate.Open]; the stream then resumes. If the request's context ends
+	// while the stream is held, as it does when the client cancels or closes the connection and
+	// when the test ends, the stream ends there. A reply with Frames nil ignores it.
+	Hold *Gate
+	// HoldAfter is how many frames a held stream writes before Hold holds it: zero holds it
+	// before the first, once its headers are flushed, and a count past the last frame holds it
+	// after the last, before the body ends.
+	HoldAfter int
 }
 
 // Frame is one server-sent event of a [RawReply].
@@ -138,7 +150,7 @@ type Frame struct {
 	Data string
 }
 
-func (r RawReply) write(w http.ResponseWriter, _ asked) {
+func (r RawReply) write(ctx context.Context, w http.ResponseWriter, _ asked) {
 	for k, vs := range r.Header {
 		for _, v := range vs {
 			w.Header().Add(k, v)
@@ -161,7 +173,14 @@ func (r RawReply) write(w http.ResponseWriter, _ asked) {
 		return
 	}
 	rc := http.NewResponseController(w)
-	for _, f := range r.Frames {
+	if err := rc.Flush(); err != nil {
+		return
+	}
+	holdAt := min(max(r.HoldAfter, 0), len(r.Frames))
+	for i, f := range r.Frames {
+		if i == holdAt && !hold(ctx, r.Hold) {
+			return
+		}
 		if _, err := io.WriteString(w, f.encode()); err != nil {
 			return
 		}
@@ -169,6 +188,16 @@ func (r RawReply) write(w http.ResponseWriter, _ asked) {
 			return
 		}
 	}
+	if holdAt == len(r.Frames) {
+		hold(ctx, r.Hold)
+	}
+}
+
+// hold holds a stream on g, when g is not nil, until the test lets it go, reporting false when
+// ctx ended first and the stream must end. Everything the stream wrote is flushed before it is
+// held, so the client has read it.
+func hold(ctx context.Context, g *Gate) bool {
+	return g == nil || g.Wait(ctx) == nil
 }
 
 // encode returns f as a server-sent event: its event field, a data field per line of its data,
@@ -197,7 +226,7 @@ type ErrorReply struct {
 	RetryAfter string
 }
 
-func (r ErrorReply) write(w http.ResponseWriter, _ asked) {
+func (r ErrorReply) write(_ context.Context, w http.ResponseWriter, _ asked) {
 	status := r.Status
 	if status == 0 {
 		status = http.StatusInternalServerError

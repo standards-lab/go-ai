@@ -1,6 +1,7 @@
 package aitest
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -202,9 +203,10 @@ func decodeImageURL(u string) (ChatImage, error) {
 }
 
 // ChatReply is the Chat Completions route's reply: an assistant message of text or a refusal,
-// its finish reason, and its usage. It is unstreamed, a chat.completion, unless the request asked
-// to stream; then it is a stream of chat.completion.chunk events: a chunk of the assistant's
-// role, a chunk for each piece of the text, one of the refusal when there is one, one of the
+// with the reasoning that led to it, its finish reason, and its usage. It is unstreamed, a
+// chat.completion, unless the request asked to stream; then it is a stream of
+// chat.completion.chunk events: a chunk of the assistant's role, one of the reasoning when there
+// is some, a chunk for each piece of the text, one of the refusal when there is one, one of the
 // finish reason, one of the usage, of no choices, when the request's stream_options asked for it
 // with include_usage, as go-ai's Chat Completions client always does, and data [DONE]. Its id is
 // chatcmpl-aitest- and the request's arrival number, and its model the request's.
@@ -216,6 +218,10 @@ type ChatReply struct {
 	Chunks []string
 	// Refusal, when not empty, is the message's refusal.
 	Refusal string
+	// Reasoning, when not empty, is the reasoning that led to the message, sent as its
+	// reasoning_content, as llama.cpp sends it; streamed, it is one reasoning_content delta,
+	// ahead of the text.
+	Reasoning string
 	// Finish is the reply's finish_reason, such as stop, length, or content_filter, written as
 	// given; empty is stop.
 	Finish string
@@ -225,35 +231,56 @@ type ChatReply struct {
 	CompletionTokens int
 	// TotalTokens is the reply's usage.total_tokens.
 	TotalTokens int
+	// ReasoningTokens, when not zero, is the reply's
+	// usage.completion_tokens_details.reasoning_tokens; zero sends no completion_tokens_details.
+	ReasoningTokens int
 	// BreakAfter, when positive, breaks a stream after its first BreakAfter pieces of text: the
 	// reply's body ends there, with no refusal, finish reason, usage, or [DONE]. An unstreamed
 	// reply ignores it.
 	BreakAfter int
+	// Hold, when not nil, holds a stream once its first HoldAfter pieces of text are written
+	// and flushed, so the client has read them, until the test lets it go with [Gate.Release] or
+	// [Gate.Open]; the stream then resumes. If the request's context ends while the stream is
+	// held, as it does when the client cancels or closes the connection and when the test ends,
+	// the stream ends there. An unstreamed reply ignores it.
+	Hold *Gate
+	// HoldAfter is how many pieces of text a held stream writes before Hold holds it: zero holds
+	// it after the role and the reasoning, before the text, and a count past the last piece holds
+	// it after the last, before the refusal and the finish reason. A stream that BreakAfter
+	// breaks at or before that point is never held.
+	HoldAfter int
 }
 
 // chatUsage is a chat reply's usage.
 type chatUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens            int               `json:"prompt_tokens"`
+	CompletionTokens        int               `json:"completion_tokens"`
+	TotalTokens             int               `json:"total_tokens"`
+	CompletionTokensDetails chatTokensDetails `json:"completion_tokens_details,omitzero"`
 }
 
-func (r ChatReply) write(w http.ResponseWriter, a asked) {
+// chatTokensDetails is a chat reply's usage.completion_tokens_details, omitted when zero.
+type chatTokensDetails struct {
+	ReasoningTokens int `json:"reasoning_tokens"`
+}
+
+func (r ChatReply) write(ctx context.Context, w http.ResponseWriter, a asked) {
 	if a.stream {
-		r.stream(w, a)
+		r.stream(ctx, w, a)
 		return
 	}
 	type message struct {
-		Role    string  `json:"role"`
-		Content *string `json:"content"`
-		Refusal *string `json:"refusal"`
+		Role             string  `json:"role"`
+		Content          *string `json:"content"`
+		Refusal          *string `json:"refusal"`
+		ReasoningContent string  `json:"reasoning_content,omitzero"`
 	}
 	type choice struct {
 		Index        int     `json:"index"`
 		Message      message `json:"message"`
 		FinishReason string  `json:"finish_reason"`
 	}
-	msg := message{Role: "assistant"}
+	msg := message{Role: "assistant", ReasoningContent: r.Reasoning}
 	if text := r.text(); text != "" {
 		msg.Content = &text
 	}
@@ -270,12 +297,14 @@ func (r ChatReply) write(w http.ResponseWriter, a asked) {
 	}{r.id(a), "chat.completion", 0, a.model, []choice{{Message: msg, FinishReason: r.finish()}}, r.usage()})
 }
 
-// stream writes r as the stream ChatReply describes, flushing each event on its own.
-func (r ChatReply) stream(w http.ResponseWriter, a asked) {
+// stream writes r as the stream ChatReply describes, flushing each event on its own, and holds
+// it on r.Hold, waiting on ctx, where HoldAfter says.
+func (r ChatReply) stream(ctx context.Context, w http.ResponseWriter, a asked) {
 	type delta struct {
-		Role    string `json:"role,omitzero"`
-		Content string `json:"content,omitzero"`
-		Refusal string `json:"refusal,omitzero"`
+		Role             string `json:"role,omitzero"`
+		Content          string `json:"content,omitzero"`
+		Refusal          string `json:"refusal,omitzero"`
+		ReasoningContent string `json:"reasoning_content,omitzero"`
 	}
 	type choice struct {
 		Index        int     `json:"index"`
@@ -310,12 +339,19 @@ func (r ChatReply) stream(w http.ResponseWriter, a asked) {
 	if !sendChunk([]choice{{Delta: delta{Role: "assistant"}}}, nil) {
 		return
 	}
+	if r.Reasoning != "" && !sendChunk([]choice{{Delta: delta{ReasoningContent: r.Reasoning}}}, nil) {
+		return
+	}
 	pieces := r.Chunks
 	if pieces == nil && r.Text != "" {
 		pieces = []string{r.Text}
 	}
+	holdAt := min(max(r.HoldAfter, 0), len(pieces))
 	for i, p := range pieces {
 		if r.BreakAfter > 0 && i == r.BreakAfter {
+			return
+		}
+		if i == holdAt && !hold(ctx, r.Hold) {
 			return
 		}
 		if !sendChunk([]choice{{Delta: delta{Content: p}}}, nil) {
@@ -323,6 +359,9 @@ func (r ChatReply) stream(w http.ResponseWriter, a asked) {
 		}
 	}
 	if r.BreakAfter > 0 && len(pieces) >= r.BreakAfter {
+		return
+	}
+	if holdAt == len(pieces) && !hold(ctx, r.Hold) {
 		return
 	}
 	if r.Refusal != "" && !sendChunk([]choice{{Delta: delta{Refusal: r.Refusal}}}, nil) {
@@ -359,7 +398,7 @@ func (r ChatReply) finish() string {
 
 // usage is the reply's usage.
 func (r ChatReply) usage() chatUsage {
-	return chatUsage{r.PromptTokens, r.CompletionTokens, r.TotalTokens}
+	return chatUsage{r.PromptTokens, r.CompletionTokens, r.TotalTokens, chatTokensDetails{r.ReasoningTokens}}
 }
 
 // id is the reply's id, made from the request's arrival number.

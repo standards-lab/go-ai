@@ -179,7 +179,7 @@ func (e *Endpoint) serve(w http.ResponseWriter, r *http.Request) {
 		e.t.Errorf("aitest: the route function for %s %s returned no reply", req.Method, req.Path)
 		writeError(w, http.StatusInternalServerError, "server_error", "aitest: the route function returned no reply")
 	default:
-		reply.write(w, a)
+		reply.write(ctx, w, a)
 	}
 }
 

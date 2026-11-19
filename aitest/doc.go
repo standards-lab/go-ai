@@ -28,18 +28,20 @@
 //   - [ModelsRequest] is a models request: its arrival number.
 //   - [RawRequest] is a request to a raw route: its arrival number and the Request.
 //   - [Reply] is what a route function answers with, one of the package's reply types.
-//   - [ChatReply] is a chat reply of text or a refusal, its finish reason, and usage, written as
-//     a chat.completion, or streamed as chunks when the request asks to stream, and able to
-//     break off mid-stream.
+//   - [ChatReply] is a chat reply of text or a refusal, the reasoning that led to it, its finish
+//     reason, and usage with reasoning tokens, written as a chat.completion, or streamed as
+//     chunks when the request asks to stream, able to break off mid-stream, and to be held
+//     after a piece of text on a [Gate].
 //   - [EmbeddingsReply] is vectors and usage, written as base64 little-endian float32s.
 //   - [TranscriptionReply] is a transcript and usage, written as response_format json.
 //   - [ModelsReply] is a model list of whole JSON entries, written as given.
 //   - [ErrorReply] is an OpenAI-style error of any status, with a Retry-After header as given,
 //     on any route.
-//   - [RawReply] is a status, headers, and a JSON body or [Frame]s, written as given.
+//   - [RawReply] is a status, headers, and a JSON body or [Frame]s, written as given, a stream
+//     of frames able to be held after a frame on a [Gate].
 //   - [Frame] is one server-sent event of a RawReply, flushed on its own.
-//   - [Gate] parks requests inside route functions until the test lets them go; its zero value
-//     is ready to use.
+//   - [Gate] parks requests inside route functions, and holds streams a reply's Hold names,
+//     until the test lets them go; its zero value is ready to use.
 //   - [Gate.Wait] parks a request until it is let go, or until its context ends.
 //   - [Gate.Await] blocks the test until n requests are parked, failing it after ten seconds.
 //   - [Gate.Parked] returns how many requests are parked now.
