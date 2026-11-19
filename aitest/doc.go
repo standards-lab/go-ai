@@ -6,8 +6,7 @@
 // body or a stream of server-sent events. A route without a function answers 404 with an
 // OpenAI-style error body, as an endpoint without the route does.
 //
-// It imports only the standard library and go-ai's own packages, so any module's tests can use
-// it.
+// It imports only the standard library, so any module's tests can use it.
 //
 // Its exported identifiers:
 //
@@ -39,4 +38,11 @@
 //     on any route.
 //   - [RawReply] is a status, headers, and a JSON body or [Frame]s, written as given.
 //   - [Frame] is one server-sent event of a RawReply, flushed on its own.
+//   - [Gate] parks requests inside route functions until the test lets them go; its zero value
+//     is ready to use.
+//   - [Gate.Wait] parks a request until it is let go, or until its context ends.
+//   - [Gate.Await] blocks the test until n requests are parked, failing it after ten seconds.
+//   - [Gate.Parked] returns how many requests are parked now.
+//   - [Gate.Release] lets n parked or later requests go.
+//   - [Gate.Open] lets every parked and later request go.
 package aitest
