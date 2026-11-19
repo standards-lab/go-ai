@@ -9,7 +9,7 @@ import (
 
 	"github.com/standards-lab/go-core/process"
 
-	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
+	"github.com/standards-lab/go-ai/aitest"
 )
 
 // embedding is the part of an embeddings request body a test asserts.
@@ -21,17 +21,17 @@ type embedding struct {
 // embedEndpoint serves an endpoint that lists ids as its models and answers
 // an embeddings request with vectors and usage of 7 prompt tokens and 9
 // total, so a test tells the two counts apart.
-func embedEndpoint(t *testing.T, ids []string, vectors ...[]float32) *apptest.Endpoint {
+func embedEndpoint(t *testing.T, ids []string, vectors ...[]float32) *aitest.Endpoint {
 	t.Helper()
-	mux := http.NewServeMux()
-	mux.Handle("GET /v1/models", apptest.Models(ids...))
-	mux.Handle("POST /v1/embeddings", apptest.Embeddings(7, 9, vectors...))
-	return apptest.Serve(t, mux)
+	return aitest.Serve(t, aitest.Routes{
+		Models:     listing(ids...),
+		Embeddings: always[aitest.EmbeddingRequest](aitest.EmbeddingsReply{Vectors: vectors, PromptTokens: 7, TotalTokens: 9}),
+	})
 }
 
 // embedRequests returns the embeddings requests e received, decoded, and
 // fails t on any other request but GET /v1/models, which it counts.
-func embedRequests(t *testing.T, e *apptest.Endpoint) (sent []embedding, listed int) {
+func embedRequests(t *testing.T, e *aitest.Endpoint) (sent []embedding, listed int) {
 	t.Helper()
 	for _, r := range e.Requests() {
 		switch {
@@ -81,7 +81,7 @@ var (
 func TestEmbed_FallsBackToTheOneModel(t *testing.T) {
 	e := embedEndpoint(t, []string{"embedder"}, vecA)
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "embed", "hello")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "embed", "hello")
 
 	wantCode(t, r, process.ExitOK)
 	wantVectors(t, r.stdout, vecA)
@@ -112,7 +112,7 @@ func TestEmbed_FallbackRefusals(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := embedEndpoint(t, tc.ids, vecA)
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "embed", "hello")
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "embed", "hello")
 
 			wantCode(t, r, process.ExitFailure)
 			if r.stderr != tc.want {
@@ -132,13 +132,9 @@ func TestEmbed_FallbackRefusals(t *testing.T) {
 // A model the endpoint can't list is reported with exit 1, the listing's
 // error named.
 func TestEmbed_FallbackListingFails(t *testing.T) {
-	e := apptest.Serve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error":{"message":"engine down","type":"server_error"}}`))
-	}))
+	e := aitest.Serve(t, aitest.Routes{Models: always[aitest.ModelsRequest](aitest.ErrorReply{Status: http.StatusInternalServerError, Message: "engine down"})})
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "embed", "hello")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "embed", "hello")
 
 	wantCode(t, r, process.ExitFailure)
 	if want := "infer embed: no model set, and listing the endpoint's: "; !strings.HasPrefix(r.stderr, want) || !strings.Contains(r.stderr, "engine down") {
@@ -164,7 +160,7 @@ func TestEmbed_SetModelListsNothing(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := embedEndpoint(t, []string{"agent", "vision"}, vecA)
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_MODEL": tc.env}, tc.args...)
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_MODEL": tc.env}, tc.args...)
 
 			wantCode(t, r, process.ExitOK)
 			for _, req := range e.Requests() {
@@ -199,7 +195,7 @@ func TestEmbed_Inputs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := embedEndpoint(t, nil, vecA, vecB, vecC)
 
-			r := newHarnessIn(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_MODEL": "embedder"}, tc.stdin).run(tc.args...)
+			r := newHarnessIn(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_MODEL": "embedder"}, tc.stdin).run(tc.args...)
 
 			wantCode(t, r, process.ExitOK)
 			sent, _ := embedRequests(t, e)
@@ -219,7 +215,7 @@ func TestEmbed_Inputs(t *testing.T) {
 func TestEmbed_UsageOnStderr(t *testing.T) {
 	e := embedEndpoint(t, nil, vecA)
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_MODEL": "embedder"}, "embed", "hello")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_MODEL": "embedder"}, "embed", "hello")
 
 	wantCode(t, r, process.ExitOK)
 	if want := "usage: 7 input tokens, 9 total tokens\n"; r.stderr != want {
@@ -236,7 +232,7 @@ func TestEmbed_UsageOnStderr(t *testing.T) {
 func TestEmbed_NoInput(t *testing.T) {
 	e := embedEndpoint(t, []string{"embedder"}, vecA)
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "embed")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "embed")
 
 	wantCode(t, r, process.ExitUsage)
 	if want := "infer embed: no input"; !strings.HasPrefix(r.stderr, want) {

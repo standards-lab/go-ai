@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"net/http"
@@ -12,7 +13,7 @@ import (
 	"github.com/standards-lab/go-core/process"
 
 	"github.com/standards-lab/go-ai"
-	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
+	"github.com/standards-lab/go-ai/aitest"
 )
 
 // The retry policy is infer's default, three attempts, a 500ms base delay,
@@ -69,7 +70,7 @@ func TestRetryPolicy_FlagOverVariable(t *testing.T) {
 
 // retryEndpoint is an endpoint that records when each request arrived.
 type retryEndpoint struct {
-	*apptest.Endpoint
+	*aitest.Endpoint
 	mu       sync.Mutex
 	arrivals []time.Time
 }
@@ -87,19 +88,16 @@ func (e *retryEndpoint) times() []time.Time {
 func serveRetry(t *testing.T, failures int, retryAfter string) *retryEndpoint {
 	t.Helper()
 	e := &retryEndpoint{}
-	models := apptest.Models("agent")
-	e.Endpoint = apptest.Serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	models := listing("agent")
+	e.Endpoint = aitest.Serve(t, aitest.Routes{Models: func(ctx context.Context, req aitest.ModelsRequest) aitest.Reply {
 		e.mu.Lock()
 		e.arrivals = append(e.arrivals, time.Now())
-		n := len(e.arrivals)
 		e.mu.Unlock()
-		if n <= failures {
-			w.Header().Set("Retry-After", retryAfter)
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
+		if req.Arrival <= failures {
+			return aitest.ErrorReply{Status: http.StatusServiceUnavailable, Message: "overloaded", RetryAfter: retryAfter}
 		}
-		models.ServeHTTP(w, r)
-	}))
+		return models(ctx, req)
+	}})
 	return e
 }
 
@@ -110,7 +108,7 @@ func serveRetry(t *testing.T, failures int, retryAfter string) *retryEndpoint {
 func TestRetries_WaitForRetryAfter(t *testing.T) {
 	e := serveRetry(t, 1, "1")
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models", "--retries", "2", "--retry-max-delay", "2s")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "models", "--retries", "2", "--retry-max-delay", "2s")
 
 	wantCode(t, r, process.ExitOK)
 	if r.stdout != "agent\n" {
@@ -143,7 +141,7 @@ func TestRetries_Default(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := serveRetry(t, tc.failures, "0")
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "models")
 
 			wantCode(t, r, tc.code)
 			if tc.code == process.ExitOK && r.stdout != "agent\n" {
@@ -175,7 +173,7 @@ func TestRetries_GivenOverDefault(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := serveRetry(t, 3, "0")
-			env := map[string]string{"INFER_BASE_URL": e.URL}
+			env := map[string]string{"INFER_BASE_URL": e.URL()}
 			maps.Copy(env, tc.env)
 
 			r := runApp(t, env, append([]string{"models"}, tc.args...)...)
@@ -194,21 +192,12 @@ func TestRetries_GivenOverDefault(t *testing.T) {
 // The retry policy reaches the chat client too: an unstreamed chat whose
 // first attempt is answered 503 is sent again.
 func TestRetries_Chat(t *testing.T) {
-	var mu sync.Mutex
-	attempts := 0
-	reply := apptest.Reply(completionsRoute, completionsReply("Paris", "", "stop"))
-	e := chatEndpoint(t, nil, completionsRoute, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		attempts++
-		n := attempts
-		mu.Unlock()
-		if n == 1 {
-			w.Header().Set("Retry-After", "0")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
+	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(_ context.Context, req aitest.ChatRequest) aitest.Reply {
+		if req.Arrival == 1 {
+			return aitest.ErrorReply{Status: http.StatusServiceUnavailable, Message: "overloaded", RetryAfter: "0"}
 		}
-		reply.ServeHTTP(w, r)
-	}))
+		return chatReply("", "stop", "Paris")
+	}})
 
 	r := runApp(t, agent(e), "chat", "--stream=false", "--retries", "2", "capital?")
 
@@ -311,8 +300,8 @@ func TestRetryRefusals(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := apptest.Serve(t, apptest.Models("agent"))
-			env := map[string]string{"INFER_BASE_URL": e.URL, "INFER_MODEL": "agent"}
+			e := serveModels(t, "agent")
+			env := map[string]string{"INFER_BASE_URL": e.URL(), "INFER_MODEL": "agent"}
 			maps.Copy(env, tc.env)
 
 			r := runApp(t, env, tc.args...)
@@ -334,37 +323,22 @@ func TestRetryRefusals(t *testing.T) {
 }
 
 // stallingStream serves a streamed completions endpoint that sends the
-// role chunk and a "Paris" delta, then sends nothing for stall, or until
-// the request ends, then the rest of a completed reply.
-func stallingStream(t *testing.T, stall time.Duration) *apptest.Endpoint {
+// role chunk and a "Paris" delta, then holds the stream on hold, sending
+// nothing, until the test lets it go or the request ends, then the rest of
+// a completed reply.
+func stallingStream(t *testing.T, hold *aitest.Gate) *aitest.Endpoint {
 	t.Helper()
-	frames := completionsChunks("", "stop", "Paris")
-	return chatEndpoint(t, nil, completionsRoute, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		rc := http.NewResponseController(w)
-		for i, f := range frames {
-			if i == 2 {
-				select {
-				case <-r.Context().Done():
-					return
-				case <-time.After(stall):
-				}
-			}
-			if _, err := fmt.Fprintf(w, "data: %s\n\n", f); err != nil {
-				return
-			}
-			if err := rc.Flush(); err != nil {
-				return
-			}
-		}
-	}))
+	reply := chatReply("", "stop", "Paris")
+	reply.Hold, reply.HoldAfter = hold, 1
+	return chatEndpoint(t, nil, completionsRoute, reply)
 }
 
 // The idle timeout is INFER_IDLE_TIMEOUT's when set, and chat's
 // --idle-timeout's when given, even given empty, which sets no bound. A
-// bound shorter than the stream's stall ends the stream, exit 1, the text
-// already written kept and the error naming the idle bound; none, or a
-// longer one, lets the stream finish.
+// bound ends a stream held until the client gives up on it, exit 1, the
+// text already written kept and the error naming the idle bound. None, or
+// a longer one, lets a stream held for stall, counted from the hold and
+// longer than the 50ms bound a case would wrongly apply, finish.
 func TestChat_IdleTimeout(t *testing.T) {
 	const stall = 500 * time.Millisecond
 	for _, tc := range []struct {
@@ -383,11 +357,18 @@ func TestChat_IdleTimeout(t *testing.T) {
 		{"flag over an unparsable variable", "soon", []string{"--idle-timeout", "10s"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := stallingStream(t, stall)
+			hold := &aitest.Gate{}
+			e := stallingStream(t, hold)
 			env := agent(e)
 			env["INFER_IDLE_TIMEOUT"] = tc.env
 
-			r := runApp(t, env, append(append([]string{"chat"}, tc.args...), "capital?")...)
+			done := newHarness(t, env).start(append(append([]string{"chat"}, tc.args...), "capital?")...)
+			if !tc.ended {
+				hold.Await(t, 1)
+				release := time.AfterFunc(stall, hold.Open)
+				t.Cleanup(func() { release.Stop() })
+			}
+			r := finish(t, done)
 
 			if !tc.ended {
 				wantCode(t, r, process.ExitOK)
@@ -411,11 +392,12 @@ func TestChat_IdleTimeout(t *testing.T) {
 // that would refuse its command, an unknown transcription mode or an
 // unparsable idle timeout, fails no other command.
 func TestCommandSettings_ReadByTheirCommandAlone(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.Handle("GET /v1/models", apptest.Models("agent"))
-	mux.Handle("POST /v1/embeddings", apptest.Embeddings(7, 9, []float32{1}))
-	mux.Handle("POST /v1/"+completionsRoute, apptest.Stream(completionsRoute, completionsChunks("", "stop", "Paris")...))
-	mux.Handle("POST /v1/"+transcriptionsRoute, apptest.Reply(transcriptionsRoute, routeReply("hello world")))
+	routes := aitest.Routes{
+		Models:          listing("agent"),
+		Embeddings:      always[aitest.EmbeddingRequest](aitest.EmbeddingsReply{Vectors: [][]float32{{1}}, PromptTokens: 7, TotalTokens: 9}),
+		ChatCompletions: always[aitest.ChatRequest](chatReply("", "stop", "Paris")),
+		Transcriptions:  always[aitest.TranscriptionRequest](routeReply("hello world")),
+	}
 	clip := writeClip(t, "clip.wav")
 	for _, tc := range []struct {
 		variable string
@@ -429,7 +411,7 @@ func TestCommandSettings_ReadByTheirCommandAlone(t *testing.T) {
 		{"INFER_IDLE_TIMEOUT", []string{"transcribe", clip}},
 	} {
 		t.Run(tc.variable+" "+tc.args[0], func(t *testing.T) {
-			e := apptest.Serve(t, mux)
+			e := aitest.Serve(t, routes)
 			env := agent(e)
 			env[tc.variable] = "bogus"
 

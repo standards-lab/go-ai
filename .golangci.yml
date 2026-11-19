@@ -59,4 +59,4 @@ linters:
             - github.com/standards-lab/go-core/
           deny:
             - pkg: github.com/standards-lab/go-ai/internal
-              desc: infer builds on go-ai's public packages only; its tests use infer's own apptest
+              desc: infer builds on go-ai's public packages only; its tests use go-ai's public aitest

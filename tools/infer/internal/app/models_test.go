@@ -8,16 +8,16 @@ import (
 
 	"github.com/standards-lab/go-core/process"
 
-	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
+	"github.com/standards-lab/go-ai/aitest"
 )
 
 // models writes each model ID the endpoint lists, one per line, in the
 // endpoint's order, from one GET of the models route; an id-only entry is
 // its ID alone.
 func TestModels_WritesEachID(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent", "vision", "embedding"))
+	e := serveModels(t, "agent", "vision", "embedding")
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "models")
 
 	wantCode(t, r, process.ExitOK)
 	if want := "agent\nvision\nembedding\n"; r.stdout != want {
@@ -39,12 +39,12 @@ func TestModels_WritesEachID(t *testing.T) {
 // written as its ID, a tab, and its root; an id-only entry beside it is
 // written as its ID alone.
 func TestModels_WritesEachRoot(t *testing.T) {
-	e := apptest.Serve(t, apptest.ModelEntries(
+	e := aitest.Serve(t, aitest.Routes{Models: listingOf(
 		`{"id":"agent","object":"model","owned_by":"vllm","root":"openai/gpt-oss-120b","parent":null,"max_model_len":131072}`,
 		`{"id":"vision","object":"model"}`,
-	))
+	)})
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "models")
 
 	wantCode(t, r, process.ExitOK)
 	if want := "agent\topenai/gpt-oss-120b\nvision\n"; r.stdout != want {
@@ -65,9 +65,9 @@ func TestModels_NoStringRoot(t *testing.T) {
 		{"object", `{"name":"openai/gpt-oss-120b"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := apptest.Serve(t, apptest.ModelEntries(`{"id":"agent","object":"model","root":`+tc.root+`}`))
+			e := aitest.Serve(t, aitest.Routes{Models: listingOf(`{"id":"agent","object":"model","root":` + tc.root + `}`)})
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "models")
 
 			wantCode(t, r, process.ExitOK)
 			if want := "agent\n"; r.stdout != want {
@@ -79,9 +79,9 @@ func TestModels_NoStringRoot(t *testing.T) {
 
 // An endpoint that lists no model writes nothing and succeeds.
 func TestModels_NoneListed(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models())
+	e := serveModels(t)
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "models")
 
 	wantCode(t, r, process.ExitOK)
 	if r.stdout != "" || r.stderr != "" {
@@ -92,9 +92,9 @@ func TestModels_NoneListed(t *testing.T) {
 // models builds the client and what it reads, not the model setting, which
 // it never names.
 func TestModels_BuildsTheClient(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent"))
+	e := serveModels(t, "agent")
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "models")
 
 	wantCode(t, r, process.ExitOK)
 	for _, want := range []string{"client", "base url", "format", "lifecycle config"} {
@@ -117,9 +117,9 @@ func TestModels_Token(t *testing.T) {
 		{"empty", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := apptest.Serve(t, apptest.Models("agent"))
+			e := serveModels(t, "agent")
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_TOKEN": tc.token}, "models")
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_TOKEN": tc.token}, "models")
 
 			wantCode(t, r, process.ExitOK)
 			reqs := e.Requests()
@@ -140,9 +140,9 @@ func TestModels_Token(t *testing.T) {
 // No flag takes the token: --token is an unknown flag, a usage error that
 // sends nothing.
 func TestModels_NoTokenFlag(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent"))
+	e := serveModels(t, "agent")
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models", "--token", "secret")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "models", "--token", "secret")
 
 	wantCode(t, r, process.ExitUsage)
 	wantNoRequest(t, e)
@@ -151,13 +151,9 @@ func TestModels_NoTokenFlag(t *testing.T) {
 // An endpoint's error reply fails the run with exit 1, reported once on
 // stderr with the command's label, and nothing on stdout.
 func TestModels_EndpointError(t *testing.T) {
-	e := apptest.Serve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error":{"message":"engine down","type":"server_error"}}`))
-	}))
+	e := aitest.Serve(t, aitest.Routes{Models: always[aitest.ModelsRequest](aitest.ErrorReply{Status: http.StatusInternalServerError, Message: "engine down"})})
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "models")
 
 	wantCode(t, r, process.ExitFailure)
 	if r.stdout != "" {

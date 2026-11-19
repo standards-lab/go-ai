@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"io"
 	"mime"
@@ -10,13 +11,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/standards-lab/go-core/process"
 
 	"github.com/standards-lab/go-ai"
-	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
+	"github.com/standards-lab/go-ai/aitest"
 )
 
 // transcriptionsRoute is the route a route-mode transcription goes to.
@@ -40,26 +40,25 @@ func writeClip(t *testing.T, name string) string {
 
 // routeReply is a transcription route reply of text, with usage of 11 input
 // tokens, 4 output, and 15 total.
-func routeReply(text string) string {
-	return `{"text":"` + text + `","usage":{"type":"tokens","input_tokens":11,"output_tokens":4,"total_tokens":15}}`
+func routeReply(text string) aitest.TranscriptionReply {
+	return aitest.TranscriptionReply{Text: text, InputTokens: 11, OutputTokens: 4, TotalTokens: 15}
 }
 
 // transcribeEndpoint serves an endpoint that lists ids as its models,
 // answers the transcription route with routeReply's "hello world", and
 // answers a completions chat request with chat.
-func transcribeEndpoint(t *testing.T, ids []string, chat http.Handler) *apptest.Endpoint {
+func transcribeEndpoint(t *testing.T, ids []string, chat aitest.Reply) *aitest.Endpoint {
 	t.Helper()
-	mux := http.NewServeMux()
-	mux.Handle("GET /v1/models", apptest.Models(ids...))
-	mux.Handle("POST /v1/"+transcriptionsRoute, apptest.Reply(transcriptionsRoute, routeReply("hello world")))
-	mux.Handle("POST /v1/"+completionsRoute, chat)
-	return apptest.Serve(t, mux)
+	return aitest.Serve(t, aitest.Routes{
+		Models:          listing(ids...),
+		Transcriptions:  always[aitest.TranscriptionRequest](routeReply("hello world")),
+		ChatCompletions: always[aitest.ChatRequest](chat),
+	})
 }
 
-// completedChat is a completions handler that answers "the clip's words",
-// completed.
-func completedChat() http.Handler {
-	return apptest.Reply(completionsRoute, completionsReply("the clip's words", "", "stop"))
+// completedChat is a completions reply of "the clip's words", completed.
+func completedChat() aitest.Reply {
+	return chatReply("", "stop", "the clip's words")
 }
 
 // upload is the multipart form of a route-mode transcription request.
@@ -72,7 +71,7 @@ type upload struct {
 // uploads returns the form of each transcription route request e received,
 // in order, and fails t on any request but those, chat requests, and GET
 // /v1/models.
-func uploads(t *testing.T, e *apptest.Endpoint) []upload {
+func uploads(t *testing.T, e *aitest.Endpoint) []upload {
 	t.Helper()
 	var forms []upload
 	for _, r := range e.Requests() {
@@ -89,7 +88,7 @@ func uploads(t *testing.T, e *apptest.Endpoint) []upload {
 }
 
 // parseUpload decodes r's multipart form, failing t when it isn't one.
-func parseUpload(t *testing.T, r apptest.Request) upload {
+func parseUpload(t *testing.T, r aitest.Request) upload {
 	t.Helper()
 	mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/form-data" {
@@ -124,14 +123,14 @@ func parseUpload(t *testing.T, r apptest.Request) upload {
 }
 
 // whisper is the environment of a run against e with the model whisper set.
-func whisper(e *apptest.Endpoint) map[string]string {
-	return map[string]string{"INFER_BASE_URL": e.URL, "INFER_MODEL": "whisper"}
+func whisper(e *aitest.Endpoint) map[string]string {
+	return map[string]string{"INFER_BASE_URL": e.URL(), "INFER_MODEL": "whisper"}
 }
 
 // wantRouteUpload fails t unless e received exactly one transcription route
 // request, its form naming model and carrying the clip as clip.wav, and no
 // chat request.
-func wantRouteUpload(t *testing.T, e *apptest.Endpoint, model string) {
+func wantRouteUpload(t *testing.T, e *aitest.Endpoint, model string) {
 	t.Helper()
 	forms := uploads(t, e)
 	if len(forms) != 1 {
@@ -209,18 +208,12 @@ func TestTranscribe_Chat(t *testing.T) {
 // the transcriber. The endpoint answers the first upload 503 with
 // Retry-After 0, then the route's reply.
 func TestTranscribe_ReopensEachAttempt(t *testing.T) {
-	var attempts atomic.Int32
-	mux := http.NewServeMux()
-	route := apptest.Reply(transcriptionsRoute, routeReply("hello world"))
-	mux.Handle("POST /v1/"+transcriptionsRoute, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if attempts.Add(1) == 1 {
-			w.Header().Set("Retry-After", "0")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
+	e := aitest.Serve(t, aitest.Routes{Transcriptions: func(_ context.Context, req aitest.TranscriptionRequest) aitest.Reply {
+		if req.Arrival == 1 {
+			return aitest.ErrorReply{Status: http.StatusServiceUnavailable, Message: "overloaded", RetryAfter: "0"}
 		}
-		route.ServeHTTP(w, r)
-	}))
-	e := apptest.Serve(t, mux)
+		return routeReply("hello world")
+	}})
 
 	r := runApp(t, whisper(e), "transcribe", "--retries", "2", writeClip(t, "clip.wav"))
 
@@ -281,14 +274,10 @@ func TestTranscribe_ChatThroughMessagesNoExtension(t *testing.T) {
 	wantNoRequest(t, e)
 }
 
-// notFound answers every request 404, as an endpoint without the route
-// does, with vLLM's body.
-func notFound() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = io.WriteString(w, `{"detail":"Not Found"}`)
-	})
+// notFound answers 404, as an endpoint without the route does, with vLLM's
+// body.
+func notFound() aitest.Reply {
+	return aitest.RawReply{Status: http.StatusNotFound, Body: []byte(`{"detail":"Not Found"}`)}
 }
 
 // A route-mode 404 is the endpoint's error, exit 1, reported once, and a
@@ -300,24 +289,26 @@ func TestTranscribe_NotFound(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		mode    string
-		route   http.Handler // the transcription route's handler
-		chat    http.Handler // the chat route's handler
+		route   aitest.Reply // the transcription route's reply
+		chat    aitest.Reply // the chat route's reply
 		want    string
 		uploads int
 	}{
 		{"route 404", "route", notFound(), completedChat(),
 			notFoundError + "\n(the endpoint serves no transcription route; try --mode chat)\n", 1},
-		{"chat 404", "chat", apptest.Reply(transcriptionsRoute, routeReply("hello world")), notFound(),
+		{"chat 404", "chat", routeReply("hello world"), notFound(),
 			notFoundError + "\n", 0},
-		{"route 500", "route", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			http.Error(w, "boom", http.StatusInternalServerError)
-		}), completedChat(), "infer transcribe: ai: transcribe: 500 Internal Server Error: boom\n", 1},
+		{"route 500", "route", aitest.RawReply{
+			Status: http.StatusInternalServerError,
+			Header: http.Header{"Content-Type": {"text/plain; charset=utf-8"}},
+			Body:   []byte("boom\n"),
+		}, completedChat(), "infer transcribe: ai: transcribe: 500 Internal Server Error: boom\n", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mux := http.NewServeMux()
-			mux.Handle("POST /v1/"+transcriptionsRoute, tc.route)
-			mux.Handle("POST /v1/"+completionsRoute, tc.chat)
-			e := apptest.Serve(t, mux)
+			e := aitest.Serve(t, aitest.Routes{
+				Transcriptions:  always[aitest.TranscriptionRequest](tc.route),
+				ChatCompletions: always[aitest.ChatRequest](tc.chat),
+			})
 
 			r := runApp(t, whisper(e), "transcribe", "--mode", tc.mode, writeClip(t, "clip.wav"))
 
@@ -345,7 +336,7 @@ func TestTranscribe_NotFound(t *testing.T) {
 // A chat-mode reply the model didn't complete is exit 1, naming its status
 // and reason, with no transcript written.
 func TestTranscribe_ChatIncomplete(t *testing.T) {
-	e := transcribeEndpoint(t, nil, apptest.Reply(completionsRoute, completionsReply("the clip's", "", "length")))
+	e := transcribeEndpoint(t, nil, chatReply("", "length", "the clip's"))
 
 	r := runApp(t, whisper(e), "transcribe", "--mode", "chat", writeClip(t, "clip.wav"))
 
@@ -422,7 +413,7 @@ func TestTranscribe_UnknownMode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := transcribeEndpoint(t, []string{"whisper"}, completedChat())
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_TRANSCRIPTION_MODE": tc.env},
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_TRANSCRIPTION_MODE": tc.env},
 				append(append([]string{"transcribe"}, tc.args...), writeClip(t, "clip.wav"))...)
 
 			wantCode(t, r, process.ExitUsage)
@@ -439,7 +430,7 @@ func TestTranscribe_UnknownMode(t *testing.T) {
 func TestTranscribe_FallsBackToTheOneModel(t *testing.T) {
 	e := transcribeEndpoint(t, []string{"whisper-large"}, completedChat())
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "transcribe", writeClip(t, "clip.wav"))
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "transcribe", writeClip(t, "clip.wav"))
 
 	wantCode(t, r, process.ExitOK)
 	wantRouteUpload(t, e, "whisper-large")
@@ -461,7 +452,7 @@ func TestTranscribe_OneFile(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := transcribeEndpoint(t, []string{"whisper"}, completedChat())
 
-			r := runApp(t, unreadable(e.URL), append([]string{"transcribe"}, tc.args...)...)
+			r := runApp(t, unreadable(e.URL()), append([]string{"transcribe"}, tc.args...)...)
 
 			wantCode(t, r, process.ExitUsage)
 			if !strings.HasPrefix(r.stderr, "infer transcribe: ") {
@@ -478,7 +469,7 @@ func TestTranscribe_OneFile(t *testing.T) {
 func TestTranscribe_Help(t *testing.T) {
 	e := transcribeEndpoint(t, []string{"whisper"}, completedChat())
 
-	r := runApp(t, unreadable(e.URL), "transcribe", "--help")
+	r := runApp(t, unreadable(e.URL()), "transcribe", "--help")
 
 	wantCode(t, r, process.ExitUsage)
 	for _, want := range []string{"<file>", "--mode", "route", "chat", "INFER_TRANSCRIPTION_MODE"} {

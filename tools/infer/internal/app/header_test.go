@@ -9,13 +9,13 @@ import (
 
 	"github.com/standards-lab/go-core/process"
 
-	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
+	"github.com/standards-lab/go-ai/aitest"
 )
 
 // wantHeaders fails t unless e received at least one request and every
 // request carried each of want's headers with exactly its values, in
 // order.
-func wantHeaders(t *testing.T, e *apptest.Endpoint, want http.Header) {
+func wantHeaders(t *testing.T, e *aitest.Endpoint, want http.Header) {
 	t.Helper()
 	reqs := e.Requests()
 	if len(reqs) == 0 {
@@ -52,9 +52,9 @@ func TestHeader_ReachesTheRequest(t *testing.T) {
 		{"a name twice", "x-tag: one\nX-Tag: two", http.Header{"X-Tag": {"one", "two"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := apptest.Serve(t, apptest.Models("agent"))
+			e := serveModels(t, "agent")
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_HEADER": tc.header}, "models")
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_HEADER": tc.header}, "models")
 
 			wantCode(t, r, process.ExitOK)
 			wantHeaders(t, e, tc.want)
@@ -65,11 +65,11 @@ func TestHeader_ReachesTheRequest(t *testing.T) {
 // An INFER_HEADER of blank lines alone sends no header of its own: the
 // request carries only what it would without one.
 func TestHeader_BlankSendsNone(t *testing.T) {
-	without := apptest.Serve(t, apptest.Models("agent"))
-	blank := apptest.Serve(t, apptest.Models("agent"))
+	without := serveModels(t, "agent")
+	blank := serveModels(t, "agent")
 
-	wantCode(t, runApp(t, map[string]string{"INFER_BASE_URL": without.URL}, "models"), process.ExitOK)
-	wantCode(t, runApp(t, map[string]string{"INFER_BASE_URL": blank.URL, "INFER_HEADER": "\n  \n"}, "models"), process.ExitOK)
+	wantCode(t, runApp(t, map[string]string{"INFER_BASE_URL": without.URL()}, "models"), process.ExitOK)
+	wantCode(t, runApp(t, map[string]string{"INFER_BASE_URL": blank.URL(), "INFER_HEADER": "\n  \n"}, "models"), process.ExitOK)
 
 	got, want := blank.Requests()[0].Header, without.Requests()[0].Header
 	if !slices.Equal(slices.Sorted(maps.Keys(got)), slices.Sorted(maps.Keys(want))) {
@@ -99,9 +99,9 @@ func TestHeader_Refusals(t *testing.T) {
 		{"unsendable value", "api-key: " + secretValue + "\x7f", "INFER_HEADER: ai: Options.Header Api-Key has a value with a control character"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := apptest.Serve(t, apptest.Models("agent"))
+			e := serveModels(t, "agent")
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_HEADER": tc.header}, "models")
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_HEADER": tc.header}, "models")
 
 			wantCode(t, r, process.ExitUsage)
 			if want := "infer models: client: " + tc.want; !strings.HasPrefix(r.stderr, want) {
@@ -121,9 +121,9 @@ func TestHeader_Refusals(t *testing.T) {
 // INFER_TOKEN and INFER_HEADER together each reach the request: the token
 // as the bearer token, the header beside it.
 func TestHeader_WithToken(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent"))
+	e := serveModels(t, "agent")
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_TOKEN": "tok", "INFER_HEADER": "api-key: key"}, "models")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_TOKEN": "tok", "INFER_HEADER": "api-key: key"}, "models")
 
 	wantCode(t, r, process.ExitOK)
 	wantHeaders(t, e, http.Header{"Authorization": {"Bearer tok"}, "Api-Key": {"key"}})
@@ -141,13 +141,13 @@ func TestHeader_EveryClient(t *testing.T) {
 		return env
 	}
 	t.Run("models", func(t *testing.T) {
-		e := apptest.Serve(t, apptest.Models("agent"))
-		wantCode(t, runApp(t, with(map[string]string{"INFER_BASE_URL": e.URL}), "models"), process.ExitOK)
+		e := serveModels(t, "agent")
+		wantCode(t, runApp(t, with(map[string]string{"INFER_BASE_URL": e.URL()}), "models"), process.ExitOK)
 		wantHeaders(t, e, want)
 	})
 	t.Run("embed", func(t *testing.T) {
 		e := embedEndpoint(t, []string{"embedder"}, vecA)
-		wantCode(t, runApp(t, with(map[string]string{"INFER_BASE_URL": e.URL}), "embed", "one"), process.ExitOK)
+		wantCode(t, runApp(t, with(map[string]string{"INFER_BASE_URL": e.URL()}), "embed", "one"), process.ExitOK)
 		if _, listed := embedRequests(t, e); listed != 1 {
 			t.Errorf("listed models %d times, want 1", listed)
 		}
@@ -155,11 +155,7 @@ func TestHeader_EveryClient(t *testing.T) {
 	})
 	for _, stream := range []string{"--stream=true", "--stream=false"} {
 		t.Run("chat "+stream, func(t *testing.T) {
-			handler := apptest.Reply(completionsRoute, completionsReply("Paris", "", "stop"))
-			if stream == "--stream=true" {
-				handler = apptest.Stream(completionsRoute, completionsChunks("", "stop", "Paris")...)
-			}
-			e := chatEndpoint(t, nil, completionsRoute, handler)
+			e := chatEndpoint(t, nil, completionsRoute, chatReply("", "stop", "Paris"))
 			wantCode(t, runApp(t, with(agent(e)), "chat", stream, "hi"), process.ExitOK)
 			wantHeaders(t, e, want)
 		})

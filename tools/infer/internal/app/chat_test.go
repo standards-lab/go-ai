@@ -20,6 +20,7 @@ import (
 	"github.com/standards-lab/go-cli-sdk"
 	"github.com/standards-lab/go-core/process"
 
+	"github.com/standards-lab/go-ai/aitest"
 	"github.com/standards-lab/go-ai/tools/infer/internal/app"
 	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
 )
@@ -29,19 +30,24 @@ import (
 const completionsRoute = "chat/completions"
 
 // chatEndpoint serves an endpoint that lists ids as its models and answers
-// POST /v1/<route> with chat.
-func chatEndpoint(t *testing.T, ids []string, route string, chat http.Handler) *apptest.Endpoint {
+// every chat request to route with reply: the Chat Completions route's
+// function for completionsRoute, and a raw route's for any other, such as
+// messages or responses.
+func chatEndpoint(t *testing.T, ids []string, route string, reply aitest.Reply) *aitest.Endpoint {
 	t.Helper()
-	mux := http.NewServeMux()
-	mux.Handle("GET /v1/models", apptest.Models(ids...))
-	mux.Handle("POST /v1/"+route, chat)
-	return apptest.Serve(t, mux)
+	routes := aitest.Routes{Models: listing(ids...)}
+	if route == completionsRoute {
+		routes.ChatCompletions = always[aitest.ChatRequest](reply)
+	} else {
+		routes.Raw = map[string]func(context.Context, aitest.RawRequest) aitest.Reply{route: always[aitest.RawRequest](reply)}
+	}
+	return aitest.Serve(t, routes)
 }
 
 // chatBodies returns the body of each chat request to route e received,
 // decoded as a JSON object, and fails t on any request but those and GET
 // /v1/models.
-func chatBodies(t *testing.T, e *apptest.Endpoint, route string) []map[string]any {
+func chatBodies(t *testing.T, e *aitest.Endpoint, route string) []map[string]any {
 	t.Helper()
 	var bodies []map[string]any
 	for _, r := range e.Requests() {
@@ -62,7 +68,7 @@ func chatBodies(t *testing.T, e *apptest.Endpoint, route string) []map[string]an
 
 // oneBody returns the one chat request to route e received, failing t
 // unless there is exactly one.
-func oneBody(t *testing.T, e *apptest.Endpoint, route string) map[string]any {
+func oneBody(t *testing.T, e *aitest.Endpoint, route string) map[string]any {
 	t.Helper()
 	bodies := chatBodies(t, e, route)
 	if len(bodies) != 1 {
@@ -85,66 +91,43 @@ func userContent(t *testing.T, body map[string]any) any {
 	return nil
 }
 
-// usageJSON is a completions usage member: 78 prompt tokens, 25 completion
-// tokens, reasoning of them, and 103 total, so a test tells each apart.
-func usageJSON(reasoning int) string {
-	return fmt.Sprintf(`{"prompt_tokens":78,"completion_tokens":25,"total_tokens":103,"completion_tokens_details":{"reasoning_tokens":%d}}`, reasoning)
+// chatReply is a completions reply of text, in pieces, each a chunk when
+// streamed, with reasoning when it isn't empty, ending with finish, its
+// usage 78 prompt tokens, 25 completion tokens, 12 of them reasoning, and
+// 103 total, so a test tells each apart. It is streamed when the request
+// asks to stream, and unstreamed otherwise.
+func chatReply(reasoning, finish string, text ...string) aitest.ChatReply {
+	return aitest.ChatReply{
+		Chunks:           text,
+		Reasoning:        reasoning,
+		Finish:           finish,
+		PromptTokens:     78,
+		CompletionTokens: 25,
+		TotalTokens:      103,
+		ReasoningTokens:  12,
+	}
 }
 
-// completionsReply is an unstreamed completions reply of content, with
-// reasoning when it isn't empty, ending with finish, its usage usageJSON's
-// with 12 reasoning tokens.
-func completionsReply(content, reasoning, finish string) string {
-	message := map[string]string{"role": "assistant", "content": content}
-	if reasoning != "" {
-		message["reasoning_content"] = reasoning
+// frames are the server-sent events of a raw stream, one per data, each
+// the event's data alone.
+func frames(data ...string) []aitest.Frame {
+	fs := make([]aitest.Frame, len(data))
+	for i, d := range data {
+		fs[i] = aitest.Frame{Data: d}
 	}
-	m, err := json.Marshal(message)
-	if err != nil {
-		panic(err)
-	}
-	return fmt.Sprintf(`{"id":"chatcmpl-1","object":"chat.completion","choices":[{"index":0,"message":%s,"finish_reason":%q}],"usage":%s}`, m, finish, usageJSON(12))
-}
-
-// completionsChunks are the frames of a streamed completions reply: a
-// reasoning delta when reasoning isn't empty, each of deltas as a content
-// delta, in order, the finish chunk, the usage chunk, usageJSON's with 12
-// reasoning tokens, and [DONE].
-func completionsChunks(reasoning string, finish string, deltas ...string) []string {
-	chunk := func(delta map[string]string, finish string) string {
-		d, err := json.Marshal(delta)
-		if err != nil {
-			panic(err)
-		}
-		f := "null"
-		if finish != "" {
-			f = fmt.Sprintf("%q", finish)
-		}
-		return fmt.Sprintf(`{"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":%s,"finish_reason":%s}]}`, d, f)
-	}
-	frames := []string{chunk(map[string]string{"role": "assistant"}, "")}
-	if reasoning != "" {
-		frames = append(frames, chunk(map[string]string{"reasoning_content": reasoning}, ""))
-	}
-	for _, d := range deltas {
-		frames = append(frames, chunk(map[string]string{"content": d}, ""))
-	}
-	return append(frames,
-		chunk(map[string]string{}, finish),
-		fmt.Sprintf(`{"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[],"usage":%s}`, usageJSON(12)),
-		"[DONE]")
+	return fs
 }
 
 // completedStream is a streamed completions endpoint that lists ids and
 // answers "Paris, Lyon" in three deltas, completed.
-func completedStream(t *testing.T, ids ...string) *apptest.Endpoint {
+func completedStream(t *testing.T, ids ...string) *aitest.Endpoint {
 	t.Helper()
-	return chatEndpoint(t, ids, completionsRoute, apptest.Stream(completionsRoute, completionsChunks("", "stop", "Paris", ",", " Lyon")...))
+	return chatEndpoint(t, ids, completionsRoute, chatReply("", "stop", "Paris", ",", " Lyon"))
 }
 
 // agent is the environment of a run against e with the model agent set.
-func agent(e *apptest.Endpoint) map[string]string {
-	return map[string]string{"INFER_BASE_URL": e.URL, "INFER_MODEL": "agent"}
+func agent(e *aitest.Endpoint) map[string]string {
+	return map[string]string{"INFER_BASE_URL": e.URL(), "INFER_MODEL": "agent"}
 }
 
 // The prompt is the positional arguments joined by spaces, stdin then
@@ -190,7 +173,7 @@ func TestChat_NoPrompt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := completedStream(t, "agent")
 
-			r := newHarnessIn(t, map[string]string{"INFER_BASE_URL": e.URL}, tc.stdin).run(tc.args...)
+			r := newHarnessIn(t, map[string]string{"INFER_BASE_URL": e.URL()}, tc.stdin).run(tc.args...)
 
 			wantCode(t, r, process.ExitUsage)
 			if want := "infer chat: no prompt"; !strings.HasPrefix(r.stderr, want) {
@@ -317,7 +300,7 @@ func TestChat_ImageRefusals(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := completedStream(t, "agent")
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "chat", "--image", tc.image, "hello")
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "chat", "--image", tc.image, "hello")
 
 			wantCode(t, r, tc.code)
 			if !strings.HasPrefix(r.stderr, tc.want) {
@@ -366,7 +349,7 @@ func TestChat_RefusedRequests(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := completedStream(t, "agent")
-			env := map[string]string{"INFER_BASE_URL": e.URL}
+			env := map[string]string{"INFER_BASE_URL": e.URL()}
 			if tc.format != "" {
 				env["INFER_FORMAT"] = tc.format
 			}
@@ -412,7 +395,7 @@ func TestChat_DeclaredRefusals(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := completedStream(t, "agent")
-			env := map[string]string{"INFER_BASE_URL": e.URL}
+			env := map[string]string{"INFER_BASE_URL": e.URL()}
 			if tc.format != "" {
 				env["INFER_FORMAT"] = tc.format
 			}
@@ -456,20 +439,20 @@ func TestChat_AcceptedValues(t *testing.T) {
 // A cap of 1 to 15, which only responses refuses, reaches the wire through
 // completions as max_completion_tokens and through messages as max_tokens.
 func TestChat_SmallMaxTokens(t *testing.T) {
-	messagesStream := apptest.Stream("messages",
+	messagesStream := aitest.RawReply{Frames: frames(
 		`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"usage":{"input_tokens":3,"output_tokens":0}}}`,
 		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
 		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}`,
 		`{"type":"content_block_stop","index":0}`,
 		`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}`,
-		`{"type":"message_stop"}`)
+		`{"type":"message_stop"}`)}
 	for _, tc := range []struct {
 		format string
 		route  string
 		member string // the body member the cap is sent as
-		reply  http.Handler
+		reply  aitest.Reply
 	}{
-		{"completions", completionsRoute, "max_completion_tokens", apptest.Stream(completionsRoute, completionsChunks("Hi", "stop", "Hi")...)},
+		{"completions", completionsRoute, "max_completion_tokens", chatReply("Hi", "stop", "Hi")},
 		{"messages", "messages", "max_tokens", messagesStream},
 	} {
 		for _, maxTokens := range []int{1, 15} {
@@ -494,7 +477,7 @@ func TestChat_SmallMaxTokens(t *testing.T) {
 // goes to stderr.
 func TestChat_Streamed(t *testing.T) {
 	e := chatEndpoint(t, nil, completionsRoute,
-		apptest.Stream(completionsRoute, completionsChunks("Three cities.", "stop", "Paris", ",", " Lyon", ", Marseille")...))
+		chatReply("Three cities.", "stop", "Paris", ",", " Lyon", ", Marseille"))
 
 	r := runApp(t, agent(e), "chat", "name three")
 
@@ -529,46 +512,47 @@ func (o *liveOut) Write(p []byte) (int, error) {
 }
 
 // Each delta reaches stdout while the stream is still open: the endpoint
-// sends the next delta only once stdout has the one before it. stdout is a
+// holds the stream after each delta in turn, one run per delta, and
+// stdout has every delta sent so far while the stream is held. stdout is a
 // buffering writer over liveOut, as a terminal's may be, so a delta that
-// isn't flushed never reaches liveOut and the endpoint gives up on it.
+// isn't flushed never reaches liveOut while the stream is held.
 func TestChat_StreamWritesAsItArrives(t *testing.T) {
 	deltas := []string{"one", " two", " three"}
-	frames := completionsChunks("", "stop", deltas...)
-	out := &liveOut{wrote: make(chan string, 16)}
-	e := chatEndpoint(t, nil, completionsRoute, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		rc := http.NewResponseController(w)
-		next := 0
-		for _, f := range frames {
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", f)
-			_ = rc.Flush()
-			if next < len(deltas) && strings.Contains(f, `"content":`) {
+	for held := 1; held <= len(deltas); held++ {
+		t.Run(fmt.Sprintf("held after %d", held), func(t *testing.T) {
+			hold := &aitest.Gate{}
+			reply := chatReply("", "stop", deltas...)
+			reply.Hold, reply.HoldAfter = hold, held
+			e := chatEndpoint(t, nil, completionsRoute, reply)
+			out := &liveOut{wrote: make(chan string, 16)}
+			apptest.Env(t, agent(e))
+			a := app.New(cli.Streams{Stdin: strings.NewReader(""), Stdout: bufio.NewWriter(out), Stderr: new(bytes.Buffer)})
+
+			done := make(chan int, 1)
+			go func() { done <- a.Run(context.Background(), []string{"chat", "count"}) }()
+			hold.Await(t, 1)
+			for i, want := range deltas[:held] {
 				select {
 				case got := <-out.wrote:
-					if got != deltas[next] {
-						t.Errorf("stdout write %d = %q, want %q", next, got, deltas[next])
+					if got != want {
+						t.Errorf("stdout write %d = %q, want %q", i, got, want)
 					}
 				case <-time.After(5 * time.Second):
-					t.Errorf("delta %q not written to stdout while the stream is open", deltas[next])
-					return
+					t.Fatalf("delta %q not written to stdout while the stream is open", want)
 				}
-				next++
 			}
-		}
-	}))
-	apptest.Env(t, agent(e))
-	a := app.New(cli.Streams{Stdin: strings.NewReader(""), Stdout: bufio.NewWriter(out), Stderr: new(bytes.Buffer)})
+			hold.Open()
+			code := finish(t, done)
 
-	code := a.Run(context.Background(), []string{"chat", "count"})
-
-	if code != process.ExitOK {
-		t.Errorf("code = %d, want %d", code, process.ExitOK)
-	}
-	out.mu.Lock()
-	defer out.mu.Unlock()
-	if got, want := out.buf.String(), "one two three\n"; got != want {
-		t.Errorf("stdout = %q, want %q, the closing newline flushed too", got, want)
+			if code != process.ExitOK {
+				t.Errorf("code = %d, want %d", code, process.ExitOK)
+			}
+			out.mu.Lock()
+			defer out.mu.Unlock()
+			if got, want := out.buf.String(), "one two three\n"; got != want {
+				t.Errorf("stdout = %q, want %q, the closing newline flushed too", got, want)
+			}
+		})
 	}
 }
 
@@ -576,7 +560,7 @@ func TestChat_StreamWritesAsItArrives(t *testing.T) {
 // the reply's text, ended with a newline, and the same summary.
 func TestChat_Unstreamed(t *testing.T) {
 	e := chatEndpoint(t, nil, completionsRoute,
-		apptest.Reply(completionsRoute, completionsReply("Paris, Lyon, Marseille", "Three cities.", "stop")))
+		chatReply("Three cities.", "stop", "Paris, Lyon, Marseille"))
 
 	r := runApp(t, agent(e), "chat", "--stream=false", "name three")
 
@@ -603,10 +587,10 @@ func TestChat_NoReasoningItems(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		args []string
-		chat http.Handler
+		chat aitest.Reply
 	}{
-		{"streamed", nil, apptest.Stream(completionsRoute, completionsChunks("", "stop", "Paris")...)},
-		{"unstreamed", []string{"--stream=false"}, apptest.Reply(completionsRoute, completionsReply("Paris", "", "stop"))},
+		{"streamed", nil, chatReply("", "stop", "Paris")},
+		{"unstreamed", []string{"--stream=false"}, chatReply("", "stop", "Paris")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := chatEndpoint(t, nil, completionsRoute, tc.chat)
@@ -631,7 +615,7 @@ func TestChat_EndsTheTextWithOneNewline(t *testing.T) {
 		{"empty", "", "\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := chatEndpoint(t, nil, completionsRoute, apptest.Reply(completionsRoute, completionsReply(tc.text, "", "stop")))
+			e := chatEndpoint(t, nil, completionsRoute, chatReply("", "stop", tc.text))
 
 			r := runApp(t, agent(e), "chat", "--stream=false", "hello")
 
@@ -649,10 +633,10 @@ func TestChat_Incomplete(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		args []string
-		chat http.Handler
+		chat aitest.Reply
 	}{
-		{"streamed", nil, apptest.Stream(completionsRoute, completionsChunks("", "length", "1,", " 2,")...)},
-		{"unstreamed", []string{"--stream=false"}, apptest.Reply(completionsRoute, completionsReply("1, 2,", "", "length"))},
+		{"streamed", nil, chatReply("", "length", "1,", " 2,")},
+		{"unstreamed", []string{"--stream=false"}, chatReply("", "length", "1, 2,")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := chatEndpoint(t, nil, completionsRoute, tc.chat)
@@ -675,9 +659,10 @@ func TestChat_Incomplete(t *testing.T) {
 // A stream the endpoint fails part way keeps the text written and exits 1
 // with the endpoint's error.
 func TestChat_Failed(t *testing.T) {
-	frames := completionsChunks("", "stop", "Par")[:2]
-	frames = append(frames, `{"error":{"message":"engine crashed","type":"server_error","code":"500"}}`)
-	e := chatEndpoint(t, nil, completionsRoute, apptest.Stream(completionsRoute, frames...))
+	e := chatEndpoint(t, nil, completionsRoute, aitest.RawReply{Frames: frames(
+		`{"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
+		`{"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Par"},"finish_reason":null}]}`,
+		`{"error":{"message":"engine crashed","type":"server_error","code":"500"}}`)})
 
 	r := runApp(t, agent(e), "chat", "capital?")
 
@@ -692,11 +677,7 @@ func TestChat_Failed(t *testing.T) {
 
 // An endpoint's refusal exits 1 with its error, and nothing on stdout.
 func TestChat_EndpointRefuses(t *testing.T) {
-	e := chatEndpoint(t, nil, completionsRoute, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"error":{"message":"bad prompt","type":"invalid_request_error"}}`))
-	}))
+	e := chatEndpoint(t, nil, completionsRoute, aitest.ErrorReply{Status: http.StatusBadRequest, Message: "bad prompt"})
 
 	r := runApp(t, agent(e), "chat", "hello")
 
@@ -714,7 +695,7 @@ func TestChat_EndpointRefuses(t *testing.T) {
 func TestChat_FallsBackToTheOneModel(t *testing.T) {
 	e := completedStream(t, "agent")
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "chat", "hello")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "chat", "hello")
 
 	wantCode(t, r, process.ExitOK)
 	reqs := e.Requests()
@@ -730,7 +711,7 @@ func TestChat_FallsBackToTheOneModel(t *testing.T) {
 func TestChat_FallbackRefusal(t *testing.T) {
 	e := completedStream(t, "agent", "vision")
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "chat", "hello")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "chat", "hello")
 
 	wantCode(t, r, process.ExitFailure)
 	if want := "infer chat: several models: agent, vision; pass --model\n"; r.stderr != want {
@@ -747,7 +728,7 @@ func TestChat_FallbackRefusal(t *testing.T) {
 func TestChat_Help(t *testing.T) {
 	e := completedStream(t, "agent")
 
-	r := runApp(t, unreadable(e.URL), "chat", "--help")
+	r := runApp(t, unreadable(e.URL()), "chat", "--help")
 
 	wantCode(t, r, process.ExitUsage)
 	for _, want := range []string{"--instructions", "--image", "--reasoning", "--max-tokens", "--stream", "--idle-timeout duration", "INFER_IDLE_TIMEOUT",
@@ -765,16 +746,15 @@ func TestChat_Help(t *testing.T) {
 // deltas are written in order. The reply reports no thinking tokens and
 // holds no thinking block, so the summary shows no reasoning count.
 func TestChat_Messages(t *testing.T) {
-	frames := []string{
+	stream := aitest.RawReply{Frames: frames(
 		`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"usage":{"input_tokens":31,"output_tokens":0}}}`,
 		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
 		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Paris"}}`,
 		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":", Lyon"}}`,
 		`{"type":"content_block_stop","index":0}`,
 		`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":8}}`,
-		`{"type":"message_stop"}`,
-	}
-	e := chatEndpoint(t, nil, "messages", apptest.Stream("messages", frames...))
+		`{"type":"message_stop"}`)}
+	e := chatEndpoint(t, nil, "messages", stream)
 	env := agent(e)
 	env["INFER_FORMAT"] = "messages"
 
@@ -800,28 +780,26 @@ func TestChat_Messages(t *testing.T) {
 // are "not reported", as the model reasoned; none, with no reasoning item,
 // show no count at all.
 func TestChat_ReasoningSummary(t *testing.T) {
-	completions := func(reasoning string, tokens int) string {
-		message := `{"role":"assistant","content":"Paris"}`
-		if reasoning != "" {
-			message = `{"role":"assistant","content":"Paris","reasoning_content":"` + reasoning + `"}`
-		}
-		return `{"id":"chatcmpl-1","object":"chat.completion","choices":[{"index":0,"message":` + message + `,"finish_reason":"stop"}],"usage":` + usageJSON(tokens) + `}`
+	completions := func(reasoning string, tokens int) aitest.Reply {
+		reply := chatReply(reasoning, "stop", "Paris")
+		reply.ReasoningTokens = tokens
+		return reply
 	}
-	messages := func(thinking bool, tokens string) string {
+	messages := func(thinking bool, tokens string) aitest.Reply {
 		content := `{"type":"text","text":"Paris"}`
 		if thinking {
 			content = `{"type":"thinking","thinking":"Think.","signature":"sig"},` + content
 		}
-		return `{"id":"msg_1","type":"message","role":"assistant","model":"agent","content":[` + content + `],"stop_reason":"end_turn","stop_sequence":null,` +
-			`"usage":{"input_tokens":78,"output_tokens":25` + tokens + `}}`
+		return aitest.RawReply{Body: []byte(`{"id":"msg_1","type":"message","role":"assistant","model":"agent","content":[` + content + `],"stop_reason":"end_turn","stop_sequence":null,` +
+			`"usage":{"input_tokens":78,"output_tokens":25` + tokens + `}}`)}
 	}
-	responses := func(reasoning bool, tokens int) string {
+	responses := func(reasoning bool, tokens int) aitest.Reply {
 		output := `{"id":"msg_1","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","annotations":[],"text":"Paris"}]}`
 		if reasoning {
 			output = `{"id":"rs_1","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"Think."}],"encrypted_content":"","status":"completed"},` + output
 		}
-		return `{"id":"resp_1","object":"response","status":"completed","output":[` + output + `],` +
-			fmt.Sprintf(`"usage":{"input_tokens":78,"output_tokens":25,"total_tokens":103,"output_tokens_details":{"reasoning_tokens":%d}}}`, tokens)
+		return aitest.RawReply{Body: []byte(`{"id":"resp_1","object":"response","status":"completed","output":[` + output + `],` +
+			fmt.Sprintf(`"usage":{"input_tokens":78,"output_tokens":25,"total_tokens":103,"output_tokens_details":{"reasoning_tokens":%d}}}`, tokens))}
 	}
 	const (
 		reported    = "usage: 78 input tokens, 25 output tokens (12 reasoning), 103 total tokens\nreasoning items: 1\n"
@@ -832,7 +810,7 @@ func TestChat_ReasoningSummary(t *testing.T) {
 		name   string
 		format string
 		route  string
-		reply  string
+		reply  aitest.Reply
 		want   string // the summary, after its status line
 	}{
 		{"completions reported", "completions", completionsRoute, completions("Think.", 12), reported},
@@ -846,7 +824,7 @@ func TestChat_ReasoningSummary(t *testing.T) {
 		{"responses zero without one", "responses", "responses", responses(false, 0), none},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := chatEndpoint(t, nil, tc.route, apptest.Reply(tc.route, tc.reply))
+			e := chatEndpoint(t, nil, tc.route, tc.reply)
 			env := agent(e)
 			env["INFER_FORMAT"] = tc.format
 
@@ -868,7 +846,7 @@ func TestChat_Responses(t *testing.T) {
 		`{"id":"rs_1","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"Think."}],"encrypted_content":"","status":"completed"},` +
 		`{"id":"msg_1","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","annotations":[],"text":"Paris"}]}],` +
 		`"usage":{"input_tokens":91,"output_tokens":80,"total_tokens":171,"output_tokens_details":{"reasoning_tokens":70}}}`
-	e := chatEndpoint(t, nil, "responses", apptest.Reply("responses", reply))
+	e := chatEndpoint(t, nil, "responses", aitest.RawReply{Body: []byte(reply)})
 	env := agent(e)
 	env["INFER_FORMAT"] = "responses"
 
@@ -891,7 +869,9 @@ func TestChat_Responses(t *testing.T) {
 // A stream that breaks before its terminal event keeps the text written,
 // its line ended, and exits 1 with the break, writing no summary.
 func TestChat_StreamBreaks(t *testing.T) {
-	e := chatEndpoint(t, nil, completionsRoute, apptest.Stream(completionsRoute, completionsChunks("", "stop", "Par")[:2]...))
+	breaks := chatReply("", "stop", "Par")
+	breaks.BreakAfter = 1
+	e := chatEndpoint(t, nil, completionsRoute, breaks)
 
 	r := runApp(t, agent(e), "chat", "capital?")
 

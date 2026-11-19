@@ -3,14 +3,18 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"encoding/json/jsontext"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/standards-lab/go-cli-sdk"
 	"github.com/standards-lab/go-core/graph"
 	"github.com/standards-lab/go-core/process"
 
+	"github.com/standards-lab/go-ai/aitest"
 	"github.com/standards-lab/go-ai/tools/infer/internal/app"
 	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
 )
@@ -67,6 +71,32 @@ func (h *harness) run(args ...string) result {
 	return result{code: code, stdout: h.stdout.String(), stderr: h.stderr.String(), built: apptest.Names(h.built.Log())}
 }
 
+// start runs h's App once with args on a goroutine of its own, so the test
+// acts on the endpoint while the run is in flight, and returns the channel
+// its result arrives on, for [finish] to wait on.
+func (h *harness) start(args ...string) <-chan result {
+	done := make(chan result, 1)
+	go func() { done <- h.run(args...) }()
+	return done
+}
+
+// runBound bounds how long a test waits on a run it started, so a run that
+// never ends fails the test rather than hanging it.
+const runBound = 10 * time.Second
+
+// finish returns what a started run sends on done, failing t if the run
+// hasn't ended within runBound.
+func finish[T any](t *testing.T, done <-chan T) T {
+	t.Helper()
+	var v T
+	select {
+	case v = <-done:
+	case <-time.After(runBound):
+		t.Fatalf("run still going after %v", runBound)
+	}
+	return v
+}
+
 // runApp runs a fresh App once with env and args.
 func runApp(t *testing.T, env map[string]string, args ...string) result {
 	t.Helper()
@@ -89,8 +119,49 @@ func wantNothingBuilt(t *testing.T, r result) {
 	}
 }
 
+// always returns a route function of an [aitest.Routes] that answers every
+// request with reply, whatever it asks.
+func always[R any](reply aitest.Reply) func(context.Context, R) aitest.Reply {
+	return func(context.Context, R) aitest.Reply { return reply }
+}
+
+// listing returns a models route function that lists ids, in order, each
+// entry its id and object alone.
+func listing(ids ...string) func(context.Context, aitest.ModelsRequest) aitest.Reply {
+	entries := make([]string, len(ids))
+	for i, id := range ids {
+		entry, err := json.Marshal(struct {
+			ID     string `json:"id"`
+			Object string `json:"object"`
+		}{ID: id, Object: "model"})
+		if err != nil {
+			panic(err) // two strings always marshal
+		}
+		entries[i] = string(entry)
+	}
+	return listingOf(entries...)
+}
+
+// listingOf returns a models route function that lists entries, in order,
+// each written as given, as an endpoint that sends more than an entry's id
+// does, such as vLLM.
+func listingOf(entries ...string) func(context.Context, aitest.ModelsRequest) aitest.Reply {
+	reply := aitest.ModelsReply{Entries: make([]jsontext.Value, len(entries))}
+	for i, entry := range entries {
+		reply.Entries[i] = jsontext.Value(entry)
+	}
+	return always[aitest.ModelsRequest](reply)
+}
+
+// serveModels serves an endpoint that lists ids as its models and answers
+// no other route.
+func serveModels(t *testing.T, ids ...string) *aitest.Endpoint {
+	t.Helper()
+	return aitest.Serve(t, aitest.Routes{Models: listing(ids...)})
+}
+
 // wantNoRequest fails t if e received any request.
-func wantNoRequest(t *testing.T, e *apptest.Endpoint) {
+func wantNoRequest(t *testing.T, e *aitest.Endpoint) {
 	t.Helper()
 	if reqs := e.Requests(); len(reqs) != 0 {
 		t.Errorf("endpoint received %d requests, want none: first %s %s", len(reqs), reqs[0].Method, reqs[0].Path)
@@ -104,9 +175,9 @@ func wantNoRequest(t *testing.T, e *apptest.Endpoint) {
 func TestRun_RootHelp(t *testing.T) {
 	for _, args := range [][]string{nil, {"-h"}, {"--help"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			e := apptest.Serve(t, apptest.Models("agent"))
+			e := serveModels(t, "agent")
 
-			r := runApp(t, unreadable(e.URL), args...)
+			r := runApp(t, unreadable(e.URL()), args...)
 
 			wantCode(t, r, process.ExitUsage)
 			for _, want := range []string{"version", "models", "embed", "chat", "transcribe", "--base-url", "INFER_BASE_URL", "--format", "INFER_FORMAT", "--model", "INFER_MODEL",
@@ -140,9 +211,9 @@ func TestRun_RootHelp(t *testing.T) {
 
 // A command's help builds nothing and sends nothing either.
 func TestRun_ModelsHelp(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent"))
+	e := serveModels(t, "agent")
 
-	r := runApp(t, unreadable(e.URL), "models", "--help")
+	r := runApp(t, unreadable(e.URL()), "models", "--help")
 
 	wantCode(t, r, process.ExitUsage)
 	if !strings.Contains(r.stdout, "--base-url") {
@@ -153,9 +224,9 @@ func TestRun_ModelsHelp(t *testing.T) {
 }
 
 func TestRun_UnknownCommand(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent"))
+	e := serveModels(t, "agent")
 
-	r := runApp(t, unreadable(e.URL), "bogus")
+	r := runApp(t, unreadable(e.URL()), "bogus")
 
 	wantCode(t, r, process.ExitUsage)
 	if want := `infer: unknown command "bogus"`; !strings.HasPrefix(r.stderr, want) {
@@ -171,9 +242,9 @@ func TestRun_UnknownCommand(t *testing.T) {
 // A positional argument to models is a usage error, reported once, before
 // anything is built or sent.
 func TestRun_ModelsTakesNoArguments(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent"))
+	e := serveModels(t, "agent")
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL}, "models", "extra")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL()}, "models", "extra")
 
 	wantCode(t, r, process.ExitUsage)
 	if !strings.HasPrefix(r.stderr, "infer models: ") || strings.Count(r.stderr, "infer models: ") != 1 {
@@ -184,9 +255,9 @@ func TestRun_ModelsTakesNoArguments(t *testing.T) {
 }
 
 func TestRun_Version(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent"))
+	e := serveModels(t, "agent")
 
-	r := runApp(t, unreadable(e.URL), "version")
+	r := runApp(t, unreadable(e.URL()), "version")
 
 	wantCode(t, r, process.ExitOK)
 	// A test binary carries no main module version.
@@ -217,9 +288,9 @@ func TestNew_IsCold(t *testing.T) {
 }
 
 func TestRun_InvalidShutdownTimeoutFailsTheCommand(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent"))
+	e := serveModels(t, "agent")
 
-	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL, "INFER_SHUTDOWN_TIMEOUT": "not-a-duration"}, "models")
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_SHUTDOWN_TIMEOUT": "not-a-duration"}, "models")
 
 	wantCode(t, r, process.ExitFailure)
 	if want := "infer models: lifecycle config: INFER_SHUTDOWN_TIMEOUT"; !strings.HasPrefix(r.stderr, want) {
@@ -231,8 +302,8 @@ func TestRun_InvalidShutdownTimeoutFailsTheCommand(t *testing.T) {
 // A halted run of models fails its Build before anything starts, so it
 // sends nothing.
 func TestRun_HaltStopsTheCommand(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent"))
-	h := newHarness(t, map[string]string{"INFER_BASE_URL": e.URL})
+	e := serveModels(t, "agent")
+	h := newHarness(t, map[string]string{"INFER_BASE_URL": e.URL()})
 	apptest.Halt(h.app)
 
 	r := h.run("models")

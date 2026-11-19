@@ -1,18 +1,15 @@
-// Package apptest holds the fixtures internal/app's tests share for running
-// infer in-process: over the composition [app.App] publishes, its graph and
-// its nodes, against loopback endpoints, with the environment a run reads.
-// It is infer's own; the tests never reach go-ai's internal helpers.
+// Package apptest holds the graph fixtures internal/app's tests share for
+// running infer in-process: over the composition [app.App] publishes, its
+// graph and its nodes, with the environment a run reads. The tests serve
+// their loopback endpoint with go-ai's public aitest package, never with
+// go-ai's internal helpers.
 //
 // [Builds] records the handle of every node a run's Build begins, through
 // graph.Graph.Observe, so a test asserts which nodes a command builds,
 // reading their names with [Names]. [Halt] fails the lifecycle
 // configuration node, which the dispatcher adds to every Build, so a run of
 // a command that declares nodes fails before anything starts. [Env] clears
-// the INFER_ variables a test inherited and sets its own. [Serve] starts an
-// [Endpoint], an httptest server that records each [Request] it receives
-// before answering, such as with [Models], [ModelEntries], or
-// [Embeddings], or with [Reply] or [Stream], which answer a chat request
-// with the wire text a test gives, as JSON or as server-sent events.
+// the INFER_ variables a test inherited and sets its own.
 //
 // The package exports:
 //
@@ -23,12 +20,4 @@
 //   - [Halt], which stops the App's runs before anything starts, and
 //     [ErrHalted], what such a run fails with
 //   - [Env], which gives a test the INFER_ environment a run reads
-//   - [Endpoint], [Serve], and [Endpoint.Requests], a loopback endpoint and
-//     the [Request] values it received
-//   - [Models] and [ModelEntries], handlers that answer the model list,
-//     of ids or of entries as a test writes them, and [Embeddings], one
-//     that answers an embeddings request
-//   - [Reply] and [Stream], handlers that answer a request to a route with
-//     a JSON body or with server-sent events, in the wire shape a test
-//     writes
 package apptest

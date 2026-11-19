@@ -957,7 +957,7 @@ go-ai/                        module github.com/standards-lab/go-ai
 │   ├── native/
 │   └── sse/
 └── tools/infer/              module github.com/standards-lab/go-ai/tools/infer
-    ├── go.mod                go-ai v0.2.0, go-cli-sdk v0.4.0, go-core v0.12.0
+    ├── go.mod                go-ai v0.4.0, go-cli-sdk v0.4.0, go-core v0.12.0
     ├── CHANGELOG.md          infer's
     ├── README.md
     ├── docs/quick-start.md   a guided tour of each command and the common failures, with real output
@@ -981,15 +981,15 @@ name (finding 41). No CI job runs it.
 `infer` is the convenience CLI over the base module's surface, a Go Elemental CLI laid out from
 go-cli-sdk-template (`cli-applications.md`): `cmd/infer` derives go-core's signal context and
 calls the composition root, and `internal/app` holds `app.go`, `infrastructure.go`, `domain.go`,
-and `version.go`, with its fixtures in `internal/apptest`. The clients are nodes of
+and `version.go`, with its graph fixtures in `internal/apptest`. The clients are nodes of
 `infrastructure.go`, built from configuration under the tool's environment prefix, `INFER_`,
 only when a command declares them; that file is the only one in the composition root that names
 a format, as it is the only one that names a provider.
 
 Its module requires go-ai, go-cli-sdk, and go-core, each at a pinned release, and nothing else:
-go-ai at `v0.2.0`, the release that adds format profiles, go-cli-sdk at `v0.4.0`, and go-core at
-`v0.12.0`. A further requirement enters only under
-`dependencies.md`, "Sourcing", and a task's brief states it.
+go-ai at `v0.4.0`, the release that adds `aitest`, `Response.OutputText`, and the transcription
+mode's text form, go-cli-sdk at `v0.4.0`, and go-core at `v0.12.0`. A further requirement enters
+only under `dependencies.md`, "Sourcing", and a task's brief states it.
 
 **Each run talks to one endpoint.** The root flags `--base-url`, `--format`, and `--model`,
 accepted at any depth, each override a variable, `INFER_BASE_URL`, `INFER_FORMAT`, and
@@ -1099,10 +1099,10 @@ other commands share: no other command reads their variables, and an unknown mod
 a chat. A Retry-After above `--retry-max-delay` ends the retries at once, as `MaxDelay` caps
 every wait (finding 13).
 
-**Two test tiers.** The unit tier runs the App in-process against loopback `httptest` endpoints,
-with `infer`'s own fixtures in `internal/apptest`, never go-ai's internal helpers, and asserts
-what each command sends and writes. The integration tier, `tools/infer/integration` behind the
-integration build tag, builds `cmd/infer` and runs it one shot at a time on go-core's
+**Two test tiers.** The unit tier runs the App in-process against go-ai's public `aitest`
+endpoint and `infer`'s own graph fixtures in `internal/apptest`, never go-ai's internal helpers,
+and asserts what each command sends and writes. The integration tier, `tools/infer/integration`
+behind the integration build tag, builds `cmd/infer` and runs it one shot at a time on go-core's
 `processtest`, mapping each `AI_<ROLE>_BASE_URL` the base module's tier reads (finding 41) onto
 `INFER_BASE_URL` after clearing every `INFER_` variable. It maps a role's optional
 `AI_<ROLE>_MODEL` onto `INFER_MODEL`; with none, it sets no model, so the role's endpoint must
