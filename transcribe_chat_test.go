@@ -184,9 +184,11 @@ func TestTranscriptionModeJSON(t *testing.T) {
 	type config struct {
 		Mode ai.TranscriptionMode `json:"mode"`
 	}
-	for _, mode := range []ai.TranscriptionMode{ai.TranscribeRoute, ai.TranscribeChat} {
+	for mode, want := range map[ai.TranscriptionMode]string{
+		ai.TranscribeRoute: `{"mode":"route"}`,
+		ai.TranscribeChat:  `{"mode":"chat"}`,
+	} {
 		data, err := json.Marshal(config{Mode: mode})
-		want := `{"mode":"` + mode.String() + `"}`
 		if err != nil || string(data) != want {
 			t.Fatalf("Marshal = %s, %v; want %s", data, err, want)
 		}
