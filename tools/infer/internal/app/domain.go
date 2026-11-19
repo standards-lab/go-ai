@@ -275,7 +275,7 @@ func chat(ctx context.Context, inv *cli.Invocation, n *Nodes, f *chatFlags) erro
 	if f.stream {
 		resp, err = streamReply(ctx, client, req, out)
 	} else if resp, err = client.Generate(ctx, req); err == nil {
-		err = out.write(outputText(resp))
+		err = out.write(resp.OutputText())
 	}
 	if err != nil {
 		// The text already written is kept, its line ended.
@@ -508,24 +508,6 @@ func streamReply(ctx context.Context, client *ai.Client, req *protocol.Request, 
 		}
 	}
 	return acc.Response(), nil
-}
-
-// outputText returns the text of resp's output: each output_text part of
-// its messages, in order, joined as they are.
-func outputText(resp *protocol.Response) string {
-	var b strings.Builder
-	for _, it := range resp.Output {
-		m, ok := it.(protocol.Message)
-		if !ok {
-			continue
-		}
-		for _, p := range m.Content {
-			if t, ok := p.(protocol.OutputText); ok {
-				b.WriteString(t.Text)
-			}
-		}
-	}
-	return b.String()
 }
 
 // textOut writes a reply's text to w as it comes, flushing w after each

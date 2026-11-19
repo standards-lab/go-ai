@@ -437,12 +437,6 @@ func parseCount(s string) (int, error) {
 	return n, nil
 }
 
-// transcriptionModes maps each transcription mode setting to go-ai's mode.
-var transcriptionModes = map[string]ai.TranscriptionMode{
-	"route": ai.TranscribeRoute,
-	"chat":  ai.TranscribeChat,
-}
-
 // defaultTranscriptionMode is the transcription mode setting when neither
 // INFER_TRANSCRIPTION_MODE nor --mode is given: the endpoint's
 // transcription route, as go-ai's default is.
@@ -450,17 +444,18 @@ const defaultTranscriptionMode = "route"
 
 // newTranscriptionMode returns the transcription mode node's constructor:
 // the mode the setting names, as mode's [commandFlag.setting] resolves it,
-// from defaultTranscriptionMode, INFER_TRANSCRIPTION_MODE, and --mode. A
-// name transcriptionModes doesn't hold is a usage error naming the flag
-// and its variable.
+// from defaultTranscriptionMode, INFER_TRANSCRIPTION_MODE, and --mode,
+// read as ai.TranscriptionMode's text form reads it. A name that isn't a
+// mode's is a usage error naming the flag and its variable, worded as
+// infer's own rather than go-ai's.
 func newTranscriptionMode(mode *commandFlag) func(*graph.Scope) (ai.TranscriptionMode, error) {
 	return func(*graph.Scope) (ai.TranscriptionMode, error) {
 		name, err := mode.setting(defaultTranscriptionMode)
 		if err != nil {
 			return 0, err
 		}
-		m, ok := transcriptionModes[name]
-		if !ok {
+		var m ai.TranscriptionMode
+		if err := m.UnmarshalText([]byte(name)); err != nil {
 			return 0, cli.Usagef("unknown transcription mode %q: %s is route or chat", name, mode)
 		}
 		return m, nil
