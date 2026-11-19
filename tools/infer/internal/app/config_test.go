@@ -14,7 +14,6 @@ import (
 	"github.com/standards-lab/go-ai/format/messages"
 	"github.com/standards-lab/go-ai/format/responses"
 	"github.com/standards-lab/go-ai/tools/infer/internal/app"
-	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
 )
 
 // probe adds a leaf at a's root that declares node and writes its value,
@@ -108,10 +107,10 @@ func TestBaseURL_FlagOverVariable(t *testing.T) {
 		{"flag after the command", func(u string) []string { return []string{"models", "--base-url=" + u} }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			fromVar := apptest.Serve(t, apptest.Models("from-variable"))
-			fromFlag := apptest.Serve(t, apptest.Models("from-flag"))
+			fromVar := serveModels(t, "from-variable")
+			fromFlag := serveModels(t, "from-flag")
 
-			r := runApp(t, map[string]string{"INFER_BASE_URL": fromVar.URL}, tc.args(fromFlag.URL)...)
+			r := runApp(t, map[string]string{"INFER_BASE_URL": fromVar.URL()}, tc.args(fromFlag.URL())...)
 
 			wantCode(t, r, process.ExitOK)
 			want, sent, unsent := "from-flag\n", fromFlag, fromVar
@@ -133,7 +132,7 @@ func TestBaseURL_FlagOverVariable(t *testing.T) {
 // once on stderr, naming the flag and its variable. The endpoint a valid
 // setting would reach receives nothing.
 func TestRefusals(t *testing.T) {
-	e := apptest.Serve(t, apptest.Models("agent"))
+	e := serveModels(t, "agent")
 	for _, tc := range []struct {
 		name string
 		env  map[string]string
@@ -147,31 +146,31 @@ func TestRefusals(t *testing.T) {
 		},
 		{
 			name: "base URL given empty",
-			env:  map[string]string{"INFER_BASE_URL": e.URL},
+			env:  map[string]string{"INFER_BASE_URL": e.URL()},
 			args: []string{"models", "--base-url="},
 			want: "client: no base URL: set --base-url or INFER_BASE_URL",
 		},
 		{
 			name: "base URL with a query",
-			env:  map[string]string{"INFER_BASE_URL": e.URL + "?key=1"},
+			env:  map[string]string{"INFER_BASE_URL": e.URL() + "?key=1"},
 			args: []string{"models"},
 			want: "client: --base-url (INFER_BASE_URL): ai: base URL",
 		},
 		{
 			name: "relative base URL from the flag",
-			env:  map[string]string{"INFER_BASE_URL": e.URL},
+			env:  map[string]string{"INFER_BASE_URL": e.URL()},
 			args: []string{"models", "--base-url", "localhost/v1"},
 			want: "client: --base-url (INFER_BASE_URL): ai: base URL",
 		},
 		{
 			name: "unknown format variable",
-			env:  map[string]string{"INFER_BASE_URL": e.URL, "INFER_FORMAT": "chat"},
+			env:  map[string]string{"INFER_BASE_URL": e.URL(), "INFER_FORMAT": "chat"},
 			args: []string{"models"},
 			want: `format: unknown format "chat": --format (INFER_FORMAT) is completions, messages, or responses`,
 		},
 		{
 			name: "unknown format flag",
-			env:  map[string]string{"INFER_BASE_URL": e.URL, "INFER_FORMAT": "messages"},
+			env:  map[string]string{"INFER_BASE_URL": e.URL(), "INFER_FORMAT": "messages"},
 			args: []string{"--format", "Responses", "models"},
 			want: `format: unknown format "Responses": --format (INFER_FORMAT) is completions, messages, or responses`,
 		},

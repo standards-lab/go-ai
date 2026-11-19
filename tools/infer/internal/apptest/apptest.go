@@ -1,14 +1,7 @@
 package apptest
 
 import (
-	"encoding/base64"
-	"encoding/binary"
-	"encoding/json"
 	"errors"
-	"io"
-	"math"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"slices"
 	"strings"
@@ -22,8 +15,7 @@ import (
 )
 
 // Recorder records events of type T in order. It is safe for concurrent
-// use, as an endpoint's handler records from its own goroutine. The zero
-// value is ready to use.
+// use. The zero value is ready to use.
 type Recorder[T any] struct {
 	mu     sync.Mutex
 	events []T
@@ -98,160 +90,4 @@ func Env(t testing.TB, vars map[string]string) {
 	for name, value := range vars {
 		t.Setenv(name, value)
 	}
-}
-
-// Request is what an [Endpoint] received in one request.
-type Request struct {
-	Method string
-	Path   string // the URL path, such as /v1/models
-	Header http.Header
-	Body   []byte
-}
-
-// Endpoint is a loopback model endpoint for a run to send to: an
-// httptest.Server that records each request, then answers it with the
-// handler the test gave.
-type Endpoint struct {
-	// URL is the endpoint's API root, the server's URL with /v1, as a run's
-	// base URL names it.
-	URL string
-
-	requests Recorder[Request]
-}
-
-// Serve starts an [Endpoint] that answers with h, and closes it when the
-// test ends. A request whose body can't be read fails the test.
-func Serve(t testing.TB, h http.Handler) *Endpoint {
-	t.Helper()
-	e := &Endpoint{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("endpoint: read %s %s: %v", r.Method, r.URL.Path, err)
-		}
-		e.requests.Record(Request{Method: r.Method, Path: r.URL.Path, Header: r.Header.Clone(), Body: body})
-		h.ServeHTTP(w, r)
-	}))
-	t.Cleanup(srv.Close)
-	e.URL = srv.URL + "/v1"
-	return e
-}
-
-// Requests returns a copy of the requests e received so far, in order.
-func (e *Endpoint) Requests() []Request { return e.requests.Log() }
-
-// Models returns a handler that answers GET /v1/models with the
-// OpenAI-compatible model list of ids, in order, each entry its id and
-// object alone, and any other request with 404.
-func Models(ids ...string) http.Handler {
-	entries := make([]string, len(ids))
-	for i, id := range ids {
-		entry, err := json.Marshal(struct {
-			ID     string `json:"id"`
-			Object string `json:"object"`
-		}{ID: id, Object: "model"})
-		if err != nil {
-			panic(err) // two strings always marshal
-		}
-		entries[i] = string(entry)
-	}
-	return ModelEntries(entries...)
-}
-
-// ModelEntries returns a handler that answers GET /v1/models with the
-// OpenAI-compatible model list of entries, in order, each written as
-// given, as an endpoint that sends more than an entry's id does, such as
-// vLLM, and any other request with 404.
-func ModelEntries(entries ...string) http.Handler {
-	body := `{"object":"list","data":[` + strings.Join(entries, ",") + `]}`
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, body)
-	})
-}
-
-// Embeddings returns a handler that answers POST /v1/embeddings with the
-// OpenAI-compatible embeddings reply of vectors, vectors[i] at index i, as
-// encoding_format base64 shapes it, and usage of promptTokens and
-// totalTokens; it answers any other request with 404. It replies with
-// vectors whatever the request's input, so a test gives one vector per
-// input it sends.
-func Embeddings(promptTokens, totalTokens int, vectors ...[]float32) http.Handler {
-	type item struct {
-		Object    string `json:"object"`
-		Index     int    `json:"index"`
-		Embedding string `json:"embedding"`
-	}
-	type usage struct {
-		PromptTokens int `json:"prompt_tokens"`
-		TotalTokens  int `json:"total_tokens"`
-	}
-	reply := struct {
-		Object string `json:"object"`
-		Data   []item `json:"data"`
-		Usage  usage  `json:"usage"`
-	}{Object: "list", Data: []item{}, Usage: usage{PromptTokens: promptTokens, TotalTokens: totalTokens}}
-	for i, v := range vectors {
-		b := make([]byte, 4*len(v))
-		for j, f := range v {
-			binary.LittleEndian.PutUint32(b[4*j:], math.Float32bits(f))
-		}
-		reply.Data = append(reply.Data, item{Object: "embedding", Index: i, Embedding: base64.StdEncoding.EncodeToString(b)})
-	}
-	body, err := json.Marshal(reply)
-	if err != nil {
-		panic(err) // strings and integers always marshal
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/embeddings" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	})
-}
-
-// Reply returns a handler that answers POST /v1/<route>, such as
-// /v1/chat/completions, with body as application/json, whatever the
-// request, and any other request with 404. A test writes body in the wire
-// shape of the format the run speaks.
-func Reply(route, body string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/"+route {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, body)
-	})
-}
-
-// Stream returns a handler that answers POST /v1/<route> as
-// text/event-stream, whatever the request, writing each of frames, in
-// order, as one server-sent event's data and flushing it before the next,
-// and any other request with 404. A frame is the event's data alone, which
-// is all a go-ai format decodes, such as a Chat Completions chunk or its
-// closing [DONE]; a frame holds no newline.
-func Stream(route string, frames ...string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/"+route {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		rc := http.NewResponseController(w)
-		for _, f := range frames {
-			if _, err := io.WriteString(w, "data: "+f+"\n\n"); err != nil {
-				return
-			}
-			if err := rc.Flush(); err != nil {
-				return
-			}
-		}
-	})
 }

@@ -981,7 +981,7 @@ name (finding 41). No CI job runs it.
 `infer` is the convenience CLI over the base module's surface, a Go Elemental CLI laid out from
 go-cli-sdk-template (`cli-applications.md`): `cmd/infer` derives go-core's signal context and
 calls the composition root, and `internal/app` holds `app.go`, `infrastructure.go`, `domain.go`,
-and `version.go`, with its fixtures in `internal/apptest`. The clients are nodes of
+and `version.go`, with its graph fixtures in `internal/apptest`. The clients are nodes of
 `infrastructure.go`, built from configuration under the tool's environment prefix, `INFER_`,
 only when a command declares them; that file is the only one in the composition root that names
 a format, as it is the only one that names a provider.
@@ -1099,9 +1099,9 @@ other commands share: no other command reads their variables, and an unknown mod
 a chat. A Retry-After above `--retry-max-delay` ends the retries at once, as `MaxDelay` caps
 every wait (finding 13).
 
-**Two test tiers.** The unit tier runs the App in-process against loopback `httptest` endpoints,
-with `infer`'s own fixtures in `internal/apptest`, never go-ai's internal helpers, and asserts
-what each command sends and writes. The integration tier, `tools/infer/integration` behind the
+**Two test tiers.** The unit tier runs the App in-process against go-ai's public `aitest`
+endpoint, with `infer`'s own graph fixtures in `internal/apptest`, never go-ai's internal
+helpers, and asserts what each command sends and writes. The integration tier, `tools/infer/integration` behind the
 integration build tag, builds `cmd/infer` and runs it one shot at a time on go-core's
 `processtest`, mapping each `AI_<ROLE>_BASE_URL` the base module's tier reads (finding 41) onto
 `INFER_BASE_URL` after clearing every `INFER_` variable. It maps a role's optional
