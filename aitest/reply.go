@@ -1,0 +1,195 @@
+package aitest
+
+import (
+	"encoding/base64"
+	"encoding/binary"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"io"
+	"math"
+	"net/http"
+	"strings"
+)
+
+// Reply is what a route function answers with. Only the package's own reply types are Replies:
+// [EmbeddingsReply], [TranscriptionReply], [ModelsReply], and [RawReply]. A typed reply is the
+// wire shape of its route, and is written as that shape whichever route returns it.
+type Reply interface {
+	// write writes the reply to w.
+	write(w http.ResponseWriter)
+}
+
+// EmbeddingsReply is an embeddings route's reply: one vector per input, as encoding_format
+// base64 shapes it, with the request's usage.
+type EmbeddingsReply struct {
+	// Vectors holds each embedding, Vectors[i] at index i, each sent as standard base64 of
+	// little-endian float32s.
+	Vectors [][]float32
+	// PromptTokens is the reply's usage.prompt_tokens.
+	PromptTokens int
+	// TotalTokens is the reply's usage.total_tokens.
+	TotalTokens int
+}
+
+func (r EmbeddingsReply) write(w http.ResponseWriter) {
+	type item struct {
+		Object    string `json:"object"`
+		Index     int    `json:"index"`
+		Embedding string `json:"embedding"`
+	}
+	type usage struct {
+		PromptTokens int `json:"prompt_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	}
+	body := struct {
+		Object string `json:"object"`
+		Data   []item `json:"data"`
+		Usage  usage  `json:"usage"`
+	}{Object: "list", Data: make([]item, len(r.Vectors)), Usage: usage{r.PromptTokens, r.TotalTokens}}
+	for i, v := range r.Vectors {
+		b := make([]byte, 4*len(v))
+		for j, f := range v {
+			binary.LittleEndian.PutUint32(b[4*j:], math.Float32bits(f))
+		}
+		body.Data[i] = item{Object: "embedding", Index: i, Embedding: base64.StdEncoding.EncodeToString(b)}
+	}
+	writeJSON(w, http.StatusOK, body)
+}
+
+// TranscriptionReply is a transcription route's reply, as response_format json shapes it,
+// whatever format the request asked for.
+type TranscriptionReply struct {
+	// Text is the transcript.
+	Text string
+	// InputTokens is the reply's usage.input_tokens.
+	InputTokens int
+	// OutputTokens is the reply's usage.output_tokens.
+	OutputTokens int
+	// TotalTokens is the reply's usage.total_tokens.
+	TotalTokens int
+}
+
+func (r TranscriptionReply) write(w http.ResponseWriter) {
+	type usage struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Text  string `json:"text"`
+		Usage usage  `json:"usage"`
+	}{r.Text, usage{r.InputTokens, r.OutputTokens, r.TotalTokens}})
+}
+
+// ModelsReply is a models route's reply: the model list of Entries, in order.
+type ModelsReply struct {
+	// Entries are the list's entries, each a whole JSON object, such as
+	// {"id":"m","object":"model"}, written as given.
+	Entries []jsontext.Value
+}
+
+func (r ModelsReply) write(w http.ResponseWriter) {
+	var b strings.Builder
+	b.WriteString(`{"object":"list","data":[`)
+	for i, e := range r.Entries {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.Write(e)
+	}
+	b.WriteString(`]}`)
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(w, b.String())
+}
+
+// RawReply is a reply written as given: its status, its headers, and either a JSON body or a
+// stream of server-sent events.
+type RawReply struct {
+	// Status is the reply's status code; zero is 200.
+	Status int
+	// Header holds the reply's headers. Without a Content-Type, the reply's is application/json,
+	// or text/event-stream when Frames is non-nil.
+	Header http.Header
+	// Body is the reply's body, written as given when Frames is nil.
+	Body []byte
+	// Frames, when non-nil, makes the reply a stream of server-sent events, each frame written
+	// and flushed in turn, Body unused. An empty, non-nil Frames is a stream of no events.
+	Frames []Frame
+}
+
+// Frame is one server-sent event of a [RawReply].
+type Frame struct {
+	// Event is the event's type, written as its event field; empty writes none.
+	Event string
+	// Data is the event's data, written as given, a data field for each of its lines.
+	Data string
+}
+
+func (r RawReply) write(w http.ResponseWriter) {
+	for k, vs := range r.Header {
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
+	if w.Header().Get("Content-Type") == "" {
+		ct := "application/json"
+		if r.Frames != nil {
+			ct = "text/event-stream"
+		}
+		w.Header().Set("Content-Type", ct)
+	}
+	status := r.Status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	w.WriteHeader(status)
+	if r.Frames == nil {
+		_, _ = w.Write(r.Body)
+		return
+	}
+	rc := http.NewResponseController(w)
+	for _, f := range r.Frames {
+		if _, err := io.WriteString(w, f.encode()); err != nil {
+			return
+		}
+		if err := rc.Flush(); err != nil {
+			return
+		}
+	}
+}
+
+// encode returns f as a server-sent event: its event field, a data field per line of its data,
+// and the blank line that dispatches it.
+func (f Frame) encode() string {
+	var b strings.Builder
+	if f.Event != "" {
+		b.WriteString("event: " + f.Event + "\n")
+	}
+	for line := range strings.SplitSeq(f.Data, "\n") {
+		b.WriteString("data: " + line + "\n")
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// writeError writes an OpenAI-style error reply of status, with the error's type and message.
+func writeError(w http.ResponseWriter, status int, typ, message string) {
+	type detail struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+	}
+	writeJSON(w, status, struct {
+		Error detail `json:"error"`
+	}{detail{message, typ}})
+}
+
+// writeJSON writes v as a JSON reply of status.
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		panic(err) // the package's reply shapes are strings, integers, and their structs
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
