@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -16,6 +17,11 @@ const modelsRoute = "models"
 type Model struct {
 	// ID is the model's id, the one a request's Model names.
 	ID string
+	// Native is the native tier: the list's entry for the model, the whole JSON object as the
+	// endpoint sent it, id and all, for the members the typed fields don't cover, such as
+	// vLLM's root and max_model_len, or llama.cpp's router's status. Its members mean what the
+	// endpoint makes them mean. It is the Model's own copy, not a view of the reply.
+	Native jsontext.Value
 }
 
 // Models GETs the endpoint's OpenAI-compatible models route, whatever format the Client speaks,
@@ -34,17 +40,22 @@ func (c *Client) Models(ctx context.Context) ([]Model, error) {
 		return nil, fmt.Errorf("ai: models: decode response: %w", err)
 	}
 	models := make([]Model, len(wire.Data))
-	for i, m := range wire.Data {
-		models[i] = Model{ID: m.ID}
+	for i, entry := range wire.Data {
+		var m struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(entry, &m); err != nil {
+			return nil, fmt.Errorf("ai: models: decode response: %w", err)
+		}
+		models[i] = Model{ID: m.ID, Native: entry}
 	}
 	return models, nil
 }
 
-// modelsReply is the OpenAI-compatible model list reply body. Each entry's other members, such
-// as owned_by, and llama.cpp's router's status, are the endpoint's, which the client doesn't
-// keep.
+// modelsReply is the OpenAI-compatible model list reply body. Each entry is kept whole, as the
+// endpoint sent it, to become a Model's Native beside the id decoded from it: its other members,
+// such as owned_by, and llama.cpp's router's status, are the endpoint's. Decoding into a
+// jsontext.Value copies the entry's bytes, so a Model doesn't alias the reply buffer.
 type modelsReply struct {
-	Data []struct {
-		ID string `json:"id"`
-	} `json:"data"`
+	Data []jsontext.Value `json:"data"`
 }

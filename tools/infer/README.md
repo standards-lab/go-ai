@@ -5,7 +5,7 @@ through go-ai, in Chat Completions, Anthropic Messages, or Open Responses, with 
 your own.
 
 ```sh
-go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.2.0
+go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.3.0
 ```
 
 ## Quick use
@@ -13,7 +13,7 @@ go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.2.0
 ```sh
 export INFER_BASE_URL=http://localhost:8000/v1
 
-infer models                                  # each model ID, one per line
+infer models                                  # each model ID, one per line, a tab and its root where listed
 infer chat "Is 1009 prime?"                   # the reply, streamed; its summary on stderr
 infer embed "first passage" "second passage"  # one JSON vector per input, one per line
 infer transcribe --mode chat clip.wav         # the transcript
@@ -26,7 +26,7 @@ output, and ends with the common failures and their fixes. This README is the re
 
 | Command | Input | stdout | stderr |
 | --- | --- | --- | --- |
-| `models` | none | each model ID, in the endpoint's order | |
+| `models` | none | each model ID, in the endpoint's order, followed by a tab and the entry's `root` where the listing carries one | |
 | `chat` | the prompt: the arguments joined by spaces, or stdin | the reply's text | the reply's status, usage, and reasoning item count |
 | `embed` | each argument, or each line of stdin | one JSON array per input, in input order | the token usage |
 | `transcribe` | one audio file, `.wav` or `.mp3` in chat mode | the transcript | the token usage |
@@ -171,7 +171,7 @@ A failure is reported once on stderr, prefixed with the command, as in `infer ch
 `infer` is a CLI of
 [Go Elemental](https://github.com/standards-lab/architecture/blob/main/standards/go-elemental/README.md),
 laid out from [go-cli-sdk-template](https://github.com/standards-lab/go-cli-sdk-template). Its
-module requires go-ai v0.2.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else. A
+module requires go-ai v0.3.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else. A
 depguard rule holds every file, tests included, to the standard library, go-ai's public
 packages, go-cli-sdk, go-core, and infer's own packages.
 

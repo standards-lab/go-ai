@@ -100,7 +100,8 @@ A failure the endpoint reports inside the stream is not an error pair. The strea
 
 ### Models
 
-`Models` GETs the `models` route and returns each model's `ID`, in the endpoint's order. It
+`Models` GETs the `models` route and returns each model's `ID`, in the endpoint's order, with
+its list entry as the endpoint sent it in `Native`, for members such as vLLM's `root`. It
 goes through the same token, headers, query, and retry as every other call. A GET is safe to
 repeat, so its retry runs nothing twice.
 

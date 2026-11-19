@@ -1,5 +1,5 @@
-github.com/standards-lab/go-ai v0.2.0 h1:OmiMSLPFt/Oo4ADDDvHm8eJFj24TBRDCc0c5Uap41BQ=
-github.com/standards-lab/go-ai v0.2.0/go.mod h1:UHiE2lCeAnZ6SmnbfyYSyT5UsKPvDRdil6GozyHPu9A=
+github.com/standards-lab/go-ai v0.2.1-0.20261118230841-6a3df8eb3284 h1:3aNAJ7uJLatkkh5d6q/mtU1UvnpjhCA1YvwW3wnbgp0=
+github.com/standards-lab/go-ai v0.2.1-0.20261118230841-6a3df8eb3284/go.mod h1:UHiE2lCeAnZ6SmnbfyYSyT5UsKPvDRdil6GozyHPu9A=
 github.com/standards-lab/go-cli-sdk v0.4.0 h1:232dyKPD5kqshp0BMEVEZaedwJfvnDVqWLv7m1NQWmI=
 github.com/standards-lab/go-cli-sdk v0.4.0/go.mod h1:7Y1BCcHtuu8Unxc+Hryjlln+0fbiMYa5xY75aueJ/rY=
 github.com/standards-lab/go-core v0.12.0 h1:sqrzK6QSppEYpwvVAyiWgzNuOsjfK0Kwe86GPuZpHsU=

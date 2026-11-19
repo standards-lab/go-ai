@@ -110,16 +110,19 @@ of layers' surface to go-ai's.
     connection are not retried** (`retry.go`, `connectionFailure`; the spike's `context/README.md`).
     Against `timeouts.md`, "A store's per-try deadline bounds one operation". **kept**: after a
     header timeout the endpoint may still be running the request, and the idle-connection error is
-    unexported, so matching it means matching its text. The proof against the live gateway shows
-    whether either needs more.
+    unexported, so matching it means matching its text. The acceptance task's runs straight against
+    the workstations' rows hit neither. Whether the gateway's traffic needs either retried is
+    spike-model-gateway's to show.
 16. **A retried POST may run twice on the endpoint** (`retry.go`, `RetryPolicy`'s comment). Against
     `baseline-standards.md`. **kept**: the caller who sets a policy accepts it, as the comment says,
     and an idempotency key would be one endpoint's native header, not the standard's.
 17. **Retry is proven by unit tests alone** (`retry_test.go`, on `testing/synctest`; the spike's
     `context/README.md`). Against data-intelligence (retry proven against the live gateway) and
-    `tests-and-docs.md`, "Integration and acceptance suites, and where each runs". **changed**: the
-    unit tests stay, and a proof against the live gateway's 429, 503, and Retry-After is added, in
-    the acceptance task, failing unless the gateway gave each reply and the client retried it.
+    `tests-and-docs.md`, "Integration and acceptance suites, and where each runs". **kept**: the
+    unit tests are go-ai's proof of retry, and go-ai's integration tiers carry no retry or gateway
+    scenario. The proof against the live gateway's 429, 503, and Retry-After belongs to
+    spike-model-gateway, which owns all testing through the gateway (architect); its retry test
+    passed all four cases (spike-model-gateway `docs/findings/answer.md`).
 18. **In-band stream failures are events, and errors are for a stream that breaks or never begins**
     (`stream.go`; `format.StreamDecoder`). Against layers, "Generation: vision and extraction": any
     status but completed and incomplete is an error to the caller. **kept**: the stream ends as the
@@ -288,7 +291,9 @@ of layers' surface to go-ai's.
     the route does: a reply that isn't completed is an `*IncompleteTranscriptError`.
 38. **The client has no `/models` listing, and builds only POSTs** (`client.go`, `request`). Against
     ai-strategy, "Repositories and placement" (the client gains a `/models` listing). **changed**:
-    the listing is added, as a GET through the same token and retry path.
+    the listing is added, as a GET through the same token and retry path. Each listed `Model`
+    keeps its entry as the endpoint sent it in `Native` (acceptance task), so a caller reads
+    provider members such as vLLM's `root`.
 
 ### Tests
 
@@ -605,8 +610,11 @@ type IncompleteTranscriptError struct {
     Reason protocol.IncompleteReason // empty when the reply gave none
 }
 
-// Model is one entry of the endpoint's model list.
-type Model struct{ ID string }
+// Model is one entry of the endpoint's model list: its id, and the entry as the endpoint sent it.
+type Model struct {
+    ID     string
+    Native jsontext.Value
+}
 // Models GETs the OpenAI-compatible models route whatever the format, through the retry loop.
 func (c *Client) Models(ctx context.Context) ([]Model, error)
 ```
@@ -912,8 +920,7 @@ infer task `tools/infer`.
    path, so no version of go-ai's own precedes them, and its changelog carries none of the spike's
    entries (finding 48). Both modules stay below 1.0: the surface is open to change until its
    callers build on it and the acceptance task proves it against the workstations' vLLM
-   endpoints and the live gateway, and every library of the standard beneath it, go-core
-   included, is still at v0.
+   endpoints, and every library of the standard beneath it, go-core included, is still at v0.
 7. **The library task releases the root; the infer task releases `tools/infer`.** The release
    ripples bottom-up: `infer` pins the root release it was validated against, so the root is
    tagged first, and a later change spanning both releases the same way. `infer`'s versions move
@@ -1162,8 +1169,6 @@ What the review rules out, one line each with its reason, cited as the sections 
   running the request, and the error can be matched only by its text (finding 15).
 - **An idempotency key on a retried POST.** It would be one endpoint's native header, not the
   standard's; a caller who sets a policy accepts a run twice (finding 16).
-- **Retry proven by unit tests alone.** data-intelligence asks for proof against the live gateway,
-  which the acceptance task adds (finding 17).
 - **An Open Responses SSE encoder of the stream events.** A service relays its own event shapes,
   and an encoder would be a type before its need (finding 21; decision 4).
 - **No idle bound, or one left to the caller's own timer.** A caller's timer sees only events, so
@@ -1326,7 +1331,5 @@ integration tiers (modules, "infer's module").
 - **The spike's `STANDARDS.md`, `CLAUDE.md`, `context/`, and `scripts/currency.sh`** are not
   ported: go-ai has its own (finding 49 for `scripts/currency.sh`), and its `STANDARDS.md` carries
   the spike's three client rules, two of them changed (finding 53).
-- **The retry proof against the live gateway's 429, 503, and Retry-After** (acceptance), once
-  spike-model-gateway runs (finding 17).
 - **The infer rerun against the workstations' vLLM endpoints** (data-intelligence, "Gates"),
   through the formats the processing layer's endpoints use, and the fixes it finds (acceptance).

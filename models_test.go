@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"testing"
 
@@ -14,11 +13,28 @@ import (
 	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
-// modelsReply is a model list as llama.cpp's router sends it, with members the client doesn't
-// keep.
-const modelsReply = `{"object":"list","data":[` +
-	`{"id":"gemma-4-26b","object":"model","owned_by":"llamacpp","status":{"value":"loaded"}},` +
-	`{"id":"qwen3-embedding","object":"model","owned_by":"llamacpp","status":{"value":"unloaded"}}]}`
+// The entries of modelsReply, a model list as llama.cpp's router sends it, each with members
+// beyond the id.
+const (
+	gemmaEntry     = `{"id":"gemma-4-26b","object":"model","owned_by":"llamacpp","status":{"value":"loaded"}}`
+	embeddingEntry = `{"id":"qwen3-embedding","object":"model","owned_by":"llamacpp","status":{"value":"unloaded"}}`
+	modelsReply    = `{"object":"list","data":[` + gemmaEntry + `,` + embeddingEntry + `]}`
+)
+
+// assertModels fails t unless got holds the models of want's ids, in order, each with its entry
+// as Native, compared as JSON.
+func assertModels(t *testing.T, got []ai.Model, want [][2]string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("Models = %d models, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].ID != w[0] {
+			t.Errorf("Models[%d].ID = %q, want %q", i, got[i].ID, w[0])
+		}
+		aitest.AssertJSON(t, got[i].Native, w[1])
+	}
+}
 
 // TestModelsWireRequest wants a GET of the models route, with no body or Content-Type, and the
 // Client's query, token, and fixed headers.
@@ -58,10 +74,23 @@ func TestModelsDecodesList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Models: %v", err)
 	}
-	want := []ai.Model{{ID: "gemma-4-26b"}, {ID: "qwen3-embedding"}}
-	if !slices.Equal(got, want) {
-		t.Errorf("Models = %v, want %v", got, want)
+	assertModels(t, got, [][2]string{{"gemma-4-26b", gemmaEntry}, {"qwen3-embedding", embeddingEntry}})
+}
+
+// TestModelsNative wants each Model's Native to be its entry as sent, members the client knows
+// nothing of included, and an entry of only an id to decode, its Native that object.
+func TestModelsNative(t *testing.T) {
+	vllm := `{"id":"openai/gpt-oss-120b","object":"model","created":1763424000,"owned_by":"vllm",` +
+		`"root":"/models/gpt-oss-120b","parent":null,"max_model_len":131072,` +
+		`"permission":[{"id":"modelperm-1","allow_sampling":true}]}`
+	idOnly := `{"id":"bare"}`
+	srv := aitest.NewServer(t, http.StatusOK, `{"object":"list","data":[`+vllm+`,`+idOnly+`]}`)
+	c := newClient(t, srv.URL, ai.Options{})
+	got, err := c.Models(t.Context())
+	if err != nil {
+		t.Fatalf("Models: %v", err)
 	}
+	assertModels(t, got, [][2]string{{"openai/gpt-oss-120b", vllm}, {"bare", idOnly}})
 }
 
 // TestModelsAnyFormat wants Models to GET the OpenAI-compatible route on a Client of a format
