@@ -1100,9 +1100,9 @@ a chat. A Retry-After above `--retry-max-delay` ends the retries at once, as `Ma
 every wait (finding 13).
 
 **Two test tiers.** The unit tier runs the App in-process against go-ai's public `aitest`
-endpoint, with `infer`'s own graph fixtures in `internal/apptest`, never go-ai's internal
-helpers, and asserts what each command sends and writes. The integration tier, `tools/infer/integration` behind the
-integration build tag, builds `cmd/infer` and runs it one shot at a time on go-core's
+endpoint, with `infer`'s own graph fixtures in `internal/apptest`, never go-ai's internal helpers,
+and asserts what each command sends and writes. The integration tier, `tools/infer/integration`
+behind the integration build tag, builds `cmd/infer` and runs it one shot at a time on go-core's
 `processtest`, mapping each `AI_<ROLE>_BASE_URL` the base module's tier reads (finding 41) onto
 `INFER_BASE_URL` after clearing every `INFER_` variable. It maps a role's optional
 `AI_<ROLE>_MODEL` onto `INFER_MODEL`; with none, it sets no model, so the role's endpoint must
