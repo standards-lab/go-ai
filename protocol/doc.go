@@ -62,6 +62,7 @@
 //     [ReasoningSummaryAuto], [ReasoningSummaryConcise], or [ReasoningSummaryDetailed].
 //   - [Request.Validate] refuses a request the model can't describe.
 //   - [Response] is a model's response: its id and model, output, status, error, and usage.
+//   - [Response.OutputText] returns the text of a response's messages, joined in order.
 //   - [IncompleteDetails] says why a response is incomplete.
 //   - [IncompleteReason] is that reason, [ReasonMaxOutputTokens], [ReasonContentFilter], or
 //     [ReasonContextWindow].
