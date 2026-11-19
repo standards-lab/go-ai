@@ -304,8 +304,8 @@ of layers' surface to go-ai's.
 40. **`internal/clienttest` is the loopback server the module's test packages share**
     (`internal/clienttest`). Against `tests-and-docs.md`, "The unit tier: black-box and hermetic": a
     shared helper is a `<pkg>test` package under `internal/`. **kept**, renamed with the root
-    package. It stays internal: a caller drives the client against a test endpoint of its own
-    (layers).
+    package. Its loopback server is the public `aitest` package, a fake endpoint any module's
+    tests can use, and `internal/aitest` holds go-ai's format-test kit.
 41. **The integration tier is a root-level `integration` package behind the build tag, run against a
     live router, and the check lints it without running it** (`integration`; `mise.toml`,
     `SPIKE_ROUTER_URL`, which defaults to one machine's name). Against `tests-and-docs.md`,
@@ -934,8 +934,9 @@ infer task `tools/infer`.
 ### The module tree
 
 The base module, `github.com/standards-lab/go-ai`, holds the packages of the surface section,
-their testdata, and the integration tier. `internal/aitest` is the spike's `internal/clienttest`,
-renamed with the root package (finding 40); `internal/sse` and `internal/native` are the spike's.
+their testdata, the integration tier, and `aitest`, the fake endpoint for tests. `internal/aitest`,
+go-ai's format-test kit, is the spike's `internal/clienttest`, renamed with the root package
+(finding 40); `internal/sse` and `internal/native` are the spike's.
 
 ```text
 go-ai/                        module github.com/standards-lab/go-ai
@@ -945,6 +946,7 @@ go-ai/                        module github.com/standards-lab/go-ai
 ├── docs/                     the guide: concepts, quick-start, features, glossary
 ├── *.go                      package ai
 ├── protocol/
+├── aitest/                   the fake endpoint for tests
 ├── format/
 │   ├── completions/testdata/ llama.cpp b11669's recordings, vLLM 0.33.0's in vllm/, vLLM 0.34.0's gap replies in vllm-0.34.0/, and Foundry's in foundry/
 │   ├── messages/testdata/
@@ -1207,8 +1209,6 @@ What the review rules out, one line each with its reason, cited as the sections 
 - **Refusing `Embed`, `Transcribe`, and `Models` on a format without the OpenAI-compatible
   routes.** The router serves all three beside `/messages`, and an endpoint without the route
   answers with an `*APIError` (decision 9).
-- **`internal/clienttest` exported for callers' tests.** A caller drives the client against a test
-  endpoint of its own (finding 40).
 - **A default router address for the integration tier, or a CI job that runs it.** The tier skips
   unless a caller names an endpoint, and the models are on the organization's own machines
   (finding 41).

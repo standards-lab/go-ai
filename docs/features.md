@@ -283,9 +283,10 @@ request decoded and numbered by arrival, and any other path below `/v1`, such as
 A route function answers with a typed reply in its route's wire shape (`ChatReply`, streamed
 when the request asks, `EmbeddingsReply`, `TranscriptionReply`, `ModelsReply`), an `ErrorReply`
 of any status with an optional Retry-After, or a `RawReply` of a JSON body or server-sent event
-`Frame`s, written as given. A `Gate` parks requests inside route functions until the test
-releases them, to prove a caller's concurrency bound or cancellation. The package imports only
-the standard library, so any module's tests can use it.
+`Frame`s, written as given. A `Gate` parks requests inside route functions, and holds a
+streamed reply after a given piece, until the test releases them, to prove a caller's
+concurrency bound or cancellation. The package imports only the standard library, so any
+module's tests can use it.
 
 ## integration: the live tier
 
