@@ -13,8 +13,8 @@ name of docproc's `context/layers.md`, "go-ai's surface", to one go-ai name is t
 ## Capability map
 
 - **Protocol**: the Open Responses request and response types every format maps to and from,
-  with the reasoning efforts any implemented format's spec defines and the `go-ai:context_window`
-  incomplete reason.
+  with the reasoning efforts any implemented format's spec defines, the `go-ai:context_window`
+  incomplete reason, and `Response.OutputText`.
 - **Formats**: Chat Completions, Anthropic Messages, and Open Responses on the wire. Each format
   declares the event stream its replies arrive in, `format.SSE` for all three, and refuses what
   its spec has no form for with a `*format.UnsupportedError` before anything is sent. Each takes
@@ -22,10 +22,13 @@ name of docproc's `context/layers.md`, "go-ai's surface", to one go-ai name is t
   refuses a declared gap before sending, as an `UnsupportedError` with `Declared` true, or narrows
   an `allowed_tools` choice to the allowed tools.
 - **Client**: construction with `Options`, including fixed request headers; Generate,
-  GenerateStream with its accumulator, Embed, Transcribe by the route or over chat, and the
-  /models listing.
+  GenerateStream with its accumulator, Embed, Transcribe by the route or over chat, with
+  `Client.TranscriptionMode` and the mode's text form, `route` or `chat`, and the /models listing.
 - **Resilience**: retry with Retry-After, per-call timeouts, cancellation by context, and an idle
   bound on a started stream.
+- **Test support**: the public `aitest`, a fake OpenAI-compatible endpoint any module's tests
+  use (`Serve`, `Routes`, typed, error, and raw replies, and `Gate`), and `internal/aitest`,
+  go-ai's format-test kit.
 - **infer**: the CLI in `tools/infer`, over the client's released surface: the commands models,
   embed, chat, and transcribe against one endpoint per run, set by flags over `INFER_` variables,
   with credentials from `INFER_TOKEN` and `INFER_HEADER` alone and a fallback to the one model the
@@ -60,15 +63,11 @@ These changes are noted for a later go-ai minor release; none is planned yet.
 
 From the infer task:
 
-- A helper that gathers a Response's output text. infer implements its own.
 - Errors from `ai.New` that name the refused field. infer calls `ai.New` again with each setting
   on its own to find which one was refused.
 - The retry policy's refusal, `base delay is above its most delay`, should say `max delay`.
 - The idle-timeout error, `unexpected EOF: no bytes within the stream idle timeout (…): i/o
   timeout`, reads as a closed connection rather than a timeout.
-- `StreamIdleTimeout` also bounds the wait for a stream's first bytes, so a reasoning model needs
-  a bound longer than its time to first token. Either document it, or bound the two waits
-  separately.
 - A `Native` clash is checked only on the exact wire name, so `{"max_tokens":64}` passes beside
   completions' `max_completion_tokens`.
 

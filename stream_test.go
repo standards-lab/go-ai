@@ -77,8 +77,8 @@ var completed = &protocol.Response{
 }
 
 func TestGenerateStream(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, eventStream(streamed...))
-	c := newClient(t, srv.URL+"/v1", ai.Options{})
+	srv := serveChat(t, http.StatusOK, eventStream(streamed...))
+	c := newClient(t, srv.URL(), ai.Options{})
 	events, resp, errs := collect(t, c.GenerateStream(t.Context(), hello()))
 	if len(errs) > 0 {
 		t.Fatalf("GenerateStream errors: %v", errs)
@@ -89,7 +89,7 @@ func TestGenerateStream(t *testing.T) {
 	if !reflect.DeepEqual(resp, completed) {
 		t.Errorf("Response = %#v\nwant       %#v", resp, completed)
 	}
-	r := srv.Only(t)
+	r := aitest.Only(t, srv)
 	if r.Path != "/v1/chat/completions" {
 		t.Errorf("path = %s, want /v1/chat/completions", r.Path)
 	}
@@ -104,15 +104,15 @@ func TestGenerateStream(t *testing.T) {
 // TestGenerateStreamSendsHeaderAndToken wants a stream's request to carry the fixed headers and
 // the bearer token, as Generate's does.
 func TestGenerateStreamSendsHeaderAndToken(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, eventStream(streamed...))
-	c := newClient(t, srv.URL, ai.Options{
+	srv := serveChat(t, http.StatusOK, eventStream(streamed...))
+	c := newClient(t, srv.URL(), ai.Options{
 		Header: http.Header{"X-Api-Key": {"k"}},
 		Token:  func(context.Context) (string, error) { return "secret", nil },
 	})
 	if _, _, errs := collect(t, c.GenerateStream(t.Context(), hello())); len(errs) > 0 {
 		t.Fatalf("GenerateStream errors: %v", errs)
 	}
-	h := srv.Only(t).Header
+	h := aitest.Only(t, srv).Header
 	if got := h.Get("X-Api-Key"); got != "k" {
 		t.Errorf("X-Api-Key = %q, want k", got)
 	}
@@ -129,13 +129,13 @@ func TestGenerateStreamIgnoresEventNames(t *testing.T) {
 	for _, c := range streamed {
 		fmt.Fprintf(&b, "event: chunk\ndata: %s\n\n", c)
 	}
-	named := aitest.NewServer(t, http.StatusOK, b.String())
-	unnamed := aitest.NewServer(t, http.StatusOK, eventStream(streamed...))
-	_, got, errs := collect(t, newClient(t, named.URL, ai.Options{}).GenerateStream(t.Context(), hello()))
+	named := serveChat(t, http.StatusOK, b.String())
+	unnamed := serveChat(t, http.StatusOK, eventStream(streamed...))
+	_, got, errs := collect(t, newClient(t, named.URL(), ai.Options{}).GenerateStream(t.Context(), hello()))
 	if len(errs) > 0 {
 		t.Fatalf("GenerateStream errors: %v", errs)
 	}
-	_, want, _ := collect(t, newClient(t, unnamed.URL, ai.Options{}).GenerateStream(t.Context(), hello()))
+	_, want, _ := collect(t, newClient(t, unnamed.URL(), ai.Options{}).GenerateStream(t.Context(), hello()))
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Response = %#v\nwant       %#v", got, want)
 	}
@@ -144,9 +144,9 @@ func TestGenerateStreamIgnoresEventNames(t *testing.T) {
 // TestGenerateStreamIsLazy wants nothing validated, encoded, or sent until the sequence is
 // ranged, and a new request each time it is.
 func TestGenerateStreamIsLazy(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, eventStream(streamed...))
+	srv := serveChat(t, http.StatusOK, eventStream(streamed...))
 	var tokens atomic.Int32
-	c := newClient(t, srv.URL, ai.Options{
+	c := newClient(t, srv.URL(), ai.Options{
 		Token: func(context.Context) (string, error) { tokens.Add(1); return "", nil },
 	})
 	seq := c.GenerateStream(t.Context(), hello())
@@ -187,13 +187,13 @@ func TestGenerateStreamRefusal(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, tc.status, `{"error":{"code":400,"message":"model 'm' not found","type":"invalid_request_error"}}`)
+			srv := serveChat(t, tc.status, `{"error":{"code":400,"message":"model 'm' not found","type":"invalid_request_error"}}`)
 			calls := 0
 			token := tc.token
 			if token == nil {
 				token = func(context.Context) (string, error) { return "", nil }
 			}
-			c := newClient(t, srv.URL, ai.Options{Token: func(ctx context.Context) (string, error) {
+			c := newClient(t, srv.URL(), ai.Options{Token: func(ctx context.Context) (string, error) {
 				calls++
 				return token(ctx)
 			}})
@@ -263,8 +263,8 @@ func TestGenerateStreamBreakClosesBody(t *testing.T) {
 func TestGenerateStreamEndsEarly(t *testing.T) {
 	for _, fr := range framings {
 		t.Run(fr.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, fr.encode(streamed[:3]...))
-			c := newClientFormat(t, srv.URL, http.DefaultClient, fr.format(), ai.Options{})
+			srv := serveChat(t, http.StatusOK, fr.encode(streamed[:3]...))
+			c := newClientFormat(t, srv.URL(), http.DefaultClient, fr.format(), ai.Options{})
 			events, resp, errs := collect(t, c.GenerateStream(t.Context(), hello()))
 			if len(errs) != 1 || !errors.Is(errs[0], io.ErrUnexpectedEOF) {
 				t.Fatalf("GenerateStream errors = %v, want one io.ErrUnexpectedEOF", errs)
@@ -528,8 +528,8 @@ func TestGenerateStreamErrorFrame(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, eventStream(tc.chunks...))
-			c := newClient(t, srv.URL, ai.Options{})
+			srv := serveChat(t, http.StatusOK, eventStream(tc.chunks...))
+			c := newClient(t, srv.URL(), ai.Options{})
 			events, resp, errs := collect(t, c.GenerateStream(t.Context(), hello()))
 			if len(errs) > 0 {
 				t.Fatalf("GenerateStream errors = %v, want none", errs)
@@ -563,13 +563,13 @@ func TestGenerateStreamIgnoresPings(t *testing.T) {
 	for _, c := range streamed {
 		fmt.Fprintf(&b, ":\n\ndata: %s\n\n: ping\n", c)
 	}
-	pinged := aitest.NewServer(t, http.StatusOK, b.String())
-	plain := aitest.NewServer(t, http.StatusOK, eventStream(streamed...))
-	events, got, errs := collect(t, newClient(t, pinged.URL, ai.Options{}).GenerateStream(t.Context(), hello()))
+	pinged := serveChat(t, http.StatusOK, b.String())
+	plain := serveChat(t, http.StatusOK, eventStream(streamed...))
+	events, got, errs := collect(t, newClient(t, pinged.URL(), ai.Options{}).GenerateStream(t.Context(), hello()))
 	if len(errs) > 0 {
 		t.Fatalf("GenerateStream errors: %v", errs)
 	}
-	wantEvents, want, _ := collect(t, newClient(t, plain.URL, ai.Options{}).GenerateStream(t.Context(), hello()))
+	wantEvents, want, _ := collect(t, newClient(t, plain.URL(), ai.Options{}).GenerateStream(t.Context(), hello()))
 	if !reflect.DeepEqual(events, wantEvents) || !reflect.DeepEqual(got, want) {
 		t.Errorf("with pings: %d events, Response %#v\nwant %d events, Response %#v", len(events), got, len(wantEvents), want)
 	}

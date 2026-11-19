@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -116,6 +117,92 @@ func TestNewRefusesTranscriptionMode(t *testing.T) {
 	}
 }
 
+// TestClientTranscriptionMode wants the mode the Client was built with: the route by default,
+// and chat when Options asks for it.
+func TestClientTranscriptionMode(t *testing.T) {
+	for _, want := range []ai.TranscriptionMode{ai.TranscribeRoute, ai.TranscribeChat} {
+		opts := ai.Options{}
+		if want != ai.TranscribeRoute {
+			opts.TranscriptionMode = want
+		}
+		c, err := ai.New("http://h/v1", http.DefaultClient, completions.New(completions.Options{}), opts)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		if got := c.TranscriptionMode(); got != want {
+			t.Errorf("TranscriptionMode() = %v, want %v", got, want)
+		}
+	}
+}
+
+// TestTranscriptionModeText wants each mode's name from String and MarshalText, and the mode
+// back from UnmarshalText.
+func TestTranscriptionModeText(t *testing.T) {
+	for mode, name := range map[ai.TranscriptionMode]string{ai.TranscribeRoute: "route", ai.TranscribeChat: "chat"} {
+		if got := mode.String(); got != name {
+			t.Errorf("TranscriptionMode(%d).String() = %q, want %q", int(mode), got, name)
+		}
+		text, err := mode.MarshalText()
+		if err != nil || string(text) != name {
+			t.Errorf("TranscriptionMode(%d).MarshalText() = %q, %v; want %q", int(mode), text, err, name)
+		}
+		got := ai.TranscriptionMode(-1)
+		if err := got.UnmarshalText([]byte(name)); err != nil || got != mode {
+			t.Errorf("UnmarshalText(%q) = %d, %v; want %d", name, int(got), err, int(mode))
+		}
+	}
+}
+
+// TestTranscriptionModeTextRefusesUnknown wants an unknown mode printed by number and refused
+// by MarshalText, and an unknown name refused by UnmarshalText naming both modes, leaving the
+// mode as it was.
+func TestTranscriptionModeTextRefusesUnknown(t *testing.T) {
+	for _, mode := range []ai.TranscriptionMode{2, 7, -1} {
+		want := fmt.Sprintf("TranscriptionMode(%d)", int(mode))
+		if got := mode.String(); got != want {
+			t.Errorf("String() = %q, want %q", got, want)
+		}
+		if text, err := mode.MarshalText(); err == nil || !strings.HasPrefix(err.Error(), "ai: ") {
+			t.Errorf("TranscriptionMode(%d).MarshalText() = %q, %v; want an error", int(mode), text, err)
+		}
+	}
+	for _, name := range []string{"", "Route", "CHAT", "0", "routes"} {
+		mode := ai.TranscribeChat
+		err := mode.UnmarshalText([]byte(name))
+		want := fmt.Sprintf("ai: unknown transcription mode %q, want one of route, chat", name)
+		if err == nil || err.Error() != want {
+			t.Errorf("UnmarshalText(%q) = %v, want %q", name, err, want)
+		}
+		if mode != ai.TranscribeChat {
+			t.Errorf("UnmarshalText(%q) changed the mode to %v", name, mode)
+		}
+	}
+}
+
+// TestTranscriptionModeJSON wants a mode in a JSON struct to round-trip by name.
+func TestTranscriptionModeJSON(t *testing.T) {
+	type config struct {
+		Mode ai.TranscriptionMode `json:"mode"`
+	}
+	for mode, want := range map[ai.TranscriptionMode]string{
+		ai.TranscribeRoute: `{"mode":"route"}`,
+		ai.TranscribeChat:  `{"mode":"chat"}`,
+	} {
+		data, err := json.Marshal(config{Mode: mode})
+		if err != nil || string(data) != want {
+			t.Fatalf("Marshal = %s, %v; want %s", data, err, want)
+		}
+		var got config
+		if err := json.Unmarshal(data, &got); err != nil || got.Mode != mode {
+			t.Errorf("Unmarshal(%s) = %v, %v; want %v", data, got.Mode, err, mode)
+		}
+	}
+	var got config
+	if err := json.Unmarshal([]byte(`{"mode":"speech"}`), &got); err == nil {
+		t.Errorf("Unmarshal of an unknown mode = %v, want an error", got.Mode)
+	}
+}
+
 // TestTranscribeChatRequest wants one Chat Completions request to the format's route: the
 // model, and one user message of the clip as an input_audio part, in the format the file name's
 // extension gives, then the instruction, Prompt or else TranscriptionInstruction's of Language.
@@ -140,8 +227,8 @@ func TestTranscribeChatRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, audioReply)
-			c := chatClient(t, srv.URL+"/v1", ai.Options{
+			srv := serveChat(t, http.StatusOK, audioReply)
+			c := chatClient(t, srv.URL(), ai.Options{
 				Query: url.Values{"autoload": {"false"}},
 				Token: func(context.Context) (string, error) { return "secret", nil },
 			})
@@ -152,9 +239,9 @@ func TestTranscribeChatRequest(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Transcribe: %v", err)
 			}
-			got := srv.Only(t)
-			if got.Method != http.MethodPost || got.Path != "/v1/chat/completions" || got.RawQuery != "autoload=false" {
-				t.Errorf("request = %s %s?%s, want POST /v1/chat/completions?autoload=false", got.Method, got.Path, got.RawQuery)
+			got := aitest.Only(t, srv)
+			if got.Method != http.MethodPost || got.Path != "/v1/chat/completions" || got.Query.Encode() != "autoload=false" {
+				t.Errorf("request = %s %s?%s, want POST /v1/chat/completions?autoload=false", got.Method, got.Path, got.Query.Encode())
 			}
 			for k, want := range map[string]string{"Content-Type": "application/json", "Authorization": "Bearer secret"} {
 				if v := got.Header.Get(k); v != want {
@@ -184,8 +271,8 @@ func TestTranscribeChatRequest(t *testing.T) {
 
 // TestTranscribeChatReply wants the reply's output text and usage, from vLLM's recorded reply.
 func TestTranscribeChatReply(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, audioReply)
-	c := chatClient(t, srv.URL, ai.Options{})
+	srv := serveChat(t, http.StatusOK, audioReply)
+	c := chatClient(t, srv.URL(), ai.Options{})
 	got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{Model: "m", Open: reopen(tone(t)), FileName: "tone.wav"})
 	if err != nil {
 		t.Fatalf("Transcribe: %v", err)
@@ -223,8 +310,8 @@ func TestTranscribeChatIncomplete(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.finish, func(t *testing.T) {
 			reply := strings.Replace(audioReply, `"finish_reason":"stop"`, `"finish_reason":"`+tc.finish+`"`, 1)
-			srv := aitest.NewServer(t, http.StatusOK, reply)
-			c := chatClient(t, srv.URL, ai.Options{Retry: ai.RetryPolicy{MaxAttempts: 3}})
+			srv := serveChat(t, http.StatusOK, reply)
+			c := chatClient(t, srv.URL(), ai.Options{Retry: ai.RetryPolicy{MaxAttempts: 3}})
 			got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{Model: "m", Open: reopen(tone(t)), FileName: "tone.wav"})
 			if n := len(srv.Requests()); n != 1 {
 				t.Errorf("server received %d requests, want 1", n)
@@ -312,7 +399,7 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, audioReply)
+			srv := serveChat(t, http.StatusOK, audioReply)
 			called := false
 			opts := ai.Options{
 				TranscriptionMode: ai.TranscribeChat,
@@ -322,7 +409,7 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 			if tc.messages {
 				wireFormat = messages.New(messages.Options{})
 			}
-			c, err := ai.New(srv.URL, http.DefaultClient, wireFormat, opts)
+			c, err := ai.New(srv.URL(), http.DefaultClient, wireFormat, opts)
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -358,8 +445,8 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 // TestTranscribeChatEmptyClip wants an empty clip, which protocol.Request.Validate refuses,
 // refused once it is read, the clip closed, and nothing sent.
 func TestTranscribeChatEmptyClip(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, audioReply)
-	c := chatClient(t, srv.URL, ai.Options{})
+	srv := serveChat(t, http.StatusOK, audioReply)
+	c := chatClient(t, srv.URL(), ai.Options{})
 	var o opens
 	got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{Model: "m", Open: reopenCounting(nil, &o), FileName: "clip.wav"})
 	if err == nil || !strings.Contains(err.Error(), "no data") {
@@ -376,8 +463,8 @@ func TestTranscribeChatEmptyClip(t *testing.T) {
 // TestTranscribeChatAPIError wants a non-2xx reply decoded by the Client's format.
 func TestTranscribeChatAPIError(t *testing.T) {
 	reply := `{"error":{"message":"The model does not exist.","type":"NotFoundError","param":"model","code":404}}`
-	srv := aitest.NewServer(t, http.StatusNotFound, reply)
-	c := chatClient(t, srv.URL, ai.Options{})
+	srv := serveChat(t, http.StatusNotFound, reply)
+	c := chatClient(t, srv.URL(), ai.Options{})
 	got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{Model: "m", Open: reopen(tone(t)), FileName: "tone.wav"})
 	apiErr, ok := errors.AsType[*ai.APIError](err)
 	if !ok {

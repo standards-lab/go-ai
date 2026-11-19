@@ -43,7 +43,8 @@ type Options struct {
 	// for this long ends the stream with an error matching io.ErrUnexpectedEOF and
 	// os.ErrDeadlineExceeded. Any bytes reset it, a comment such as llama.cpp's ping included,
 	// and the clock runs only while a read waits, so a caller slow to range the stream isn't
-	// timed. Zero sets none.
+	// timed. It also bounds the wait for the stream's first bytes, so a reasoning model, which may
+	// send nothing while it thinks, needs a bound above its time to first token. Zero sets none.
 	StreamIdleTimeout time.Duration
 	// TranscriptionMode is how Transcribe transcribes: TranscribeRoute, the zero value, through
 	// the endpoint's transcription route, or TranscribeChat, as a chat request in the Client's
@@ -141,6 +142,13 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
 		jitter:        fullJitter,
 		transcription: opts.TranscriptionMode,
 	}, nil
+}
+
+// TranscriptionMode returns the mode the Client transcribes in, the one Options.TranscriptionMode
+// gave New, TranscribeRoute by default. A caller that records transcripts can key them by the
+// mode the Client actually uses, rather than by the configuration it meant to build it with.
+func (c *Client) TranscriptionMode() TranscriptionMode {
+	return c.transcription
 }
 
 // fixedHeader returns a copy of h under canonical names, refusing one the Client sets itself.

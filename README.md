@@ -108,6 +108,10 @@ expect:
 - `format/completions`, `format/messages`, and `format/responses` are the Chat Completions,
   Anthropic Messages, and Open Responses formats. Each package comment states what its format
   sends, refuses, drops, and normalizes.
+- `aitest` is a fake OpenAI-compatible model endpoint for tests: a loopback server that records
+  each request and answers each route with a typed, error, or raw reply the test gives, and a
+  `Gate` that holds requests until the test lets them go. It imports only the standard library,
+  so any module's tests can use it.
 - `integration` is the integration tier, behind the `integration` build tag.
 
 ## Development
@@ -123,7 +127,8 @@ mise run integration  # run every module's integration tier against the AI_*_BAS
 ```
 
 The unit tests are hermetic. They run each format against replies recorded from llama.cpp
-b11669, vLLM 0.33.0 and 0.34.0, and Azure AI Foundry, and the client against a loopback server.
+b11669, vLLM 0.33.0 and 0.34.0, and Azure AI Foundry, and the client against `aitest`'s loopback
+endpoint.
 
 The integration tier runs against live endpoints, one per role. Each role's variable holds an
 API root, `/v1` included, with no default. A scenario whose variable is unset skips. Each scenario

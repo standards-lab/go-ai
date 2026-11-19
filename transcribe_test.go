@@ -56,16 +56,17 @@ type formPart struct {
 	body        []byte
 }
 
-// readForm parses a recorded request's multipart form into its parts by form name, failing t
-// unless the request is multipart/form-data with a boundary, each name appearing once.
-func readForm(t *testing.T, got aitest.Request) map[string]formPart {
+// readForm parses a recorded request's multipart form, its header and body, into its parts by
+// form name, failing t unless the request is multipart/form-data with a boundary, each name
+// appearing once.
+func readForm(t *testing.T, header http.Header, body []byte) map[string]formPart {
 	t.Helper()
-	mediaType, params, err := mime.ParseMediaType(got.Header.Get("Content-Type"))
+	mediaType, params, err := mime.ParseMediaType(header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/form-data" || params["boundary"] == "" {
-		t.Fatalf("Content-Type = %q (%v), want multipart/form-data with a boundary", got.Header.Get("Content-Type"), err)
+		t.Fatalf("Content-Type = %q (%v), want multipart/form-data with a boundary", header.Get("Content-Type"), err)
 	}
 	parts := make(map[string]formPart)
-	r := multipart.NewReader(bytes.NewReader(got.Body), params["boundary"])
+	r := multipart.NewReader(bytes.NewReader(body), params["boundary"])
 	for {
 		p, err := r.NextPart()
 		if err == io.EOF {
@@ -115,8 +116,8 @@ func TestTranscribeWireRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
-			c := newClient(t, srv.URL+"/v1/", ai.Options{
+			srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
+			c := newClient(t, srv.URL()+"/", ai.Options{
 				Query:  url.Values{"autoload": {"false"}},
 				Token:  func(context.Context) (string, error) { return "secret", nil },
 				Header: http.Header{"X-Consumer-Key": {"k"}},
@@ -124,10 +125,10 @@ func TestTranscribeWireRequest(t *testing.T) {
 			if _, err := c.Transcribe(t.Context(), tc.req); err != nil {
 				t.Fatalf("Transcribe: %v", err)
 			}
-			got := srv.Only(t)
-			if got.Method != http.MethodPost || got.Path != "/v1/audio/transcriptions" || got.RawQuery != "autoload=false" {
+			got := aitest.Only(t, srv)
+			if got.Method != http.MethodPost || got.Path != "/v1/audio/transcriptions" || got.Query.Encode() != "autoload=false" {
 				t.Errorf("request = %s %s?%s, want POST /v1/audio/transcriptions?autoload=false",
-					got.Method, got.Path, got.RawQuery)
+					got.Method, got.Path, got.Query.Encode())
 			}
 			for k, want := range map[string]string{"Accept": "application/json", "Authorization": "Bearer secret",
 				"X-Consumer-Key": "k"} {
@@ -135,7 +136,7 @@ func TestTranscribeWireRequest(t *testing.T) {
 					t.Errorf("%s = %q, want %q", k, v, want)
 				}
 			}
-			parts := readForm(t, got)
+			parts := readForm(t, got.Header, got.Body)
 			file, ok := parts["file"]
 			if !ok {
 				t.Fatalf("form has no file part; parts %v", slices.Sorted(maps.Keys(parts)))
@@ -166,8 +167,8 @@ func TestTranscribeWireRequest(t *testing.T) {
 // then Native's keys sorted and each key's values in order, a key of several values sent once
 // per value, then the file.
 func TestTranscribeNativeFieldOrder(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	_, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
 		Model: "m", Open: open(strings.NewReader("RIFF")), FileName: "clip.wav", Language: "en",
 		Native: url.Values{"temperature": {"0"}, "extra": {"b", "a"}, "max_tokens": {"64"}},
@@ -175,7 +176,7 @@ func TestTranscribeNativeFieldOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Transcribe: %v", err)
 	}
-	got := srv.Only(t)
+	got := aitest.Only(t, srv)
 	_, params, err := mime.ParseMediaType(got.Header.Get("Content-Type"))
 	if err != nil {
 		t.Fatalf("Content-Type: %v", err)
@@ -204,8 +205,8 @@ func TestTranscribeNativeFieldOrder(t *testing.T) {
 }
 
 func TestTranscribeDecodesReply(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
 		Model: "m", Open: open(strings.NewReader("RIFF")), FileName: "clip.wav",
 	})
@@ -228,8 +229,8 @@ func TestTranscribeAnyFormat(t *testing.T) {
 	formats := map[string]format.Format{"messages": messages.New(messages.Options{}), "responses": responses.New(responses.Options{})}
 	for name, wireFormat := range formats {
 		t.Run(name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
-			c, err := ai.New(srv.URL+"/v1", http.DefaultClient, wireFormat, ai.Options{})
+			srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
+			c, err := ai.New(srv.URL(), http.DefaultClient, wireFormat, ai.Options{})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -242,14 +243,14 @@ func TestTranscribeAnyFormat(t *testing.T) {
 			if got.Text != "The access code is 7429." {
 				t.Errorf("Text = %q, want the route's text", got.Text)
 			}
-			req := srv.Only(t)
+			req := aitest.Only(t, srv)
 			if req.Method != http.MethodPost || req.Path != "/v1/audio/transcriptions" {
 				t.Errorf("request = %s %s, want POST /v1/audio/transcriptions", req.Method, req.Path)
 			}
 			if v := req.Header.Get("Anthropic-Version"); v != "" {
 				t.Errorf("anthropic-version = %q, want none: the format's headers are its route's", v)
 			}
-			parts := readForm(t, req)
+			parts := readForm(t, req.Header, req.Body)
 			if file := parts["file"]; string(file.body) != "RIFF" || file.fileName != "clip.wav" {
 				t.Errorf("file part = %q named %q, want the clip named clip.wav", file.body, file.fileName)
 			}
@@ -261,8 +262,8 @@ func TestTranscribeAnyFormat(t *testing.T) {
 }
 
 func TestTranscribeRefusesReply(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, `{"text":7429}`)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveTranscriptions(t, http.StatusOK, `{"text":7429}`)
+	c := newClient(t, srv.URL(), ai.Options{})
 	got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
 		Model: "m", Open: open(strings.NewReader("RIFF")), FileName: "clip.wav",
 	})
@@ -297,9 +298,9 @@ func TestTranscribeRefusesRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
+			srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
 			called := false
-			c := newClient(t, srv.URL, ai.Options{
+			c := newClient(t, srv.URL(), ai.Options{
 				Token: func(context.Context) (string, error) { called = true; return "", nil },
 			})
 			got, err := c.Transcribe(t.Context(), tc.req)
@@ -324,8 +325,8 @@ func TestTranscribeRefusesRequest(t *testing.T) {
 func TestTranscribeAPIError(t *testing.T) {
 	reply := `{"error":{"code":400,"message":"Only 'json' response_format is supported for transcription",` +
 		`"type":"invalid_request_error"}}`
-	srv := aitest.NewServer(t, http.StatusBadRequest, reply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveTranscriptions(t, http.StatusBadRequest, reply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
 		Model: "m", Open: open(strings.NewReader("RIFF")), FileName: "clip.wav",
 	})
@@ -341,9 +342,9 @@ func TestTranscribeAPIError(t *testing.T) {
 }
 
 func TestTranscribeTokenErrorSendsNothing(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
+	srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
 	errExpired := errors.New("token expired")
-	c := newClient(t, srv.URL, ai.Options{
+	c := newClient(t, srv.URL(), ai.Options{
 		Token: func(context.Context) (string, error) { return "", errExpired },
 	})
 	_, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{

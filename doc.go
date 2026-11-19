@@ -43,8 +43,12 @@
 //     as the endpoint sent it.
 //   - [Client.Transcribe] sends a [TranscriptionRequest]'s clip and returns its
 //     [Transcription], counted by [TranscriptionUsage].
+//   - [Client.TranscriptionMode] returns the mode the Client transcribes in.
 //   - [TranscriptionMode] is how Transcribe transcribes: [TranscribeRoute], the endpoint's
 //     transcription route, or [TranscribeChat], a chat request in the Client's format.
+//   - [TranscriptionMode.String] returns a mode's name, route or chat.
+//   - [TranscriptionMode.MarshalText] encodes a mode by name, refusing an unknown mode.
+//   - [TranscriptionMode.UnmarshalText] decodes a mode by name, refusing any other name.
 //   - [TranscriptionInstruction] is the instruction chat mode gives the model when the request
 //     has no Prompt.
 //   - [IncompleteTranscriptError] is a chat-mode Transcribe's reply that isn't completed, such

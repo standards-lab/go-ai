@@ -33,8 +33,8 @@ func newClient(t *testing.T, base string, token ai.TokenSource) *ai.Client {
 }
 
 func TestGeneratePostsToResponsesWithBearer(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
-	c := newClient(t, srv.URL+"/v1", func(context.Context) (string, error) { return "secret", nil })
+	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
+	c := newClient(t, srv.URL(), func(context.Context) (string, error) { return "secret", nil })
 	resp, err := c.Generate(t.Context(), ask(text(protocol.RoleUser, "hi")))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
@@ -42,7 +42,7 @@ func TestGeneratePostsToResponsesWithBearer(t *testing.T) {
 	if resp.Status != protocol.StatusCompleted || len(resp.Output) != 1 {
 		t.Errorf("Generate = %+v, want the recorded reply's one completed message", resp)
 	}
-	r := srv.Only(t)
+	r := aitest.Only(t, srv)
 	if r.Path != "/v1/responses" {
 		t.Errorf("path = %q, want /v1/responses", r.Path)
 	}
@@ -56,9 +56,9 @@ func TestGeneratePostsToResponsesWithBearer(t *testing.T) {
 // TestGenerateRefusesBeforeTheToken wants a request Validate refuses refused before the token
 // source is called or anything is sent.
 func TestGenerateRefusesBeforeTheToken(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
+	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
 	called := false
-	c := newClient(t, srv.URL, func(context.Context) (string, error) { called = true; return "secret", nil })
+	c := newClient(t, srv.URL(), func(context.Context) (string, error) { called = true; return "secret", nil })
 	req := ask(text(protocol.RoleUser, "hi"))
 	req.MaxOutputTokens = -1
 	if _, err := c.Generate(t.Context(), req); err == nil {
@@ -75,9 +75,9 @@ func TestGenerateRefusesBeforeTheToken(t *testing.T) {
 // TestGenerateAPIError covers the OpenAI-shaped error body the spec's endpoints answer with, an
 // *APIError of its message, type, and numeric code.
 func TestGenerateAPIError(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusBadRequest,
+	srv := serve(t, http.StatusBadRequest,
 		`{"error":{"code":400,"message":"model 'no-such-model' not found","type":"invalid_request_error"}}`)
-	c := newClient(t, srv.URL, nil)
+	c := newClient(t, srv.URL(), nil)
 	_, err := c.Generate(t.Context(), ask(text(protocol.RoleUser, "hi")))
 	var apiErr *ai.APIError
 	if !errors.As(err, &apiErr) {
@@ -150,9 +150,9 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 	for _, e := range recordedRefusedEfforts {
 		t.Run(string(e), func(t *testing.T) {
 			reply := aitest.ReadTestdata(t, "vllm-0.34.0/effort_"+string(e)+".json")
-			srv := aitest.NewServer(t, http.StatusBadRequest, string(reply))
+			srv := serve(t, http.StatusBadRequest, string(reply))
 			tokens := &aitest.TokenCounter{}
-			_, err := newProfileClient(t, srv.URL+"/v1", responses.Options{}, tokens).Generate(t.Context(), recordedEffort(e))
+			_, err := newProfileClient(t, srv.URL(), responses.Options{}, tokens).Generate(t.Context(), recordedEffort(e))
 			apiErr, ok := errors.AsType[*ai.APIError](err)
 			if !ok {
 				t.Fatalf("Generate error = %v, want an *ai.APIError", err)
@@ -166,7 +166,7 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 			if tokens.Calls != 1 {
 				t.Errorf("token source called %d times, want 1", tokens.Calls)
 			}
-			srv.Only(t)
+			aitest.Only(t, srv)
 		})
 	}
 }
@@ -176,11 +176,11 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 func TestGenerateRecordedEffortDeclared(t *testing.T) {
 	for _, e := range recordedRefusedEfforts {
 		t.Run(string(e), func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusBadRequest,
+			srv := serve(t, http.StatusBadRequest,
 				string(aitest.ReadTestdata(t, "vllm-0.34.0/effort_"+string(e)+".json")))
 			tokens := &aitest.TokenCounter{}
 			opts := responses.Options{RefusedEfforts: []protocol.ReasoningEffort{e}}
-			_, err := newProfileClient(t, srv.URL+"/v1", opts, tokens).Generate(t.Context(), recordedEffort(e))
+			_, err := newProfileClient(t, srv.URL(), opts, tokens).Generate(t.Context(), recordedEffort(e))
 			got, ok := errors.AsType[*format.UnsupportedError](err)
 			if !ok {
 				t.Fatalf("Generate error = %v, want a *format.UnsupportedError", err)
@@ -204,8 +204,8 @@ func TestGenerateRecordedEffortDeclared(t *testing.T) {
 // decoded as recorded: vLLM 0.34.0 ignored the choice and called get_weather, outside the allowed
 // set.
 func TestGenerateAllowedToolsUnderZeroProfile(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm-0.34.0/allowed_tools.json")))
-	resp, err := newProfileClient(t, srv.URL+"/v1", responses.Options{}, &aitest.TokenCounter{}).Generate(t.Context(), recordedAllowedTools())
+	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm-0.34.0/allowed_tools.json")))
+	resp, err := newProfileClient(t, srv.URL(), responses.Options{}, &aitest.TokenCounter{}).Generate(t.Context(), recordedAllowedTools())
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestGenerateAllowedToolsUnderZeroProfile(t *testing.T) {
 	if !reflect.DeepEqual(resp, want) {
 		t.Errorf("Generate = %#v\nwant       %#v", resp, want)
 	}
-	aitest.AssertJSON(t, toolMembers(t, srv.Only(t).Body), `{"tools":[
+	aitest.AssertJSON(t, toolMembers(t, aitest.Only(t, srv).Body), `{"tools":[
 		{"type":"function","name":"get_weather","description":"Get the current temperature in a city, in degrees Celsius.",
 			"parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},"strict":false},`+
 		recordedTimeJSON+`],
@@ -243,11 +243,11 @@ func TestGenerateAllowedToolsUnderZeroProfile(t *testing.T) {
 // NoAllowedTools, sent narrowed: its allowed tool alone and its mode as a plain tool_choice, so
 // vLLM 0.34.0 has no tool outside the set to call. The recorded reply stands in for the host's.
 func TestGenerateAllowedToolsNarrowed(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm-0.34.0/allowed_tools.json")))
+	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm-0.34.0/allowed_tools.json")))
 	tokens := &aitest.TokenCounter{}
-	c := newProfileClient(t, srv.URL+"/v1", responses.Options{NoAllowedTools: true}, tokens)
+	c := newProfileClient(t, srv.URL(), responses.Options{NoAllowedTools: true}, tokens)
 	if _, err := c.Generate(t.Context(), recordedAllowedTools()); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	aitest.AssertJSON(t, toolMembers(t, srv.Only(t).Body), `{"tools":[`+recordedTimeJSON+`],"tool_choice":"required"}`)
+	aitest.AssertJSON(t, toolMembers(t, aitest.Only(t, srv).Body), `{"tools":[`+recordedTimeJSON+`],"tool_choice":"required"}`)
 }

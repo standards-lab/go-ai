@@ -159,20 +159,20 @@ func TestNewRefusesUnsendableHeader(t *testing.T) {
 // TestNewTakesSendableHeader wants a fixed header of a token name and a value of a tab and
 // non-ASCII bytes sent as it is.
 func TestNewTakesSendableHeader(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, okReply)
-	c := newClient(t, srv.URL, ai.Options{Header: http.Header{"X-Key_1!": {"a\tb é"}}})
+	srv := serveChat(t, http.StatusOK, okReply)
+	c := newClient(t, srv.URL(), ai.Options{Header: http.Header{"X-Key_1!": {"a\tb é"}}})
 	if _, err := c.Generate(t.Context(), hello()); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if got := srv.Only(t).Header.Get("X-Key_1!"); got != "a\tb é" {
+	if got := aitest.Only(t, srv).Header.Get("X-Key_1!"); got != "a\tb é" {
 		t.Errorf("X-Key_1! = %q, want %q", got, "a\tb é")
 	}
 }
 
 func TestNewMakesNoRequest(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, okReply)
+	srv := serveChat(t, http.StatusOK, okReply)
 	called := false
-	newClient(t, srv.URL, ai.Options{
+	newClient(t, srv.URL(), ai.Options{
 		Token: func(context.Context) (string, error) { called = true; return "", nil },
 	})
 	if n := len(srv.Requests()); n != 0 {
@@ -186,14 +186,14 @@ func TestNewMakesNoRequest(t *testing.T) {
 // TestZeroOptions wants a Client of the zero Options to send no query, no Authorization, and
 // no header beyond the Client's and the transport's, and to send one request for a 503.
 func TestZeroOptions(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusServiceUnavailable, "")
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveChat(t, http.StatusServiceUnavailable, "")
+	c := newClient(t, srv.URL(), ai.Options{})
 	if _, err := c.Generate(t.Context(), hello()); err == nil {
 		t.Fatal("Generate succeeded, want the 503's *APIError")
 	}
-	r := srv.Only(t)
-	if r.RawQuery != "" {
-		t.Errorf("query = %q, want none", r.RawQuery)
+	r := aitest.Only(t, srv)
+	if len(r.Query) != 0 {
+		t.Errorf("query = %q, want none", r.Query.Encode())
 	}
 	got := slices.Sorted(maps.Keys(r.Header))
 	// Accept-Encoding, Content-Length, and User-Agent are the transport's.
@@ -203,6 +203,10 @@ func TestZeroOptions(t *testing.T) {
 	}
 }
 
+// TestGenerateJoinsRouteWithOneSlash wants the route joined to the base URL's path with one
+// slash, whether the path is empty or not and whether it ends in a slash or not. The endpoint
+// answers below /v1 alone, so a base of the server's root, of an empty path or of /, is answered
+// 404, as an endpoint without the route answers.
 func TestGenerateJoinsRouteWithOneSlash(t *testing.T) {
 	for base, want := range map[string]string{
 		"":     "/chat/completions",
@@ -211,12 +215,18 @@ func TestGenerateJoinsRouteWithOneSlash(t *testing.T) {
 		"/v1/": "/v1/chat/completions",
 	} {
 		t.Run(base, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, okReply)
-			c := newClient(t, srv.URL+base, ai.Options{})
-			if _, err := c.Generate(t.Context(), hello()); err != nil {
-				t.Fatalf("Generate: %v", err)
+			srv := serveChat(t, http.StatusOK, okReply)
+			root := strings.TrimSuffix(srv.URL(), "/v1")
+			c := newClient(t, root+base, ai.Options{})
+			_, err := c.Generate(t.Context(), hello())
+			if strings.HasPrefix(want, "/v1/") {
+				if err != nil {
+					t.Fatalf("Generate: %v", err)
+				}
+			} else if apiErr, ok := errors.AsType[*ai.APIError](err); !ok || apiErr.Status != http.StatusNotFound {
+				t.Fatalf("Generate error = %v, want the endpoint's 404 for a route outside /v1", err)
 			}
-			got := srv.Only(t)
+			got := aitest.Only(t, srv)
 			if got.Method != http.MethodPost || got.Path != want {
 				t.Errorf("request = %s %s, want POST %s", got.Method, got.Path, want)
 			}
@@ -225,26 +235,26 @@ func TestGenerateJoinsRouteWithOneSlash(t *testing.T) {
 }
 
 func TestGenerateCarriesQueryCopiedAtNew(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, okReply)
+	srv := serveChat(t, http.StatusOK, okReply)
 	query := url.Values{"autoload": {"false"}}
-	c := newClient(t, srv.URL+"/v1", ai.Options{Query: query})
+	c := newClient(t, srv.URL(), ai.Options{Query: query})
 	query.Set("autoload", "true")
 	query.Add("extra", "1")
 	if _, err := c.Generate(t.Context(), hello()); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if got := srv.Only(t).RawQuery; got != "autoload=false" {
+	if got := aitest.Only(t, srv).Query.Encode(); got != "autoload=false" {
 		t.Errorf("query = %q, want autoload=false", got)
 	}
 }
 
 func TestGenerateSendsJSONHeaders(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, okReply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveChat(t, http.StatusOK, okReply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	if _, err := c.Generate(t.Context(), hello()); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	h := srv.Only(t).Header
+	h := aitest.Only(t, srv).Header
 	for k, want := range map[string]string{"Content-Type": "application/json", "Accept": "application/json"} {
 		if got := h.Get(k); got != want {
 			t.Errorf("%s = %q, want %q", k, got, want)
@@ -255,10 +265,10 @@ func TestGenerateSendsJSONHeaders(t *testing.T) {
 // TestGenerateSendsFixedHeaders wants Options.Header on every request under its canonical
 // name, names differing in case joined, copied at New, so a change after it sends nothing new.
 func TestGenerateSendsFixedHeaders(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, okReply)
+	srv := serveChat(t, http.StatusOK, okReply)
 	key := []string{"k1"}
 	h := http.Header{"x-api-key": key, "X-Consumer": {"c"}, "x-consumer": {"d"}}
-	c := newClient(t, srv.URL, ai.Options{Header: h})
+	c := newClient(t, srv.URL(), ai.Options{Header: h})
 	key[0] = "changed"
 	h.Add("X-Late", "1")
 	for range 2 {
@@ -282,8 +292,8 @@ func TestGenerateSendsFixedHeaders(t *testing.T) {
 // TestGenerateFormatHeaderReplacesFixed wants a header the format sets, the messages format's
 // anthropic-version, to replace a fixed one of the same name, whatever its case.
 func TestGenerateFormatHeaderReplacesFixed(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, `{"type":"message","role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`)
-	c, err := ai.New(srv.URL, http.DefaultClient, messages.New(messages.Options{}), ai.Options{
+	srv := serveRaw(t, "messages", http.StatusOK, `{"type":"message","role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`)
+	c, err := ai.New(srv.URL(), http.DefaultClient, messages.New(messages.Options{}), ai.Options{
 		Header: http.Header{"anthropic-version": {"1999-01-01"}, "x-api-key": {"k"}},
 	})
 	if err != nil {
@@ -294,7 +304,7 @@ func TestGenerateFormatHeaderReplacesFixed(t *testing.T) {
 	if _, err := c.Generate(t.Context(), req); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	h := srv.Only(t).Header
+	h := aitest.Only(t, srv).Header
 	if got := h.Values("Anthropic-Version"); !slices.Equal(got, []string{"2026-10-21"}) {
 		t.Errorf("Anthropic-Version = %q, want the format's alone, [2026-10-21]", got)
 	}
@@ -315,12 +325,12 @@ func TestGenerateToken(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, okReply)
-			c := newClient(t, srv.URL, ai.Options{Token: tc.token})
+			srv := serveChat(t, http.StatusOK, okReply)
+			c := newClient(t, srv.URL(), ai.Options{Token: tc.token})
 			if _, err := c.Generate(t.Context(), hello()); err != nil {
 				t.Fatalf("Generate: %v", err)
 			}
-			got := srv.Only(t).Header.Values("Authorization")
+			got := aitest.Only(t, srv).Header.Values("Authorization")
 			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
 				t.Errorf("Authorization = %q, want %q", got, tc.want)
 			}
@@ -329,9 +339,9 @@ func TestGenerateToken(t *testing.T) {
 }
 
 func TestGenerateCallsTokenSourceOncePerRequest(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, okReply)
+	srv := serveChat(t, http.StatusOK, okReply)
 	calls := 0
-	c := newClient(t, srv.URL, ai.Options{
+	c := newClient(t, srv.URL(), ai.Options{
 		Token: func(context.Context) (string, error) {
 			calls++
 			return fmt.Sprintf("t%d", calls), nil
@@ -354,9 +364,9 @@ func TestGenerateCallsTokenSourceOncePerRequest(t *testing.T) {
 }
 
 func TestGenerateTokenErrorSendsNothing(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, okReply)
+	srv := serveChat(t, http.StatusOK, okReply)
 	errExpired := errors.New("token expired")
-	c := newClient(t, srv.URL, ai.Options{
+	c := newClient(t, srv.URL(), ai.Options{
 		Token: func(context.Context) (string, error) { return "", errExpired },
 	})
 	_, err := c.Generate(t.Context(), hello())
@@ -474,8 +484,8 @@ func TestGenerateWrapsTransportError(t *testing.T) {
 }
 
 func TestGenerateWrapsCancelledContext(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, okReply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveChat(t, http.StatusOK, okReply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, err := c.Generate(ctx, hello())
@@ -510,9 +520,9 @@ func TestGenerateRefusesInvalidRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, okReply)
+			srv := serveChat(t, http.StatusOK, okReply)
 			called := false
-			c := newClient(t, srv.URL, ai.Options{
+			c := newClient(t, srv.URL(), ai.Options{
 				Token: func(context.Context) (string, error) { called = true; return "", nil },
 			})
 			resp, err := c.Generate(t.Context(), tc.req)
@@ -564,9 +574,9 @@ func TestGenerateReturnsUnsupportedError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, okReply)
+			srv := serveChat(t, http.StatusOK, okReply)
 			calls := 0
-			c := newClientFormat(t, srv.URL, http.DefaultClient, tc.format, ai.Options{
+			c := newClientFormat(t, srv.URL(), http.DefaultClient, tc.format, ai.Options{
 				Token: func(context.Context) (string, error) { calls++; return "secret", nil },
 			})
 			resp, err := c.Generate(t.Context(), tc.req)

@@ -40,8 +40,8 @@ func two() *ai.EmbeddingRequest {
 }
 
 func TestEmbedWireRequest(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, embedReply)
-	c := newClient(t, srv.URL+"/v1/", ai.Options{
+	srv := serveEmbeddings(t, http.StatusOK, embedReply)
+	c := newClient(t, srv.URL()+"/", ai.Options{
 		Query:  url.Values{"autoload": {"false"}},
 		Token:  func(context.Context) (string, error) { return "secret", nil },
 		Header: http.Header{"X-Consumer-Key": {"k"}},
@@ -49,9 +49,9 @@ func TestEmbedWireRequest(t *testing.T) {
 	if _, err := c.Embed(t.Context(), &ai.EmbeddingRequest{Model: "m", Input: []string{"a", ""}}); err != nil {
 		t.Fatalf("Embed: %v", err)
 	}
-	got := srv.Only(t)
-	if got.Method != http.MethodPost || got.Path != "/v1/embeddings" || got.RawQuery != "autoload=false" {
-		t.Errorf("request = %s %s?%s, want POST /v1/embeddings?autoload=false", got.Method, got.Path, got.RawQuery)
+	got := aitest.Only(t, srv)
+	if got.Method != http.MethodPost || got.Path != "/v1/embeddings" || got.Query.Encode() != "autoload=false" {
+		t.Errorf("request = %s %s?%s, want POST /v1/embeddings?autoload=false", got.Method, got.Path, got.Query.Encode())
 	}
 	for k, want := range map[string]string{
 		"Content-Type":   "application/json",
@@ -70,21 +70,21 @@ func TestEmbedWireRequest(t *testing.T) {
 }
 
 func TestEmbedMergesNative(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, embedReply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveEmbeddings(t, http.StatusOK, embedReply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	req := two()
 	req.Native = []byte(`{"dimensions":256}`)
 	if _, err := c.Embed(t.Context(), req); err != nil {
 		t.Fatalf("Embed: %v", err)
 	}
-	if got, want := string(srv.Only(t).Body), `{"model":"m","input":["a","b"],"encoding_format":"base64","dimensions":256}`; got != want {
+	if got, want := string(aitest.Only(t, srv).Body), `{"model":"m","input":["a","b"],"encoding_format":"base64","dimensions":256}`; got != want {
 		t.Errorf("body = %s\nwant   %s", got, want)
 	}
 }
 
 func TestEmbedDecodesVectors(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, embedReply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveEmbeddings(t, http.StatusOK, embedReply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	e, err := c.Embed(t.Context(), two())
 	if err != nil {
 		t.Fatalf("Embed: %v", err)
@@ -101,8 +101,8 @@ func TestEmbedDecodesVectors(t *testing.T) {
 // where its index places it.
 func TestEmbedOrdersByIndex(t *testing.T) {
 	reply := `{"data":[{"index":1,"embedding":"` + vecB + `"},{"index":0,"embedding":"` + vecA + `"}]}`
-	srv := aitest.NewServer(t, http.StatusOK, reply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveEmbeddings(t, http.StatusOK, reply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	e, err := c.Embed(t.Context(), two())
 	if err != nil {
 		t.Fatalf("Embed: %v", err)
@@ -133,8 +133,8 @@ func TestEmbedRefusesReply(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, tc.reply)
-			c := newClient(t, srv.URL, ai.Options{})
+			srv := serveEmbeddings(t, http.StatusOK, tc.reply)
+			c := newClient(t, srv.URL(), ai.Options{})
 			e, err := c.Embed(t.Context(), two())
 			if err == nil {
 				t.Fatalf("Embed = %+v, nil; want an error containing %q", e, tc.want)
@@ -166,9 +166,9 @@ func TestEmbedRefusesRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, embedReply)
+			srv := serveEmbeddings(t, http.StatusOK, embedReply)
 			called := false
-			c := newClient(t, srv.URL, ai.Options{
+			c := newClient(t, srv.URL(), ai.Options{
 				Token: func(context.Context) (string, error) { called = true; return "", nil },
 			})
 			e, err := c.Embed(t.Context(), tc.req)
@@ -192,8 +192,8 @@ func TestEmbedRefusesRequest(t *testing.T) {
 // details, whatever format the Client speaks. What the body's shapes give is format's test.
 func TestEmbedAPIError(t *testing.T) {
 	reply := `{"error":{"code":400,"message":"\"input\" must not be empty","type":"invalid_request_error"}}`
-	srv := aitest.NewServer(t, http.StatusBadRequest, reply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveEmbeddings(t, http.StatusBadRequest, reply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	e, err := c.Embed(t.Context(), two())
 	apiErr, ok := errors.AsType[*ai.APIError](err)
 	if !ok {
@@ -206,9 +206,9 @@ func TestEmbedAPIError(t *testing.T) {
 }
 
 func TestEmbedTokenErrorSendsNothing(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, embedReply)
+	srv := serveEmbeddings(t, http.StatusOK, embedReply)
 	errExpired := errors.New("token expired")
-	c := newClient(t, srv.URL, ai.Options{
+	c := newClient(t, srv.URL(), ai.Options{
 		Token: func(context.Context) (string, error) { return "", errExpired },
 	})
 	_, err := c.Embed(t.Context(), two())
@@ -221,8 +221,8 @@ func TestEmbedTokenErrorSendsNothing(t *testing.T) {
 }
 
 func TestEmbedWrapsCancelledContext(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, embedReply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveEmbeddings(t, http.StatusOK, embedReply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, err := c.Embed(ctx, two())
@@ -234,8 +234,8 @@ func TestEmbedWrapsCancelledContext(t *testing.T) {
 // TestEmbedAnyFormat wants Embed to go to the OpenAI-compatible embeddings route on a Client of
 // a format whose own route is elsewhere, with none of the format's headers.
 func TestEmbedAnyFormat(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, embedReply)
-	c, err := ai.New(srv.URL+"/v1", http.DefaultClient, messages.New(messages.Options{}), ai.Options{})
+	srv := serveEmbeddings(t, http.StatusOK, embedReply)
+	c, err := ai.New(srv.URL(), http.DefaultClient, messages.New(messages.Options{}), ai.Options{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestEmbedAnyFormat(t *testing.T) {
 	if len(e.Vectors) != 2 || !slices.Equal(e.Vectors[0], wantA) {
 		t.Errorf("Vectors = %v, want [%v %v]", e.Vectors, wantA, wantB)
 	}
-	got := srv.Only(t)
+	got := aitest.Only(t, srv)
 	if got.Path != "/v1/embeddings" {
 		t.Errorf("path = %s, want /v1/embeddings", got.Path)
 	}

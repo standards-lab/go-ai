@@ -1,15 +1,10 @@
-// Package aitest holds the test helpers the module's test packages share: a loopback HTTP
-// server that answers with a fixed reply and records the requests it receives, a token source
-// that counts its calls, and the assertions the format packages' tests make of encoded bodies,
-// refusals, and decoded responses.
+// Package aitest is go-ai's format-test kit: the assertions its test packages make of encoded
+// bodies, refusals, decoded responses, and the requests an endpoint received, a reader of each
+// test's recorded testdata, and a token source that counts its calls. It serves no endpoint: a
+// test that needs one starts the public package github.com/standards-lab/go-ai/aitest.
 //
 // Its exported identifiers:
 //
-//   - [Request] is one request a Server received, as it arrived on the wire.
-//   - [Server] is a loopback HTTP server answering every request with one status and body.
-//   - [NewServer] starts a Server, closed when the test ends.
-//   - [Server.Requests] returns the requests the Server received, in order.
-//   - [Server.Only] returns the one request the Server received, failing the test otherwise.
 //   - [TokenCounter] is a token source that counts its calls.
 //   - [TokenCounter.Token] returns a fixed token, counting the call.
 //   - [ReplyMessage] returns a recorded error reply's message.
@@ -20,6 +15,8 @@
 //     and spacing.
 //   - [AssertUnsupported] fails the test unless an error is a message wrapping a format's
 //     *format.UnsupportedError of the fields wanted.
+//   - [Only] returns the one request a public aitest Endpoint received, failing the test
+//     unless it received exactly one.
 //   - [SameArguments] holds two responses' function call arguments to their JSON value, so
 //     an endpoint's respacing of them compares equal.
 package aitest

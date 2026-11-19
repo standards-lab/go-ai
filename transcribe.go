@@ -44,6 +44,41 @@ const (
 	TranscribeChat
 )
 
+// transcriptionModeNames are the modes' text forms, indexed by mode.
+var transcriptionModeNames = [...]string{TranscribeRoute: "route", TranscribeChat: "chat"}
+
+// String returns the mode's name, "route" or "chat", or, for an unknown mode, its number in
+// the form TranscriptionMode(7), as fmt prints a value it has no name for.
+func (m TranscriptionMode) String() string {
+	if m < 0 || int(m) >= len(transcriptionModeNames) {
+		return fmt.Sprintf("TranscriptionMode(%d)", int(m))
+	}
+	return transcriptionModeNames[m]
+}
+
+// MarshalText encodes the mode by name, "route" or "chat", so a mode in a JSON or other text
+// configuration reads as its name rather than its number. An unknown mode is an error, as New
+// refuses it.
+func (m TranscriptionMode) MarshalText() ([]byte, error) {
+	if m < 0 || int(m) >= len(transcriptionModeNames) {
+		return nil, fmt.Errorf("ai: unknown transcription mode %d", int(m))
+	}
+	return []byte(transcriptionModeNames[m]), nil
+}
+
+// UnmarshalText decodes a mode by name, accepting only "route" and "chat" and refusing any
+// other name, the empty one and a number included, with an error that names it and the modes
+// accepted. It is strict so that a mistyped mode in a configuration fails to decode instead of
+// silently choosing the route.
+func (m *TranscriptionMode) UnmarshalText(text []byte) error {
+	i := slices.Index(transcriptionModeNames[:], string(text))
+	if i < 0 {
+		return fmt.Errorf("ai: unknown transcription mode %q, want one of %s", text, strings.Join(transcriptionModeNames[:], ", "))
+	}
+	*m = TranscriptionMode(i)
+	return nil
+}
+
 // TranscriptionInstruction returns the instruction a chat-mode Transcribe gives the model when
 // the request has no Prompt, modeled on Gemma 4's model card's transcription prompt. With a
 // language, it names it as given, as Language holds it, so "English" reads as the model card
@@ -289,7 +324,7 @@ func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) 
 		return nil, e
 	}
 	return &Transcription{
-		Text: outputText(resp),
+		Text: resp.OutputText(),
 		Usage: TranscriptionUsage{
 			InputTokens:  resp.Usage.InputTokens,
 			OutputTokens: resp.Usage.OutputTokens,
@@ -392,24 +427,6 @@ func chatRequest(req *TranscriptionRequest, data []byte, audioFormat protocol.Au
 			},
 		}},
 	}
-}
-
-// outputText is the text of resp's output: every OutputText part of its messages, joined in
-// order.
-func outputText(resp *protocol.Response) string {
-	var b strings.Builder
-	for _, item := range resp.Output {
-		m, ok := item.(protocol.Message)
-		if !ok {
-			continue
-		}
-		for _, part := range m.Content {
-			if t, ok := part.(protocol.OutputText); ok {
-				b.WriteString(t.Text)
-			}
-		}
-	}
-	return b.String()
 }
 
 // transcriptionFields validates req for TranscribeRoute and returns the form fields it sends
