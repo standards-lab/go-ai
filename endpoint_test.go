@@ -50,13 +50,3 @@ func serveRaw(t *testing.T, route string, status int, body string) *aitest.Endpo
 		route: fixed[aitest.RawRequest](status, body),
 	}})
 }
-
-// only returns the one request e received, failing t unless it received exactly one.
-func only(t *testing.T, e *aitest.Endpoint) aitest.Request {
-	t.Helper()
-	reqs := e.Requests()
-	if len(reqs) != 1 {
-		t.Fatalf("endpoint received %d requests, want 1", len(reqs))
-	}
-	return reqs[0]
-}

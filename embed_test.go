@@ -12,6 +12,7 @@ import (
 
 	"github.com/standards-lab/go-ai"
 	"github.com/standards-lab/go-ai/format/messages"
+	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
 // Hand-built embeddings: standard base64 of little-endian float32s.
@@ -48,7 +49,7 @@ func TestEmbedWireRequest(t *testing.T) {
 	if _, err := c.Embed(t.Context(), &ai.EmbeddingRequest{Model: "m", Input: []string{"a", ""}}); err != nil {
 		t.Fatalf("Embed: %v", err)
 	}
-	got := only(t, srv)
+	got := aitest.Only(t, srv)
 	if got.Method != http.MethodPost || got.Path != "/v1/embeddings" || got.Query.Encode() != "autoload=false" {
 		t.Errorf("request = %s %s?%s, want POST /v1/embeddings?autoload=false", got.Method, got.Path, got.Query.Encode())
 	}
@@ -76,7 +77,7 @@ func TestEmbedMergesNative(t *testing.T) {
 	if _, err := c.Embed(t.Context(), req); err != nil {
 		t.Fatalf("Embed: %v", err)
 	}
-	if got, want := string(only(t, srv).Body), `{"model":"m","input":["a","b"],"encoding_format":"base64","dimensions":256}`; got != want {
+	if got, want := string(aitest.Only(t, srv).Body), `{"model":"m","input":["a","b"],"encoding_format":"base64","dimensions":256}`; got != want {
 		t.Errorf("body = %s\nwant   %s", got, want)
 	}
 }
@@ -245,7 +246,7 @@ func TestEmbedAnyFormat(t *testing.T) {
 	if len(e.Vectors) != 2 || !slices.Equal(e.Vectors[0], wantA) {
 		t.Errorf("Vectors = %v, want [%v %v]", e.Vectors, wantA, wantB)
 	}
-	got := only(t, srv)
+	got := aitest.Only(t, srv)
 	if got.Path != "/v1/embeddings" {
 		t.Errorf("path = %s, want /v1/embeddings", got.Path)
 	}

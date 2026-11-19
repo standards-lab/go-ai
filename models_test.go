@@ -48,7 +48,7 @@ func TestModelsWireRequest(t *testing.T) {
 	if _, err := c.Models(t.Context()); err != nil {
 		t.Fatalf("Models: %v", err)
 	}
-	got := only(t, srv)
+	got := aitest.Only(t, srv)
 	if got.Method != http.MethodGet || got.Path != "/v1/models" || got.Query.Encode() != "autoload=false" {
 		t.Errorf("request = %s %s?%s, want GET /v1/models?autoload=false", got.Method, got.Path, got.Query.Encode())
 	}
@@ -104,7 +104,7 @@ func TestModelsAnyFormat(t *testing.T) {
 	if _, err := c.Models(t.Context()); err != nil {
 		t.Fatalf("Models: %v", err)
 	}
-	if got := only(t, srv); got.Method != http.MethodGet || got.Path != "/v1/models" {
+	if got := aitest.Only(t, srv); got.Method != http.MethodGet || got.Path != "/v1/models" {
 		t.Errorf("request = %s %s, want GET /v1/models", got.Method, got.Path)
 	}
 }

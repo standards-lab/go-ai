@@ -237,7 +237,7 @@ func TestTranscribeChatRequest(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Transcribe: %v", err)
 			}
-			got := only(t, srv)
+			got := aitest.Only(t, srv)
 			if got.Method != http.MethodPost || got.Path != "/v1/chat/completions" || got.Query.Encode() != "autoload=false" {
 				t.Errorf("request = %s %s?%s, want POST /v1/chat/completions?autoload=false", got.Method, got.Path, got.Query.Encode())
 			}

@@ -40,7 +40,7 @@ func TestGeneratePostsToMessagesWithVersionAndBearer(t *testing.T) {
 	if _, err := c.Generate(t.Context(), ask(text(protocol.RoleUser, "hi"))); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	r := only(t, srv)
+	r := aitest.Only(t, srv)
 	if r.Path != "/v1/messages" {
 		t.Errorf("path = %q, want /v1/messages", r.Path)
 	}
@@ -60,7 +60,7 @@ func TestGenerateSendsAPIKey(t *testing.T) {
 	if _, err := c.Generate(t.Context(), ask(text(protocol.RoleUser, "hi"))); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	h := only(t, srv).Header
+	h := aitest.Only(t, srv).Header
 	if got := h.Values("X-Api-Key"); len(got) != 1 || got[0] != "key" {
 		t.Errorf("X-Api-Key = %q, want [key]", got)
 	}
@@ -209,7 +209,7 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 			if tokens.Calls != 1 {
 				t.Errorf("token source called %d times, want 1", tokens.Calls)
 			}
-			only(t, srv)
+			aitest.Only(t, srv)
 		})
 	}
 }
@@ -278,7 +278,7 @@ func TestGenerateRecordedEffortNoneUnderZeroProfile(t *testing.T) {
 	var sent struct {
 		Thinking map[string]any `json:"thinking"`
 	}
-	if err := json.Unmarshal(only(t, srv).Body, &sent); err != nil {
+	if err := json.Unmarshal(aitest.Only(t, srv).Body, &sent); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(sent.Thinking, map[string]any{"type": "disabled"}) {

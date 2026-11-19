@@ -15,6 +15,7 @@ import (
 	"github.com/standards-lab/go-ai"
 	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/format/completions"
+	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
 // ndjsonType is the media type of ndjsonStream, an event stream defined only by these tests.
@@ -110,7 +111,7 @@ func TestGenerateStreamDeclaredEventStream(t *testing.T) {
 	if !reflect.DeepEqual(got, completed) {
 		t.Errorf("Response = %#v\nwant       %#v", got, completed)
 	}
-	if got := only(t, srv).Header.Get("Accept"); got != ndjsonType {
+	if got := aitest.Only(t, srv).Header.Get("Accept"); got != ndjsonType {
 		t.Errorf("Accept = %q, want %s", got, ndjsonType)
 	}
 }

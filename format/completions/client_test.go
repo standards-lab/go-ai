@@ -105,7 +105,7 @@ func TestGenerateRecordedGapUnderZeroProfile(t *testing.T) {
 			if tokens.Calls != 1 {
 				t.Errorf("token source called %d times, want 1", tokens.Calls)
 			}
-			only(t, srv)
+			aitest.Only(t, srv)
 		})
 	}
 }
@@ -158,5 +158,5 @@ func TestGenerateAllowedToolsNarrowed(t *testing.T) {
 	if resp.Status != protocol.StatusCompleted {
 		t.Errorf("Status = %q, want the recorded call completed", resp.Status)
 	}
-	aitest.AssertJSON(t, toolMembers(t, only(t, srv).Body), `{"tools":[`+getTimeWire+`],"tool_choice":"required"}`)
+	aitest.AssertJSON(t, toolMembers(t, aitest.Only(t, srv).Body), `{"tools":[`+getTimeWire+`],"tool_choice":"required"}`)
 }

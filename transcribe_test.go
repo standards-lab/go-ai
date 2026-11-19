@@ -20,10 +20,10 @@ import (
 	"time"
 
 	"github.com/standards-lab/go-ai"
-	"github.com/standards-lab/go-ai/aitest"
 	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/format/messages"
 	"github.com/standards-lab/go-ai/format/responses"
+	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
 // transcribeReply is llama.cpp's transcription reply, as gb10-2 sends it.
@@ -56,16 +56,17 @@ type formPart struct {
 	body        []byte
 }
 
-// readForm parses a recorded request's multipart form into its parts by form name, failing t
-// unless the request is multipart/form-data with a boundary, each name appearing once.
-func readForm(t *testing.T, got aitest.Request) map[string]formPart {
+// readForm parses a recorded request's multipart form, its header and body, into its parts by
+// form name, failing t unless the request is multipart/form-data with a boundary, each name
+// appearing once.
+func readForm(t *testing.T, header http.Header, body []byte) map[string]formPart {
 	t.Helper()
-	mediaType, params, err := mime.ParseMediaType(got.Header.Get("Content-Type"))
+	mediaType, params, err := mime.ParseMediaType(header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/form-data" || params["boundary"] == "" {
-		t.Fatalf("Content-Type = %q (%v), want multipart/form-data with a boundary", got.Header.Get("Content-Type"), err)
+		t.Fatalf("Content-Type = %q (%v), want multipart/form-data with a boundary", header.Get("Content-Type"), err)
 	}
 	parts := make(map[string]formPart)
-	r := multipart.NewReader(bytes.NewReader(got.Body), params["boundary"])
+	r := multipart.NewReader(bytes.NewReader(body), params["boundary"])
 	for {
 		p, err := r.NextPart()
 		if err == io.EOF {
@@ -124,7 +125,7 @@ func TestTranscribeWireRequest(t *testing.T) {
 			if _, err := c.Transcribe(t.Context(), tc.req); err != nil {
 				t.Fatalf("Transcribe: %v", err)
 			}
-			got := only(t, srv)
+			got := aitest.Only(t, srv)
 			if got.Method != http.MethodPost || got.Path != "/v1/audio/transcriptions" || got.Query.Encode() != "autoload=false" {
 				t.Errorf("request = %s %s?%s, want POST /v1/audio/transcriptions?autoload=false",
 					got.Method, got.Path, got.Query.Encode())
@@ -135,7 +136,7 @@ func TestTranscribeWireRequest(t *testing.T) {
 					t.Errorf("%s = %q, want %q", k, v, want)
 				}
 			}
-			parts := readForm(t, got)
+			parts := readForm(t, got.Header, got.Body)
 			file, ok := parts["file"]
 			if !ok {
 				t.Fatalf("form has no file part; parts %v", slices.Sorted(maps.Keys(parts)))
@@ -175,7 +176,7 @@ func TestTranscribeNativeFieldOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Transcribe: %v", err)
 	}
-	got := only(t, srv)
+	got := aitest.Only(t, srv)
 	_, params, err := mime.ParseMediaType(got.Header.Get("Content-Type"))
 	if err != nil {
 		t.Fatalf("Content-Type: %v", err)
@@ -242,14 +243,14 @@ func TestTranscribeAnyFormat(t *testing.T) {
 			if got.Text != "The access code is 7429." {
 				t.Errorf("Text = %q, want the route's text", got.Text)
 			}
-			req := only(t, srv)
+			req := aitest.Only(t, srv)
 			if req.Method != http.MethodPost || req.Path != "/v1/audio/transcriptions" {
 				t.Errorf("request = %s %s, want POST /v1/audio/transcriptions", req.Method, req.Path)
 			}
 			if v := req.Header.Get("Anthropic-Version"); v != "" {
 				t.Errorf("anthropic-version = %q, want none: the format's headers are its route's", v)
 			}
-			parts := readForm(t, req)
+			parts := readForm(t, req.Header, req.Body)
 			if file := parts["file"]; string(file.body) != "RIFF" || file.fileName != "clip.wav" {
 				t.Errorf("file part = %q named %q, want the clip named clip.wav", file.body, file.fileName)
 			}

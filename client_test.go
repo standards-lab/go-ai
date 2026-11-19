@@ -164,7 +164,7 @@ func TestNewTakesSendableHeader(t *testing.T) {
 	if _, err := c.Generate(t.Context(), hello()); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if got := only(t, srv).Header.Get("X-Key_1!"); got != "a\tb é" {
+	if got := aitest.Only(t, srv).Header.Get("X-Key_1!"); got != "a\tb é" {
 		t.Errorf("X-Key_1! = %q, want %q", got, "a\tb é")
 	}
 }
@@ -191,7 +191,7 @@ func TestZeroOptions(t *testing.T) {
 	if _, err := c.Generate(t.Context(), hello()); err == nil {
 		t.Fatal("Generate succeeded, want the 503's *APIError")
 	}
-	r := only(t, srv)
+	r := aitest.Only(t, srv)
 	if len(r.Query) != 0 {
 		t.Errorf("query = %q, want none", r.Query.Encode())
 	}
@@ -226,7 +226,7 @@ func TestGenerateJoinsRouteWithOneSlash(t *testing.T) {
 			} else if apiErr, ok := errors.AsType[*ai.APIError](err); !ok || apiErr.Status != http.StatusNotFound {
 				t.Fatalf("Generate error = %v, want the endpoint's 404 for a route outside /v1", err)
 			}
-			got := only(t, srv)
+			got := aitest.Only(t, srv)
 			if got.Method != http.MethodPost || got.Path != want {
 				t.Errorf("request = %s %s, want POST %s", got.Method, got.Path, want)
 			}
@@ -243,7 +243,7 @@ func TestGenerateCarriesQueryCopiedAtNew(t *testing.T) {
 	if _, err := c.Generate(t.Context(), hello()); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if got := only(t, srv).Query.Encode(); got != "autoload=false" {
+	if got := aitest.Only(t, srv).Query.Encode(); got != "autoload=false" {
 		t.Errorf("query = %q, want autoload=false", got)
 	}
 }
@@ -254,7 +254,7 @@ func TestGenerateSendsJSONHeaders(t *testing.T) {
 	if _, err := c.Generate(t.Context(), hello()); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	h := only(t, srv).Header
+	h := aitest.Only(t, srv).Header
 	for k, want := range map[string]string{"Content-Type": "application/json", "Accept": "application/json"} {
 		if got := h.Get(k); got != want {
 			t.Errorf("%s = %q, want %q", k, got, want)
@@ -304,7 +304,7 @@ func TestGenerateFormatHeaderReplacesFixed(t *testing.T) {
 	if _, err := c.Generate(t.Context(), req); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	h := only(t, srv).Header
+	h := aitest.Only(t, srv).Header
 	if got := h.Values("Anthropic-Version"); !slices.Equal(got, []string{"2026-10-21"}) {
 		t.Errorf("Anthropic-Version = %q, want the format's alone, [2026-10-21]", got)
 	}
@@ -330,7 +330,7 @@ func TestGenerateToken(t *testing.T) {
 			if _, err := c.Generate(t.Context(), hello()); err != nil {
 				t.Fatalf("Generate: %v", err)
 			}
-			got := only(t, srv).Header.Values("Authorization")
+			got := aitest.Only(t, srv).Header.Values("Authorization")
 			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
 				t.Errorf("Authorization = %q, want %q", got, tc.want)
 			}

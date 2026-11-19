@@ -42,7 +42,7 @@ func TestGeneratePostsToResponsesWithBearer(t *testing.T) {
 	if resp.Status != protocol.StatusCompleted || len(resp.Output) != 1 {
 		t.Errorf("Generate = %+v, want the recorded reply's one completed message", resp)
 	}
-	r := only(t, srv)
+	r := aitest.Only(t, srv)
 	if r.Path != "/v1/responses" {
 		t.Errorf("path = %q, want /v1/responses", r.Path)
 	}
@@ -166,7 +166,7 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 			if tokens.Calls != 1 {
 				t.Errorf("token source called %d times, want 1", tokens.Calls)
 			}
-			only(t, srv)
+			aitest.Only(t, srv)
 		})
 	}
 }
@@ -232,7 +232,7 @@ func TestGenerateAllowedToolsUnderZeroProfile(t *testing.T) {
 	if !reflect.DeepEqual(resp, want) {
 		t.Errorf("Generate = %#v\nwant       %#v", resp, want)
 	}
-	aitest.AssertJSON(t, toolMembers(t, only(t, srv).Body), `{"tools":[
+	aitest.AssertJSON(t, toolMembers(t, aitest.Only(t, srv).Body), `{"tools":[
 		{"type":"function","name":"get_weather","description":"Get the current temperature in a city, in degrees Celsius.",
 			"parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},"strict":false},`+
 		recordedTimeJSON+`],
@@ -249,5 +249,5 @@ func TestGenerateAllowedToolsNarrowed(t *testing.T) {
 	if _, err := c.Generate(t.Context(), recordedAllowedTools()); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	aitest.AssertJSON(t, toolMembers(t, only(t, srv).Body), `{"tools":[`+recordedTimeJSON+`],"tool_choice":"required"}`)
+	aitest.AssertJSON(t, toolMembers(t, aitest.Only(t, srv).Body), `{"tools":[`+recordedTimeJSON+`],"tool_choice":"required"}`)
 }

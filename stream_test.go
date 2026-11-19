@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/standards-lab/go-ai"
+	"github.com/standards-lab/go-ai/internal/aitest"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -88,7 +89,7 @@ func TestGenerateStream(t *testing.T) {
 	if !reflect.DeepEqual(resp, completed) {
 		t.Errorf("Response = %#v\nwant       %#v", resp, completed)
 	}
-	r := only(t, srv)
+	r := aitest.Only(t, srv)
 	if r.Path != "/v1/chat/completions" {
 		t.Errorf("path = %s, want /v1/chat/completions", r.Path)
 	}
@@ -111,7 +112,7 @@ func TestGenerateStreamSendsHeaderAndToken(t *testing.T) {
 	if _, _, errs := collect(t, c.GenerateStream(t.Context(), hello())); len(errs) > 0 {
 		t.Fatalf("GenerateStream errors: %v", errs)
 	}
-	h := only(t, srv).Header
+	h := aitest.Only(t, srv).Header
 	if got := h.Get("X-Api-Key"); got != "k" {
 		t.Errorf("X-Api-Key = %q, want k", got)
 	}
