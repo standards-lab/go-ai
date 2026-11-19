@@ -323,14 +323,11 @@ func TestRetryRefusals(t *testing.T) {
 }
 
 // stallingStream serves a streamed completions endpoint that sends the
-// role chunk and a "Paris" delta, then holds the stream, sending nothing,
-// until stall has passed since it was served, or until the request ends,
-// then the rest of a completed reply.
-func stallingStream(t *testing.T, stall time.Duration) *aitest.Endpoint {
+// role chunk and a "Paris" delta, then holds the stream on hold, sending
+// nothing, until the test lets it go or the request ends, then the rest of
+// a completed reply.
+func stallingStream(t *testing.T, hold *aitest.Gate) *aitest.Endpoint {
 	t.Helper()
-	hold := &aitest.Gate{}
-	release := time.AfterFunc(stall, hold.Open)
-	t.Cleanup(func() { release.Stop() })
 	reply := chatReply("", "stop", "Paris")
 	reply.Hold, reply.HoldAfter = hold, 1
 	return chatEndpoint(t, nil, completionsRoute, reply)
@@ -338,9 +335,10 @@ func stallingStream(t *testing.T, stall time.Duration) *aitest.Endpoint {
 
 // The idle timeout is INFER_IDLE_TIMEOUT's when set, and chat's
 // --idle-timeout's when given, even given empty, which sets no bound. A
-// bound shorter than the stream's stall ends the stream, exit 1, the text
-// already written kept and the error naming the idle bound; none, or a
-// longer one, lets the stream finish.
+// bound ends a stream held until the client gives up on it, exit 1, the
+// text already written kept and the error naming the idle bound. None, or
+// a longer one, lets a stream held for stall, counted from the hold and
+// longer than the 50ms bound a case would wrongly apply, finish.
 func TestChat_IdleTimeout(t *testing.T) {
 	const stall = 500 * time.Millisecond
 	for _, tc := range []struct {
@@ -359,11 +357,18 @@ func TestChat_IdleTimeout(t *testing.T) {
 		{"flag over an unparsable variable", "soon", []string{"--idle-timeout", "10s"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := stallingStream(t, stall)
+			hold := &aitest.Gate{}
+			e := stallingStream(t, hold)
 			env := agent(e)
 			env["INFER_IDLE_TIMEOUT"] = tc.env
 
-			r := runApp(t, env, append(append([]string{"chat"}, tc.args...), "capital?")...)
+			done := newHarness(t, env).start(append(append([]string{"chat"}, tc.args...), "capital?")...)
+			if !tc.ended {
+				hold.Await(t, 1)
+				release := time.AfterFunc(stall, hold.Open)
+				t.Cleanup(func() { release.Stop() })
+			}
+			r := finish(t, done)
 
 			if !tc.ended {
 				wantCode(t, r, process.ExitOK)

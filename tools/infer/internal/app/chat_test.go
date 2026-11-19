@@ -542,7 +542,7 @@ func TestChat_StreamWritesAsItArrives(t *testing.T) {
 				}
 			}
 			hold.Open()
-			code := <-done
+			code := finish(t, done)
 
 			if code != process.ExitOK {
 				t.Errorf("code = %d, want %d", code, process.ExitOK)
