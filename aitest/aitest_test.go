@@ -326,6 +326,31 @@ func TestTranscription(t *testing.T) {
 	}
 }
 
+// TestTranscriptionFileNameAsSent wants FileName to be the file part's filename as the client
+// sent it, a path's directories included, so a test can prove a client sends a clip's base name
+// alone rather than the path it read the clip from.
+func TestTranscriptionFileNameAsSent(t *testing.T) {
+	var got string
+	e := aitest.Serve(t, aitest.Routes{Transcriptions: func(_ context.Context, req aitest.TranscriptionRequest) aitest.Reply {
+		got = req.FileName
+		return aitest.TranscriptionReply{Text: "hi"}
+	}})
+	c := newClient(t, e, completions.New(completions.Options{}))
+	_, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
+		Model:    "whisper",
+		FileName: "recordings/2026/clip.wav",
+		Open: func(context.Context) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("RIFF")), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Transcribe: %v", err)
+	}
+	if want := "recordings/2026/clip.wav"; got != want {
+		t.Errorf("FileName = %q, want %q, as sent", got, want)
+	}
+}
+
 // TestModels wants the typed reply's entries written as given, so Client.Models returns each
 // entry's id with the entry whole as its Native.
 func TestModels(t *testing.T) {

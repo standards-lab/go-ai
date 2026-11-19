@@ -48,9 +48,10 @@ review, `context/design.md`.
 - `architecture/standards/go-elemental/principles/tests-and-docs.md`, "doc.go and godoc": every
   package's `doc.go` inventories its exported identifiers, and a format's package comment states
   what it sends, refuses, drops, and normalizes, naming no router build.
-- `architecture/standards/go-elemental/principles/tests-and-docs.md`: the test packages share
-  `internal/aitest` as their helper; testdata recorded from an endpoint has a README saying how;
-  an integration check that can't fail is deleted.
+- `architecture/standards/go-elemental/principles/tests-and-docs.md`: the public `aitest` is the
+  shared fake endpoint any module's tests use, and `internal/aitest` is go-ai's format-test kit,
+  its assertions, testdata reader, and token counter; testdata recorded from an endpoint has a
+  README saying how; an integration check that can't fail is deleted.
 - `architecture/standards/go-elemental/principles/release-and-ci.md`: the check, currency,
   upgrade, and integration tasks run over `GO_MODULES`; each module has its own changelog;
   `go.work`'s use-list matches `GO_MODULES`; no CI job runs the integration tier.

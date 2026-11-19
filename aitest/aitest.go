@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -83,7 +84,8 @@ type TranscriptionRequest struct {
 	Prompt string
 	// Language is the form's language field, empty when it has none.
 	Language string
-	// FileName is the file part's file name.
+	// FileName is the file part's file name as the client sent it, a path's directories
+	// included.
 	FileName string
 	// File is the file part's bytes.
 	File []byte
@@ -273,12 +275,18 @@ func decodeTranscriptionRequest(req Request) (TranscriptionRequest, error) {
 	if err != nil {
 		return TranscriptionRequest{}, fmt.Errorf("read transcription form's file: %w", err)
 	}
+	// The file name as sent: the parsed form's Filename keeps a path's base name alone, which
+	// would hide a client that sends the path it read the clip from.
+	_, disposition, err := mime.ParseMediaType(header.Header.Get("Content-Disposition"))
+	if err != nil {
+		return TranscriptionRequest{}, fmt.Errorf("decode transcription form's file disposition: %w", err)
+	}
 	fields := url.Values(r.MultipartForm.Value)
 	tr := TranscriptionRequest{
 		Model:    fields.Get("model"),
 		Prompt:   fields.Get("prompt"),
 		Language: fields.Get("language"),
-		FileName: header.Filename,
+		FileName: disposition["filename"],
 		File:     data,
 		Fields:   url.Values{},
 	}

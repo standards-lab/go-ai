@@ -5,6 +5,51 @@ All notable changes to `github.com/standards-lab/go-ai` are documented here. The
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). This changelog covers the base module
 only; `tools/infer` keeps its own.
 
+## [Unreleased]
+
+## [v0.4.0] - 2026-11-19
+
+This release adds a public fake model endpoint for tests, `aitest`, which any module's tests can
+use, a helper that reads a response's text, and a transcription mode that reads and writes as a
+name.
+
+### Added
+
+- `protocol.Response.OutputText`, the response's text: every `output_text` part of every message
+  item in `Output`, in order, joined with nothing between. Refusal, reasoning, and function call
+  content add nothing; a response with none returns "".
+- `ai.Client.TranscriptionMode`, the mode the Client was built with, `TranscribeRoute` by
+  default.
+- `ai.TranscriptionMode.String`, `MarshalText`, and `UnmarshalText`, which name the modes `route`
+  and `chat`. `String` prints an unknown mode as `TranscriptionMode(7)`, and `MarshalText`
+  refuses it, as `New` does. `UnmarshalText` refuses any other name, the empty one and a number
+  included, with an error naming it and both modes, leaving the mode unchanged.
+- `aitest`, a fake OpenAI-compatible model endpoint for tests, on the standard library alone.
+  `Serve` starts a loopback `Endpoint`, closed when the test ends, that records every request in
+  order (`Endpoint.Requests`) and answers each route with the function `Routes` gives: Chat
+  Completions, embeddings, transcriptions, and models, each given its request decoded and its
+  arrival number on the route, and any other path below `/v1`, such as `messages` or
+  `responses`, as a `RawRequest`. A route without a function answers 404 with an OpenAI-style
+  error body, and a body its route can't decode answers 400.
+- `aitest`'s replies: `ChatReply`, text or a refusal with its finish reason and usage, written as
+  a `chat.completion`, or streamed as chunks when the request asks, and able to break off
+  mid-stream (`BreakAfter`); `EmbeddingsReply`, `TranscriptionReply`, and `ModelsReply`, each in
+  its route's wire shape; `ErrorReply`, an OpenAI-style error of any status with a Retry-After
+  written as given; and `RawReply`, a status, headers, and a JSON body or server-sent event
+  `Frame`s, each flushed on its own.
+- `aitest.Gate`, which parks requests inside route functions until the test lets them go
+  (`Release`, `Open`) or their context ends; `Await` blocks the test until n requests are parked,
+  failing it after ten seconds, and `Parked` counts them. Its zero value is ready to use.
+
+### Changed
+
+- `Options.StreamIdleTimeout`'s documentation says it also bounds the wait for a stream's first
+  bytes, so a reasoning model needs a bound above its time to first token. Its behavior is
+  unchanged.
+- go-ai's own tests run against `aitest`, and `internal/aitest` keeps only the format-test kit:
+  its assertions, testdata reader, and token counter. Its fixed-reply test server is deleted.
+  Chat-mode `Transcribe` reads its transcript with `Response.OutputText`, with the same result.
+
 ## [v0.3.0] - 2026-11-18
 
 ### Added
@@ -219,6 +264,8 @@ one.
 - The release workflow, which makes a GitHub release from `CHANGELOG.md` for a `v*` tag and from
   `tools/infer/CHANGELOG.md` for a `tools/infer/v*` tag.
 
+[Unreleased]: https://github.com/standards-lab/go-ai/compare/v0.4.0...HEAD
+[v0.4.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.4.0
 [v0.3.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.3.0
 [v0.2.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.2.0
 [v0.1.1]: https://github.com/standards-lab/go-ai/releases/tag/v0.1.1

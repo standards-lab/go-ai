@@ -24,7 +24,7 @@
 //   - [ChatAudio] is an audio clip of a ChatMessage: its format and bytes.
 //   - [EmbeddingRequest] is an embeddings request: its arrival number, model, and inputs.
 //   - [TranscriptionRequest] is a transcription upload: its arrival number, model, prompt,
-//     language, file name and bytes, and other form fields.
+//     language, file name as sent and bytes, and other form fields.
 //   - [ModelsRequest] is a models request: its arrival number.
 //   - [RawRequest] is a request to a raw route: its arrival number and the Request.
 //   - [Reply] is what a route function answers with, one of the package's reply types.

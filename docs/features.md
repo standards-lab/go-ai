@@ -39,7 +39,7 @@ Every field's zero value sets nothing.
 | `Token` | Called before each attempt. A non-empty result is sent as `Authorization: Bearer`. |
 | `Header` | Fixed headers sent with every request, such as Anthropic's `x-api-key` or a gateway's key. `New` refuses `Authorization`, `Content-Type`, and `Accept`, which the client sets. |
 | `Retry` | The retry policy. The zero value retries nothing. |
-| `StreamIdleTimeout` | Ends a started stream when a read gets no bytes for this long. Any bytes reset it, keep-alive comments included. |
+| `StreamIdleTimeout` | Ends a started stream when a read gets no bytes for this long. Any bytes reset it, keep-alive comments included. It also bounds the wait for the first bytes, so a reasoning model needs a bound above its time to first token. |
 | `TranscriptionMode` | `TranscribeRoute`, the default, or `TranscribeChat`. |
 
 ### Retries
@@ -125,6 +125,10 @@ The client's `TranscriptionMode` picks how it sends:
 | `Prompt` | the route's `prompt` field | the instruction, in place of `TranscriptionInstruction(Language)` |
 | Needs | an endpoint with the route | a format that carries audio (Chat Completions); `.wav` or `.mp3` in `FileName` |
 
+`Client.TranscriptionMode` returns the mode the client was built with. A `TranscriptionMode`
+reads and writes as text, `route` or `chat`, through `String`, `MarshalText`, and
+`UnmarshalText`, which refuses any other name, so a configuration can name the mode.
+
 An endpoint without the transcription route answers 404. go-ai never falls back to chat mode on
 its own: a 404 can also mean a wrong base URL.
 
@@ -189,6 +193,10 @@ A `Response` holds the reply's `ID` and the `Model` that answered, as the endpoi
 `go-ai:context_window`, a client extension for a reply cut off by the model's context window),
 an `Error` for a failed response, and `Usage`: `InputTokens`, `OutputTokens`, `TotalTokens`,
 `InputTokensDetails.CachedTokens`, and `OutputTokensDetails.ReasoningTokens`.
+
+`Response.OutputText` returns the response's text: every `OutputText` part of every message in
+`Output`, in order, joined with nothing between. Refusals, reasoning, and function calls add
+nothing.
 
 ### Streaming events and the accumulator
 
@@ -263,6 +271,21 @@ only through it, never by the reply's Content-Type, and hands each event to the 
 format's refusal. `format.DecodeOpenAIError` decodes the OpenAI-style error body most endpoints
 return. A new format is a package that implements the interface, and a caller uses it by passing
 it to `ai.New`.
+
+## aitest: a fake endpoint for tests
+
+`aitest.Serve` starts a loopback OpenAI-compatible endpoint for a test, closed when the test
+ends. It records every request, in order, in `Endpoint.Requests`, and answers each route with the
+function `Routes` gives: Chat Completions, embeddings, transcriptions, and models, each given its
+request decoded and numbered by arrival, and any other path below `/v1`, such as `messages` or
+`responses`, raw. A route without a function answers 404 with an OpenAI-style error body.
+
+A route function answers with a typed reply in its route's wire shape (`ChatReply`, streamed
+when the request asks, `EmbeddingsReply`, `TranscriptionReply`, `ModelsReply`), an `ErrorReply`
+of any status with an optional Retry-After, or a `RawReply` of a JSON body or server-sent event
+`Frame`s, written as given. A `Gate` parks requests inside route functions until the test
+releases them, to prove a caller's concurrency bound or cancellation. The package imports only
+the standard library, so any module's tests can use it.
 
 ## integration: the live tier
 

@@ -1,6 +1,8 @@
-// Package aitest holds the test helpers the module's test packages share: a token source that
-// counts its calls, and the assertions the format packages' tests make of encoded bodies,
-// refusals, and decoded responses.
+// Package aitest is go-ai's format-test kit: the assertions its test packages make of encoded
+// bodies, refusals, and decoded responses, a reader of each test's recorded testdata, and a token
+// source that counts its calls. It serves no endpoint: a test that needs one starts the public
+// package github.com/standards-lab/go-ai/aitest, which any module's tests can use, while this
+// kit stays go-ai's own.
 //
 // Its exported identifiers:
 //
