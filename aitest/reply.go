@@ -12,11 +12,24 @@ import (
 )
 
 // Reply is what a route function answers with. Only the package's own reply types are Replies:
-// [EmbeddingsReply], [TranscriptionReply], [ModelsReply], and [RawReply]. A typed reply is the
-// wire shape of its route, and is written as that shape whichever route returns it.
+// [ChatReply], [EmbeddingsReply], [TranscriptionReply], [ModelsReply], [ErrorReply], and
+// [RawReply]. A typed reply is the wire shape of its route, and is written as that shape whichever
+// route returns it.
 type Reply interface {
-	// write writes the reply to w.
-	write(w http.ResponseWriter)
+	// write writes the reply to w, shaped as a asks.
+	write(w http.ResponseWriter, a asked)
+}
+
+// asked is what a request asked of its reply's shape: what the Chat Completions route decoded of
+// it, and zero on every other route, so a ChatReply another route returns is unstreamed.
+type asked struct {
+	// arrival is the request's arrival number, from which a chat reply's id is made.
+	arrival int
+	// model is the request's model, which a chat reply names as the model that answered.
+	model string
+	// stream is set when the request asked to stream, and streamUsage when it asked, in
+	// stream_options.include_usage, for the stream's usage.
+	stream, streamUsage bool
 }
 
 // EmbeddingsReply is an embeddings route's reply: one vector per input, as encoding_format
@@ -31,7 +44,7 @@ type EmbeddingsReply struct {
 	TotalTokens int
 }
 
-func (r EmbeddingsReply) write(w http.ResponseWriter) {
+func (r EmbeddingsReply) write(w http.ResponseWriter, _ asked) {
 	type item struct {
 		Object    string `json:"object"`
 		Index     int    `json:"index"`
@@ -69,7 +82,7 @@ type TranscriptionReply struct {
 	TotalTokens int
 }
 
-func (r TranscriptionReply) write(w http.ResponseWriter) {
+func (r TranscriptionReply) write(w http.ResponseWriter, _ asked) {
 	type usage struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
@@ -88,7 +101,7 @@ type ModelsReply struct {
 	Entries []jsontext.Value
 }
 
-func (r ModelsReply) write(w http.ResponseWriter) {
+func (r ModelsReply) write(w http.ResponseWriter, _ asked) {
 	var b strings.Builder
 	b.WriteString(`{"object":"list","data":[`)
 	for i, e := range r.Entries {
@@ -125,7 +138,7 @@ type Frame struct {
 	Data string
 }
 
-func (r RawReply) write(w http.ResponseWriter) {
+func (r RawReply) write(w http.ResponseWriter, _ asked) {
 	for k, vs := range r.Header {
 		for _, v := range vs {
 			w.Header().Add(k, v)
@@ -172,11 +185,35 @@ func (f Frame) encode() string {
 	return b.String()
 }
 
-// writeError writes an OpenAI-style error reply of status, with the error's type and message.
+// ErrorReply is an error reply on any route: an OpenAI-style error body,
+// {"error":{"message":...}}, of any status, with a Retry-After header when RetryAfter is set.
+type ErrorReply struct {
+	// Status is the reply's status code; zero is 500.
+	Status int
+	// Message is the error's message.
+	Message string
+	// RetryAfter, when not empty, is the reply's Retry-After header, written exactly as given:
+	// seconds such as "7", an HTTP date, or a value no client can read.
+	RetryAfter string
+}
+
+func (r ErrorReply) write(w http.ResponseWriter, _ asked) {
+	status := r.Status
+	if status == 0 {
+		status = http.StatusInternalServerError
+	}
+	if r.RetryAfter != "" {
+		w.Header().Set("Retry-After", r.RetryAfter)
+	}
+	writeError(w, status, "", r.Message)
+}
+
+// writeError writes an OpenAI-style error reply of status, with the error's type, omitted when
+// empty, and message.
 func writeError(w http.ResponseWriter, status int, typ, message string) {
 	type detail struct {
 		Message string `json:"message"`
-		Type    string `json:"type"`
+		Type    string `json:"type,omitzero"`
 	}
 	writeJSON(w, status, struct {
 		Error detail `json:"error"`

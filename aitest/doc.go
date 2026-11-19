@@ -18,16 +18,25 @@
 //   - [Endpoint.URL] returns its API root, ending in /v1.
 //   - [Endpoint.Requests] returns every [Request] it received, in order.
 //   - [Request] is one request as it arrived: method, path, query, header, and body.
-//   - [ChatRequest] is a Chat Completions request: its arrival number and body.
+//   - [ChatRequest] is a Chat Completions request: its arrival number and body, and decoded,
+//     its model, stream flag, max tokens, reasoning effort, JSON schema name, and messages.
+//   - [ChatMessage] is one message of a ChatRequest: its role, text, images, and audio.
+//   - [ChatImage] is an image of a ChatMessage: a data URL's media type and bytes, or a URL.
+//   - [ChatAudio] is an audio clip of a ChatMessage: its format and bytes.
 //   - [EmbeddingRequest] is an embeddings request: its arrival number, model, and inputs.
 //   - [TranscriptionRequest] is a transcription upload: its arrival number, model, prompt,
 //     language, file name and bytes, and other form fields.
 //   - [ModelsRequest] is a models request: its arrival number.
 //   - [RawRequest] is a request to a raw route: its arrival number and the Request.
 //   - [Reply] is what a route function answers with, one of the package's reply types.
+//   - [ChatReply] is a chat reply of text or a refusal, its finish reason, and usage, written as
+//     a chat.completion, or streamed as chunks when the request asks to stream, and able to
+//     break off mid-stream.
 //   - [EmbeddingsReply] is vectors and usage, written as base64 little-endian float32s.
 //   - [TranscriptionReply] is a transcript and usage, written as response_format json.
 //   - [ModelsReply] is a model list of whole JSON entries, written as given.
+//   - [ErrorReply] is an OpenAI-style error of any status, with a Retry-After header as given,
+//     on any route.
 //   - [RawReply] is a status, headers, and a JSON body or [Frame]s, written as given.
 //   - [Frame] is one server-sent event of a RawReply, flushed on its own.
 package aitest

@@ -63,14 +63,6 @@ type Request struct {
 	Body []byte
 }
 
-// ChatRequest is a request to the Chat Completions route.
-type ChatRequest struct {
-	// Arrival is the request's place among the route's requests, from 1.
-	Arrival int
-	// Body is the request's body, as it arrived.
-	Body []byte
-}
-
 // EmbeddingRequest is a request to the embeddings route, decoded.
 type EmbeddingRequest struct {
 	// Arrival is the request's place among the route's requests, from 1.
@@ -174,7 +166,7 @@ func (e *Endpoint) serve(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	defer context.AfterFunc(e.ctx, cancel)()
 
-	reply, ok, err := e.dispatch(ctx, req)
+	reply, a, ok, err := e.dispatch(ctx, req)
 	switch {
 	case !ok:
 		writeError(w, http.StatusNotFound, "invalid_request_error",
@@ -185,39 +177,46 @@ func (e *Endpoint) serve(w http.ResponseWriter, r *http.Request) {
 		e.t.Errorf("aitest: the route function for %s %s returned no reply", req.Method, req.Path)
 		writeError(w, http.StatusInternalServerError, "server_error", "aitest: the route function returned no reply")
 	default:
-		reply.write(w)
+		reply.write(w, a)
 	}
 }
 
-// dispatch decodes req for its route and calls the route's function. It reports false when no
-// function answers req, and an error when req can't be decoded for its route.
-func (e *Endpoint) dispatch(ctx context.Context, req Request) (Reply, bool, error) {
+// dispatch decodes req for its route and calls the route's function, returning its reply and
+// what req asked of the reply's shape. It reports false when no function answers req, and an
+// error when req can't be decoded for its route.
+func (e *Endpoint) dispatch(ctx context.Context, req Request) (Reply, asked, bool, error) {
 	rt := e.routes
 	switch {
 	case req.Path == chatPath && req.Method == http.MethodPost && rt.ChatCompletions != nil:
-		return rt.ChatCompletions(ctx, ChatRequest{Arrival: e.arrive(req.Path), Body: req.Body}), true, nil
+		cr, a, err := decodeChatRequest(req.Body)
+		if err != nil {
+			return nil, asked{}, true, err
+		}
+		cr.Arrival = e.arrive(req.Path)
+		a.arrival = cr.Arrival
+		return rt.ChatCompletions(ctx, cr), a, true, nil
 	case req.Path == embeddingsPath && req.Method == http.MethodPost && rt.Embeddings != nil:
 		er, err := decodeEmbeddingRequest(req.Body)
 		if err != nil {
-			return nil, true, err
+			return nil, asked{}, true, err
 		}
 		er.Arrival = e.arrive(req.Path)
-		return rt.Embeddings(ctx, er), true, nil
+		return rt.Embeddings(ctx, er), asked{}, true, nil
 	case req.Path == transcriptionsPath && req.Method == http.MethodPost && rt.Transcriptions != nil:
 		tr, err := decodeTranscriptionRequest(req)
 		if err != nil {
-			return nil, true, err
+			return nil, asked{}, true, err
 		}
 		tr.Arrival = e.arrive(req.Path)
-		return rt.Transcriptions(ctx, tr), true, nil
+		return rt.Transcriptions(ctx, tr), asked{}, true, nil
 	case req.Path == modelsPath && req.Method == http.MethodGet && rt.Models != nil:
-		return rt.Models(ctx, ModelsRequest{Arrival: e.arrive(req.Path)}), true, nil
+		return rt.Models(ctx, ModelsRequest{Arrival: e.arrive(req.Path)}), asked{}, true, nil
 	}
 	key, ok := strings.CutPrefix(req.Path, "/v1/")
 	if f := rt.Raw[key]; ok && f != nil {
-		return f(ctx, RawRequest{Arrival: e.arrive(req.Path), Request: req}), true, nil
+		return f(ctx, RawRequest{Arrival: e.arrive(req.Path), Request: req}), asked{}, true, nil
 	}
-	return nil, false, nil
+	return nil, asked{}, false, nil
 }
 
 // arrive counts a request to the route at path and returns its arrival number.
