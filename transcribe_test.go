@@ -20,10 +20,10 @@ import (
 	"time"
 
 	"github.com/standards-lab/go-ai"
+	"github.com/standards-lab/go-ai/aitest"
 	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/format/messages"
 	"github.com/standards-lab/go-ai/format/responses"
-	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
 // transcribeReply is llama.cpp's transcription reply, as gb10-2 sends it.
@@ -115,8 +115,8 @@ func TestTranscribeWireRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
-			c := newClient(t, srv.URL+"/v1/", ai.Options{
+			srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
+			c := newClient(t, srv.URL()+"/", ai.Options{
 				Query:  url.Values{"autoload": {"false"}},
 				Token:  func(context.Context) (string, error) { return "secret", nil },
 				Header: http.Header{"X-Consumer-Key": {"k"}},
@@ -124,10 +124,10 @@ func TestTranscribeWireRequest(t *testing.T) {
 			if _, err := c.Transcribe(t.Context(), tc.req); err != nil {
 				t.Fatalf("Transcribe: %v", err)
 			}
-			got := srv.Only(t)
-			if got.Method != http.MethodPost || got.Path != "/v1/audio/transcriptions" || got.RawQuery != "autoload=false" {
+			got := only(t, srv)
+			if got.Method != http.MethodPost || got.Path != "/v1/audio/transcriptions" || got.Query.Encode() != "autoload=false" {
 				t.Errorf("request = %s %s?%s, want POST /v1/audio/transcriptions?autoload=false",
-					got.Method, got.Path, got.RawQuery)
+					got.Method, got.Path, got.Query.Encode())
 			}
 			for k, want := range map[string]string{"Accept": "application/json", "Authorization": "Bearer secret",
 				"X-Consumer-Key": "k"} {
@@ -166,8 +166,8 @@ func TestTranscribeWireRequest(t *testing.T) {
 // then Native's keys sorted and each key's values in order, a key of several values sent once
 // per value, then the file.
 func TestTranscribeNativeFieldOrder(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	_, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
 		Model: "m", Open: open(strings.NewReader("RIFF")), FileName: "clip.wav", Language: "en",
 		Native: url.Values{"temperature": {"0"}, "extra": {"b", "a"}, "max_tokens": {"64"}},
@@ -175,7 +175,7 @@ func TestTranscribeNativeFieldOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Transcribe: %v", err)
 	}
-	got := srv.Only(t)
+	got := only(t, srv)
 	_, params, err := mime.ParseMediaType(got.Header.Get("Content-Type"))
 	if err != nil {
 		t.Fatalf("Content-Type: %v", err)
@@ -204,8 +204,8 @@ func TestTranscribeNativeFieldOrder(t *testing.T) {
 }
 
 func TestTranscribeDecodesReply(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
 		Model: "m", Open: open(strings.NewReader("RIFF")), FileName: "clip.wav",
 	})
@@ -228,8 +228,8 @@ func TestTranscribeAnyFormat(t *testing.T) {
 	formats := map[string]format.Format{"messages": messages.New(messages.Options{}), "responses": responses.New(responses.Options{})}
 	for name, wireFormat := range formats {
 		t.Run(name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
-			c, err := ai.New(srv.URL+"/v1", http.DefaultClient, wireFormat, ai.Options{})
+			srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
+			c, err := ai.New(srv.URL(), http.DefaultClient, wireFormat, ai.Options{})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -242,7 +242,7 @@ func TestTranscribeAnyFormat(t *testing.T) {
 			if got.Text != "The access code is 7429." {
 				t.Errorf("Text = %q, want the route's text", got.Text)
 			}
-			req := srv.Only(t)
+			req := only(t, srv)
 			if req.Method != http.MethodPost || req.Path != "/v1/audio/transcriptions" {
 				t.Errorf("request = %s %s, want POST /v1/audio/transcriptions", req.Method, req.Path)
 			}
@@ -261,8 +261,8 @@ func TestTranscribeAnyFormat(t *testing.T) {
 }
 
 func TestTranscribeRefusesReply(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, `{"text":7429}`)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveTranscriptions(t, http.StatusOK, `{"text":7429}`)
+	c := newClient(t, srv.URL(), ai.Options{})
 	got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
 		Model: "m", Open: open(strings.NewReader("RIFF")), FileName: "clip.wav",
 	})
@@ -297,9 +297,9 @@ func TestTranscribeRefusesRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
+			srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
 			called := false
-			c := newClient(t, srv.URL, ai.Options{
+			c := newClient(t, srv.URL(), ai.Options{
 				Token: func(context.Context) (string, error) { called = true; return "", nil },
 			})
 			got, err := c.Transcribe(t.Context(), tc.req)
@@ -324,8 +324,8 @@ func TestTranscribeRefusesRequest(t *testing.T) {
 func TestTranscribeAPIError(t *testing.T) {
 	reply := `{"error":{"code":400,"message":"Only 'json' response_format is supported for transcription",` +
 		`"type":"invalid_request_error"}}`
-	srv := aitest.NewServer(t, http.StatusBadRequest, reply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveTranscriptions(t, http.StatusBadRequest, reply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
 		Model: "m", Open: open(strings.NewReader("RIFF")), FileName: "clip.wav",
 	})
@@ -341,9 +341,9 @@ func TestTranscribeAPIError(t *testing.T) {
 }
 
 func TestTranscribeTokenErrorSendsNothing(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, transcribeReply)
+	srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
 	errExpired := errors.New("token expired")
-	c := newClient(t, srv.URL, ai.Options{
+	c := newClient(t, srv.URL(), ai.Options{
 		Token: func(context.Context) (string, error) { return "", errExpired },
 	})
 	_, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{

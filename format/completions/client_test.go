@@ -89,9 +89,9 @@ func TestGenerateRecordedGapUnderZeroProfile(t *testing.T) {
 	for _, g := range recordedGaps() {
 		t.Run(g.name, func(t *testing.T) {
 			reply := aitest.ReadTestdata(t, g.reply)
-			srv := aitest.NewServer(t, http.StatusBadRequest, string(reply))
+			srv := serve(t, http.StatusBadRequest, string(reply))
 			tokens := &aitest.TokenCounter{}
-			_, err := newProfileClient(t, srv.URL+"/v1", completions.Options{}, tokens).Generate(t.Context(), g.req)
+			_, err := newProfileClient(t, srv.URL(), completions.Options{}, tokens).Generate(t.Context(), g.req)
 			apiErr, ok := errors.AsType[*ai.APIError](err)
 			if !ok {
 				t.Fatalf("Generate error = %v, want an *ai.APIError", err)
@@ -105,7 +105,7 @@ func TestGenerateRecordedGapUnderZeroProfile(t *testing.T) {
 			if tokens.Calls != 1 {
 				t.Errorf("token source called %d times, want 1", tokens.Calls)
 			}
-			srv.Only(t)
+			only(t, srv)
 		})
 	}
 }
@@ -119,9 +119,9 @@ func TestGenerateRecordedGapDeclared(t *testing.T) {
 			continue
 		}
 		t.Run(g.name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusBadRequest, string(aitest.ReadTestdata(t, g.reply)))
+			srv := serve(t, http.StatusBadRequest, string(aitest.ReadTestdata(t, g.reply)))
 			tokens := &aitest.TokenCounter{}
-			_, err := newProfileClient(t, srv.URL+"/v1", g.opts, tokens).Generate(t.Context(), g.req)
+			_, err := newProfileClient(t, srv.URL(), g.opts, tokens).Generate(t.Context(), g.req)
 			got, ok := errors.AsType[*format.UnsupportedError](err)
 			if !ok {
 				t.Fatalf("Generate error = %v, want a *format.UnsupportedError", err)
@@ -149,14 +149,14 @@ func TestGenerateAllowedToolsNarrowed(t *testing.T) {
 			g = r
 		}
 	}
-	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm/tool_call.json")))
+	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm/tool_call.json")))
 	tokens := &aitest.TokenCounter{}
-	resp, err := newProfileClient(t, srv.URL+"/v1", g.opts, tokens).Generate(t.Context(), g.req)
+	resp, err := newProfileClient(t, srv.URL(), g.opts, tokens).Generate(t.Context(), g.req)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
 	if resp.Status != protocol.StatusCompleted {
 		t.Errorf("Status = %q, want the recorded call completed", resp.Status)
 	}
-	aitest.AssertJSON(t, toolMembers(t, srv.Only(t).Body), `{"tools":[`+getTimeWire+`],"tool_choice":"required"}`)
+	aitest.AssertJSON(t, toolMembers(t, only(t, srv).Body), `{"tools":[`+getTimeWire+`],"tool_choice":"required"}`)
 }

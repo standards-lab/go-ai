@@ -39,8 +39,8 @@ func assertModels(t *testing.T, got []ai.Model, want [][2]string) {
 // TestModelsWireRequest wants a GET of the models route, with no body or Content-Type, and the
 // Client's query, token, and fixed headers.
 func TestModelsWireRequest(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, modelsReply)
-	c := newClient(t, srv.URL+"/v1/", ai.Options{
+	srv := serveModels(t, http.StatusOK, modelsReply)
+	c := newClient(t, srv.URL()+"/", ai.Options{
 		Query:  url.Values{"autoload": {"false"}},
 		Token:  func(context.Context) (string, error) { return "secret", nil },
 		Header: http.Header{"X-Consumer-Key": {"k"}},
@@ -48,9 +48,9 @@ func TestModelsWireRequest(t *testing.T) {
 	if _, err := c.Models(t.Context()); err != nil {
 		t.Fatalf("Models: %v", err)
 	}
-	got := srv.Only(t)
-	if got.Method != http.MethodGet || got.Path != "/v1/models" || got.RawQuery != "autoload=false" {
-		t.Errorf("request = %s %s?%s, want GET /v1/models?autoload=false", got.Method, got.Path, got.RawQuery)
+	got := only(t, srv)
+	if got.Method != http.MethodGet || got.Path != "/v1/models" || got.Query.Encode() != "autoload=false" {
+		t.Errorf("request = %s %s?%s, want GET /v1/models?autoload=false", got.Method, got.Path, got.Query.Encode())
 	}
 	for k, want := range map[string]string{
 		"Accept":         "application/json",
@@ -68,8 +68,8 @@ func TestModelsWireRequest(t *testing.T) {
 }
 
 func TestModelsDecodesList(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, modelsReply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveModels(t, http.StatusOK, modelsReply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	got, err := c.Models(t.Context())
 	if err != nil {
 		t.Fatalf("Models: %v", err)
@@ -84,8 +84,8 @@ func TestModelsNative(t *testing.T) {
 		`"root":"/models/gpt-oss-120b","parent":null,"max_model_len":131072,` +
 		`"permission":[{"id":"modelperm-1","allow_sampling":true}]}`
 	idOnly := `{"id":"bare"}`
-	srv := aitest.NewServer(t, http.StatusOK, `{"object":"list","data":[`+vllm+`,`+idOnly+`]}`)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveModels(t, http.StatusOK, `{"object":"list","data":[`+vllm+`,`+idOnly+`]}`)
+	c := newClient(t, srv.URL(), ai.Options{})
 	got, err := c.Models(t.Context())
 	if err != nil {
 		t.Fatalf("Models: %v", err)
@@ -96,22 +96,22 @@ func TestModelsNative(t *testing.T) {
 // TestModelsAnyFormat wants Models to GET the OpenAI-compatible route on a Client of a format
 // whose own route is elsewhere.
 func TestModelsAnyFormat(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, modelsReply)
-	c, err := ai.New(srv.URL+"/v1", http.DefaultClient, messages.New(messages.Options{}), ai.Options{})
+	srv := serveModels(t, http.StatusOK, modelsReply)
+	c, err := ai.New(srv.URL(), http.DefaultClient, messages.New(messages.Options{}), ai.Options{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	if _, err := c.Models(t.Context()); err != nil {
 		t.Fatalf("Models: %v", err)
 	}
-	if got := srv.Only(t); got.Method != http.MethodGet || got.Path != "/v1/models" {
+	if got := only(t, srv); got.Method != http.MethodGet || got.Path != "/v1/models" {
 		t.Errorf("request = %s %s, want GET /v1/models", got.Method, got.Path)
 	}
 }
 
 func TestModelsRefusesReply(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, `{"data":"none"}`)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveModels(t, http.StatusOK, `{"data":"none"}`)
+	c := newClient(t, srv.URL(), ai.Options{})
 	got, err := c.Models(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "decode response") || !strings.HasPrefix(err.Error(), "ai: models: ") {
 		t.Errorf("Models = %v, %v; want an ai: models: decode response error", got, err)
@@ -122,8 +122,8 @@ func TestModelsRefusesReply(t *testing.T) {
 // details.
 func TestModelsAPIError(t *testing.T) {
 	reply := `{"error":{"code":401,"message":"Invalid API Key","type":"authentication_error"}}`
-	srv := aitest.NewServer(t, http.StatusUnauthorized, reply)
-	c := newClient(t, srv.URL, ai.Options{})
+	srv := serveModels(t, http.StatusUnauthorized, reply)
+	c := newClient(t, srv.URL(), ai.Options{})
 	got, err := c.Models(t.Context())
 	apiErr, ok := errors.AsType[*ai.APIError](err)
 	if !ok {
@@ -136,9 +136,9 @@ func TestModelsAPIError(t *testing.T) {
 }
 
 func TestModelsTokenErrorSendsNothing(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, modelsReply)
+	srv := serveModels(t, http.StatusOK, modelsReply)
 	errExpired := errors.New("token expired")
-	c := newClient(t, srv.URL, ai.Options{
+	c := newClient(t, srv.URL(), ai.Options{
 		Token: func(context.Context) (string, error) { return "", errExpired },
 	})
 	if _, err := c.Models(t.Context()); !errors.Is(err, errExpired) {

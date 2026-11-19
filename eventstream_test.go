@@ -15,7 +15,6 @@ import (
 	"github.com/standards-lab/go-ai"
 	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/format/completions"
-	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
 // ndjsonType is the media type of ndjsonStream, an event stream defined only by these tests.
@@ -97,21 +96,21 @@ var framings = []framing{
 // fold the reply to the same Response as the same reply over SSE: the client reads a reply only
 // through its Format's event stream.
 func TestGenerateStreamDeclaredEventStream(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, ndjsonEvents(streamed...))
-	c := newClientFormat(t, srv.URL, http.DefaultClient, ndjsonFormat{completions.New(completions.Options{})}, ai.Options{})
+	srv := serveChat(t, http.StatusOK, ndjsonEvents(streamed...))
+	c := newClientFormat(t, srv.URL(), http.DefaultClient, ndjsonFormat{completions.New(completions.Options{})}, ai.Options{})
 	events, got, errs := collect(t, c.GenerateStream(t.Context(), hello()))
 	if len(errs) > 0 {
 		t.Fatalf("GenerateStream errors: %v", errs)
 	}
-	sse := aitest.NewServer(t, http.StatusOK, eventStream(streamed...))
-	wantEvents, want, _ := collect(t, newClient(t, sse.URL, ai.Options{}).GenerateStream(t.Context(), hello()))
+	sse := serveChat(t, http.StatusOK, eventStream(streamed...))
+	wantEvents, want, _ := collect(t, newClient(t, sse.URL(), ai.Options{}).GenerateStream(t.Context(), hello()))
 	if !reflect.DeepEqual(events, wantEvents) || !reflect.DeepEqual(got, want) {
 		t.Errorf("over NDJSON: %d events, Response %#v\nover SSE: %d events, Response %#v", len(events), got, len(wantEvents), want)
 	}
 	if !reflect.DeepEqual(got, completed) {
 		t.Errorf("Response = %#v\nwant       %#v", got, completed)
 	}
-	if got := srv.Only(t).Header.Get("Accept"); got != ndjsonType {
+	if got := only(t, srv).Header.Get("Accept"); got != ndjsonType {
 		t.Errorf("Accept = %q, want %s", got, ndjsonType)
 	}
 }
@@ -120,8 +119,8 @@ func TestGenerateStreamDeclaredEventStream(t *testing.T) {
 // body, beside a failed read, to end the stream as a failed read does: matching
 // io.ErrUnexpectedEOF and wrapping the reader's error.
 func TestGenerateStreamEventStreamReadError(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, ndjsonEvents(streamed[:3]...)+"not JSON\n")
-	c := newClientFormat(t, srv.URL, http.DefaultClient, ndjsonFormat{completions.New(completions.Options{})}, ai.Options{})
+	srv := serveChat(t, http.StatusOK, ndjsonEvents(streamed[:3]...)+"not JSON\n")
+	c := newClientFormat(t, srv.URL(), http.DefaultClient, ndjsonFormat{completions.New(completions.Options{})}, ai.Options{})
 	_, resp, errs := collect(t, c.GenerateStream(t.Context(), hello()))
 	if len(errs) != 1 || !errors.Is(errs[0], io.ErrUnexpectedEOF) || !strings.Contains(errs[0].Error(), "ndjson:") {
 		t.Fatalf("GenerateStream errors = %v, want one io.ErrUnexpectedEOF wrapping the reader's", errs)

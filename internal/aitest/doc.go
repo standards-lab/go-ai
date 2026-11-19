@@ -1,15 +1,9 @@
-// Package aitest holds the test helpers the module's test packages share: a loopback HTTP
-// server that answers with a fixed reply and records the requests it receives, a token source
-// that counts its calls, and the assertions the format packages' tests make of encoded bodies,
+// Package aitest holds the test helpers the module's test packages share: a token source that
+// counts its calls, and the assertions the format packages' tests make of encoded bodies,
 // refusals, and decoded responses.
 //
 // Its exported identifiers:
 //
-//   - [Request] is one request a Server received, as it arrived on the wire.
-//   - [Server] is a loopback HTTP server answering every request with one status and body.
-//   - [NewServer] starts a Server, closed when the test ends.
-//   - [Server.Requests] returns the requests the Server received, in order.
-//   - [Server.Only] returns the one request the Server received, failing the test otherwise.
 //   - [TokenCounter] is a token source that counts its calls.
 //   - [TokenCounter.Token] returns a fixed token, counting the call.
 //   - [ReplyMessage] returns a recorded error reply's message.

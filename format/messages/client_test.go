@@ -35,12 +35,12 @@ func newClient(t *testing.T, base string, opts ai.Options) *ai.Client {
 }
 
 func TestGeneratePostsToMessagesWithVersionAndBearer(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
-	c := newClient(t, srv.URL+"/v1", ai.Options{Token: func(context.Context) (string, error) { return "secret", nil }})
+	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
+	c := newClient(t, srv.URL(), ai.Options{Token: func(context.Context) (string, error) { return "secret", nil }})
 	if _, err := c.Generate(t.Context(), ask(text(protocol.RoleUser, "hi"))); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	r := srv.Only(t)
+	r := only(t, srv)
 	if r.Path != "/v1/messages" {
 		t.Errorf("path = %q, want /v1/messages", r.Path)
 	}
@@ -55,12 +55,12 @@ func TestGeneratePostsToMessagesWithVersionAndBearer(t *testing.T) {
 // TestGenerateSendsAPIKey wants Anthropic's x-api-key, set as a fixed header, on the request
 // beside the format's anthropic-version.
 func TestGenerateSendsAPIKey(t *testing.T) {
-	srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
-	c := newClient(t, srv.URL, ai.Options{Header: http.Header{"x-api-key": {"key"}}})
+	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
+	c := newClient(t, srv.URL(), ai.Options{Header: http.Header{"x-api-key": {"key"}}})
 	if _, err := c.Generate(t.Context(), ask(text(protocol.RoleUser, "hi"))); err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	h := srv.Only(t).Header
+	h := only(t, srv).Header
 	if got := h.Values("X-Api-Key"); len(got) != 1 || got[0] != "key" {
 		t.Errorf("X-Api-Key = %q, want [key]", got)
 	}
@@ -80,9 +80,9 @@ func TestGenerateRefusesBeforeTheToken(t *testing.T) {
 	}})
 	for name, req := range map[string]*protocol.Request{"no MaxOutputTokens": noMax, "audio input": audio} {
 		t.Run(name, func(t *testing.T) {
-			srv := aitest.NewServer(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
+			srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
 			called := false
-			c := newClient(t, srv.URL, ai.Options{Token: func(context.Context) (string, error) { called = true; return "secret", nil }})
+			c := newClient(t, srv.URL(), ai.Options{Token: func(context.Context) (string, error) { called = true; return "secret", nil }})
 			if _, err := c.Generate(t.Context(), req); err == nil {
 				t.Fatal("Generate = nil error, want the request refused")
 			}
@@ -193,9 +193,9 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 	for _, e := range recordedRefusedEfforts {
 		t.Run(string(e), func(t *testing.T) {
 			reply := aitest.ReadTestdata(t, "vllm-0.34.0/effort_"+string(e)+".json")
-			srv := aitest.NewServer(t, http.StatusBadRequest, string(reply))
+			srv := serve(t, http.StatusBadRequest, string(reply))
 			tokens := &aitest.TokenCounter{}
-			_, err := newProfileClient(t, srv.URL+"/v1", messages.Options{}, tokens).Generate(t.Context(), recordedEffort(e))
+			_, err := newProfileClient(t, srv.URL(), messages.Options{}, tokens).Generate(t.Context(), recordedEffort(e))
 			apiErr, ok := errors.AsType[*ai.APIError](err)
 			if !ok {
 				t.Fatalf("Generate error = %v, want an *ai.APIError", err)
@@ -209,7 +209,7 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 			if tokens.Calls != 1 {
 				t.Errorf("token source called %d times, want 1", tokens.Calls)
 			}
-			srv.Only(t)
+			only(t, srv)
 		})
 	}
 }
@@ -220,9 +220,9 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 // recording, read apart from the format's own decoding.
 func TestGenerateRecordedEffortNoneUnderZeroProfile(t *testing.T) {
 	reply := aitest.ReadTestdata(t, "vllm-0.34.0/effort_none.json")
-	srv := aitest.NewServer(t, http.StatusOK, string(reply))
+	srv := serve(t, http.StatusOK, string(reply))
 	tokens := &aitest.TokenCounter{}
-	resp, err := newProfileClient(t, srv.URL+"/v1", messages.Options{}, tokens).
+	resp, err := newProfileClient(t, srv.URL(), messages.Options{}, tokens).
 		Generate(t.Context(), recordedEffort(protocol.ReasoningEffortNone))
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
@@ -278,7 +278,7 @@ func TestGenerateRecordedEffortNoneUnderZeroProfile(t *testing.T) {
 	var sent struct {
 		Thinking map[string]any `json:"thinking"`
 	}
-	if err := json.Unmarshal(srv.Only(t).Body, &sent); err != nil {
+	if err := json.Unmarshal(only(t, srv).Body, &sent); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(sent.Thinking, map[string]any{"type": "disabled"}) {
@@ -301,10 +301,10 @@ func TestGenerateRecordedEffortDeclared(t *testing.T) {
 	for _, tc := range cases {
 		e := tc.effort
 		t.Run(string(e), func(t *testing.T) {
-			srv := aitest.NewServer(t, tc.status, string(aitest.ReadTestdata(t, "vllm-0.34.0/effort_"+string(e)+".json")))
+			srv := serve(t, tc.status, string(aitest.ReadTestdata(t, "vllm-0.34.0/effort_"+string(e)+".json")))
 			tokens := &aitest.TokenCounter{}
 			opts := messages.Options{RefusedEfforts: []protocol.ReasoningEffort{e}}
-			_, err := newProfileClient(t, srv.URL+"/v1", opts, tokens).Generate(t.Context(), recordedEffort(e))
+			_, err := newProfileClient(t, srv.URL(), opts, tokens).Generate(t.Context(), recordedEffort(e))
 			got, ok := errors.AsType[*format.UnsupportedError](err)
 			if !ok {
 				t.Fatalf("Generate error = %v, want a *format.UnsupportedError", err)
