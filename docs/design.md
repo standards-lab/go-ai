@@ -3,9 +3,9 @@
 go-ai's design, reviewed from spike-ai-pipeline-client v0.4.0: what the spike is measured against,
 what go-ai keeps, changes, and drops from it, the surface the library and infer tasks of
 v1.ai.client build to, the reasoning behind the base module's unexported code, and the
-alternatives the review rules out. The judgement calls it settles
-are go-ai's `STANDARDS.md`. The base module is built to it, and where building against the
-endpoints changed the review, the finding or decision states what holds.
+alternatives the review rules out. The judgement calls it settles are go-ai's `STANDARDS.md`. The
+base module is built to it, and where building against the endpoints changed the review, the
+finding or decision states what holds.
 
 ## Evaluation
 
@@ -571,11 +571,11 @@ go-ai's format-test kit, is the spike's `internal/clienttest`, renamed with the 
 
 Each format's testdata is recorded from llama.cpp b11669's router, from vLLM 0.33.0, and, for the
 profiles' gaps, from vLLM 0.34.0, and Chat Completions' and Open Responses' also from Azure AI
-Foundry, each set with a README that names its engine and build, says how it was recorded, and records what the
-engine departs from (findings 31 and 43). The integration tier is a root-level package of the
-base module, as the spike's is: the check builds, vets, and lints it under its build tag (finding
-45), and `mise run integration` runs it against the endpoints its `AI_<ROLE>_BASE_URL` variables
-name (finding 41). No CI job runs it.
+Foundry, each set with a README that names its engine and build, says how it was recorded, and
+records what the engine departs from (findings 31 and 43). The integration tier is a root-level
+package of the base module, as the spike's is: the check builds, vets, and lints it under its
+build tag (finding 45), and `mise run integration` runs it against the endpoints its
+`AI_<ROLE>_BASE_URL` variables name (finding 41). No CI job runs it.
 
 ### infer's module
 
@@ -993,7 +993,8 @@ and infer that their names and exported docs leave unsaid, kept here rather than
   vision stream's, leaves room for both. One request is bounded in time too: the endpoints have
   their models loaded, so the bound covers generation alone, tens of seconds on a reasoning model.
 - **The model list is a check of its own.** TestModels wants each role's endpoint to list exactly
-  one model, so a misnamed or crowded endpoint fails there by name before any scenario of it runs.
+  one model, so a misnamed or crowded endpoint fails there by name before any scenario of it runs;
+  a role whose `AI_<ROLE>_MODEL` names its model wants the list to name at least one.
   A route the formats don't shape, such as embeddings', is sent in Chat Completions as the
   client's format.
 - **A declared gap skips from inside the client.** A format refuses a request as it encodes it,

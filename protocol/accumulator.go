@@ -23,13 +23,13 @@ import (
 // Add refuses an event that doesn't follow the events before it: anything before
 // response.created or after a terminal event, a sequence number that doesn't increase, an item
 // added at a negative output index or at one already added, an item added under the id of one
-// added before it (an empty id, from a format with none to give, is never a repeat), an event about an item or part that wasn't added or
-// is already done, an item_id that isn't the id of the item at the event's output_index, a part
-// added before the one ahead of it is done, an item done before its parts, or a function call's
-// arguments, are done, a done event whose text, arguments, or content isn't what the deltas made,
-// and a terminal response.completed or response.incomplete while an item is open, while an output
-// index below the highest added wasn't added, or after an error event. A refused event changes
-// nothing.
+// added before it (an empty id, from a format with none to give, is never a repeat), an event
+// about an item or part that wasn't added or is already done, an item_id that isn't the id of the
+// item at the event's output_index, a part added before the one ahead of it is done, an item done
+// before its parts, or a function call's arguments, are done, a done event whose text, arguments,
+// or content isn't what the deltas made, and a terminal response.completed or response.incomplete
+// while an item is open, while an output index below the highest added wasn't added, or after an
+// error event. A refused event changes nothing.
 //
 // An error event, the server's report that the response failed, changes nothing of the response:
 // the response.failed that follows it carries the failure, in its Response's Error, and that

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Records the Chat Completions gap replies in this directory from vLLM 0.34.0, or those whose stems are
-# named.
+# Records the Chat Completions gap replies in this directory from vLLM 0.34.0, or those whose stems
+# are named.
 # See README.md
 set -euo pipefail
 cd "$(dirname "$0")"

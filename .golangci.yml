@@ -3,7 +3,7 @@
 # See architecture/standards/go-elemental/principles/dependencies.md
 # See architecture/standards/go-elemental/principles/tests-and-docs.md
 # See architecture/principles/comments.md
-# See docs/design.md
+# See docs/design.md, "The lint configuration"
 version: "2"
 
 run:

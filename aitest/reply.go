@@ -17,8 +17,6 @@ import (
 // [RawReply]. A typed reply is the wire shape of its route, and is written as that shape whichever
 // route returns it.
 type Reply interface {
-	// write writes the reply to w, shaped as a asks. ctx is the request's context, which a
-	// held stream waits on.
 	write(ctx context.Context, w http.ResponseWriter, a asked)
 }
 
