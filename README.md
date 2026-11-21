@@ -122,7 +122,7 @@ The repository is a Go workspace of two modules, the base module and `tools/infe
 through [mise](https://mise.jdx.dev):
 
 ```sh
-mise run check        # build, vet, format, fix, tidy, test, and lint every module; writes nothing
+mise run check        # build, vet, format, fix, tidy, test, and lint every module, then lint-context and lint-references; writes nothing
 mise run currency     # report requirements, Go, tools, and action pins behind their latest
 mise run upgrade      # upgrade every module's go directive and requirements, and the tools, to their latest
 mise run integration  # run every module's integration tier against the AI_*_BASE_URL endpoints

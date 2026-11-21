@@ -1,4 +1,9 @@
+# See architecture/standards/go-elemental/principles/release-and-ci.md
+[settings]
+task.run_auto_install = false
+
 [tools]
+"github:standards-lab/claude-plugins" = { version = "0.22.0", version_prefix = "marathon/v" }
 go = "1.27.4"
 golangci-lint = "2.15.0"
 jq = "1.8.2"
@@ -7,7 +12,7 @@ jq = "1.8.2"
 GO_MODULES = ". tools/infer"
 
 [tasks.check]
-description = "Hold the base module to no requirements, then build, vet, format, fix, tidy, test, and lint every module; writes nothing"
+description = "Hold the base module to no requirements, then build, vet, format, fix, tidy, test, and lint every module, then run lint-context and lint-references; writes nothing"
 run = '''
 set -eu
 export GOWORK=off
@@ -32,6 +37,17 @@ for mod in $GO_MODULES; do
   golangci-lint run ./...
   golangci-lint run --build-tags integration ./...
 done
+cd "$MISE_PROJECT_ROOT"
+fail=0
+for lint in lint-context lint-references; do
+  if ! command -v "$lint" >/dev/null; then
+    echo "FAIL: $lint is not on PATH; run mise install" >&2
+    fail=1
+  elif ! "$lint"; then
+    fail=1
+  fi
+done
+exit "$fail"
 '''
 
 # See README.md
