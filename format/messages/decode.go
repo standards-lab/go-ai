@@ -54,25 +54,23 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 	if resp.Status, resp.IncompleteDetails, ok = decodeStop(wire.StopReason); !ok {
 		return nil, fmt.Errorf("messages: response has unknown stop_reason %q", wire.StopReason)
 	}
-	// id is the next output item's id.
-	id := func() string { return itemID(wire.ID, len(resp.Output)) }
-	// text is the open run's message's content, nil when no run is open.
-	var text []protocol.ContentPart
+	nextItemID := func() string { return itemID(wire.ID, len(resp.Output)) }
+	var runText []protocol.ContentPart
 	closeRun := func() {
-		if text == nil {
+		if runText == nil {
 			return
 		}
 		resp.Output = append(resp.Output, protocol.Message{
-			ID:      id(),
+			ID:      nextItemID(),
 			Status:  protocol.StatusCompleted,
 			Role:    protocol.RoleAssistant,
-			Content: text,
+			Content: runText,
 		})
-		text = nil
+		runText = nil
 	}
 	for i, b := range wire.Content {
 		if b.Type == "text" {
-			text = append(text, protocol.OutputText{Text: b.Text})
+			runText = append(runText, protocol.OutputText{Text: b.Text})
 			continue
 		}
 		closeRun()
@@ -82,11 +80,11 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 			if err != nil {
 				return nil, fmt.Errorf("messages: response content block %d: %w", i, err)
 			}
-			r.ID = id()
+			r.ID = nextItemID()
 			resp.Output = append(resp.Output, r)
 		case "tool_use":
 			resp.Output = append(resp.Output, protocol.FunctionCall{
-				ID:        id(),
+				ID:        nextItemID(),
 				Status:    protocol.StatusCompleted,
 				CallID:    b.ID,
 				Name:      b.Name,
@@ -103,8 +101,6 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 	return resp, nil
 }
 
-// decodeReasoning returns the reasoning item of b, a thinking or redacted_thinking block, as
-// DecodeResponse describes, completed and with no id.
 func decodeReasoning(b block) (protocol.Reasoning, error) {
 	r := protocol.Reasoning{Status: protocol.StatusCompleted}
 	var e envelope
@@ -122,8 +118,6 @@ func decodeReasoning(b block) (protocol.Reasoning, error) {
 	return r, nil
 }
 
-// sealEnvelope returns e in its encrypted_content layout: envelopePrefix, then e as JSON in
-// base64.
 func sealEnvelope(e envelope) (string, error) {
 	b, err := json.Marshal(e)
 	if err != nil {
@@ -132,7 +126,6 @@ func sealEnvelope(e envelope) (string, error) {
 	return envelopePrefix + base64.StdEncoding.EncodeToString(b), nil
 }
 
-// withStatus returns it, an output item, with status.
 func withStatus(it protocol.Item, status protocol.Status) protocol.Item {
 	switch it := it.(type) {
 	case protocol.Reasoning:
@@ -148,11 +141,7 @@ func withStatus(it protocol.Item, status protocol.Status) protocol.Item {
 	return it
 }
 
-// itemID returns the id of the output item at output in the reply whose id is reply: the reply's
-// id, a slash, and output in decimal, such as "msg_abc/1". Messages supplies no item ids, and the
-// spec requires one on every output item, so the format derives them, as completions does. The id
-// is unique within the reply, as output is, and across replies, as the reply's id is. A reply with
-// no id gives its items none: an id made of output alone would repeat in every reply.
+// See docs/design.md, "Implementation notes".
 func itemID(reply string, output int) string {
 	if reply == "" {
 		return ""
@@ -160,7 +149,6 @@ func itemID(reply string, output int) string {
 	return reply + "/" + strconv.Itoa(output)
 }
 
-// decodeUsage returns a reply's usage as the protocol's, as DecodeResponse describes.
 func decodeUsage(u usage) protocol.Usage {
 	input := count(u.InputTokens) + count(u.CacheReadInputTokens) + count(u.CacheCreationInputTokens)
 	output := count(u.OutputTokens)
@@ -173,7 +161,6 @@ func decodeUsage(u usage) protocol.Usage {
 	}
 }
 
-// count returns the count n points to, or zero for a count the reply omits.
 func count(n *int) int {
 	if n == nil {
 		return 0
@@ -181,8 +168,6 @@ func count(n *int) int {
 	return *n
 }
 
-// decodeStop returns the status, and the incomplete details, that a stop_reason gives, as
-// DecodeResponse describes, or false for a stop_reason it doesn't map.
 func decodeStop(reason string) (protocol.Status, *protocol.IncompleteDetails, bool) {
 	switch reason {
 	case "end_turn", "tool_use", "stop_sequence":

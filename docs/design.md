@@ -910,6 +910,45 @@ unsaid, kept here rather than in comments (`architecture/principles/comments.md`
   replies to one request differ even at temperature 0 and seed 7, so their reasoning and token
   counts are pinned from the stream too.
 
+### The messages format
+
+- **Item ids derive from the reply's id**, as the completions format's do: `<reply id>/<output
+  index>`, such as `msg_abc/1`, and none for a reply with no id.
+- **Refusals come first in a fixed order.** The effort is checked first, so a request of an
+  effort Messages lacks, or one the profile declares refused, is refused for that effort whatever
+  else it holds; the input is encoded next, so a request whose content Messages has no form for
+  is refused for that content whatever else it lacks; max_tokens comes after. The
+  anthropic-version header is set only once the body is encoded, so a refused request adds none.
+  A Native tool_choice beside ParallelToolCalls is refused as the clash Marshal would report were
+  the request to send the member ParallelToolCalls sets.
+- **A refusal part goes back as a text block**, as Messages has no refusal block to send back.
+- **An image data URL's media type** is the type alone: its parameters, such as a charset, precede
+  `;base64` and are dropped. A data URL of no data is malformed, an error but not a refusal.
+- **The envelope** is the prefix `go-ai:messages/v1:`, then base64 of one of two shapes,
+  `{"thinking","signature"}` for a thinking block, both members always present, or `{"data"}` for
+  a redacted_thinking block. Its members are pointers so the shape shows in which are present: a
+  thinking block's signature is present even when empty, as llama.cpp's always is. A
+  well-formed envelope is of exactly one shape. A change to the layout or the members' meaning is
+  a new version, and a new prefix.
+- **The usage's counts** are pointers on the wire, nil when the reply omits them or gives null, so
+  a message_delta, whose counts are cumulative, keeps the counts it omits at what they were.
+  message_start's output counts are placeholders, such as Anthropic's output_tokens of 1, so they
+  are cleared there and message_delta gives the reply's.
+- **An error frame** is recognized from its data: type `error`, Anthropic's, whose error member
+  holds the error; or a body of a type no Messages event has and a string message, as llama.cpp's
+  is, which holds the error object at its top level and is read as an OpenAI-style body wrapping
+  it. message_start's message is an object, so it is never taken for one.
+- **The stream decoder** keeps each item's blocks, as a message is one block per part, and closes
+  an item once its blocks have stopped, it has ended, and its status is known: completed when an
+  item follows it, the stop_reason's once message_stop has made it final, as a later
+  message_delta may give another stop_reason. A tool_use block of no input_json_delta has the
+  input its start gave, `{}` from Anthropic or none from an endpoint that omits it, which becomes
+  `{}`, the arguments DecodeResponse gives the same call. An event that isn't JSON is reported with
+  its JSON error formatted, not wrapped, as the completions format's chunk is.
+- **The recorded replies** were each sent twice, streamed and not, and the endpoint makes new ids
+  for each, vLLM a new signature, and the router's prompt cache another split of the same input,
+  so the stream tests take those from the stream.
+
 ## Rejected alternatives
 
 What the review rules out, one line each with its reason, cited as the sections above cite theirs;

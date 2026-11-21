@@ -13,10 +13,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The tests here hold the format to its Options, the profile of the deployment it targets: what
-// RefusedEfforts refuses and leaves as the spec's form, and how Options decodes from JSON.
-
-// encodings are the format's two encodings of a request under opts, unstreamed and streamed.
 func encodings(opts messages.Options) map[string]func(*protocol.Request, http.Header) ([]byte, error) {
 	f := messages.New(opts)
 	return map[string]func(*protocol.Request, http.Header) ([]byte, error){
@@ -25,16 +21,12 @@ func encodings(opts messages.Options) map[string]func(*protocol.Request, http.He
 	}
 }
 
-// effortRequest is a request of effort e, bounded at 64 output tokens.
 func effortRequest(e protocol.ReasoningEffort) *protocol.Request {
 	req := ask(text(protocol.RoleUser, "hi"))
 	req.Reasoning = protocol.ReasoningParam{Effort: e}
 	return req
 }
 
-// TestProfileSendsUnlistedEffort wants every effort RefusedEfforts doesn't list sent as the spec
-// has it, and a request of no effort sent with none, whatever the set; and effort none, under
-// the zero profile, sent as thinking disabled.
 func TestProfileSendsUnlistedEffort(t *testing.T) {
 	refused := messages.Options{RefusedEfforts: []protocol.ReasoningEffort{
 		protocol.ReasoningEffortNone, protocol.ReasoningEffortXHigh, protocol.ReasoningEffortMax,
@@ -68,8 +60,6 @@ func TestProfileSendsUnlistedEffort(t *testing.T) {
 	}
 }
 
-// effortMembers returns body's thinking and output_config members alone, as a JSON object, so a
-// test can compare them across both encodings, whose bodies differ in their stream member.
 func effortMembers(t *testing.T, body []byte) []byte {
 	t.Helper()
 	var m struct {
@@ -86,9 +76,6 @@ func effortMembers(t *testing.T, body []byte) []byte {
 	return b
 }
 
-// TestProfileRefuses wants each effort the profile declares refused refused with a declared
-// *format.UnsupportedError, ahead of the format's other refusals, and minimal, which Messages
-// lacks, refused as the spec's gap though the profile lists it.
 func TestProfileRefuses(t *testing.T) {
 	every := messages.Options{RefusedEfforts: []protocol.ReasoningEffort{
 		protocol.ReasoningEffortNone, protocol.ReasoningEffortMinimal,
@@ -145,8 +132,6 @@ func TestProfileRefuses(t *testing.T) {
 	}
 }
 
-// TestNewCopiesRefusedEfforts wants a change to the caller's RefusedEfforts after New to leave
-// the format's profile as it was.
 func TestNewCopiesRefusedEfforts(t *testing.T) {
 	efforts := []protocol.ReasoningEffort{protocol.ReasoningEffortXHigh}
 	f := messages.New(messages.Options{RefusedEfforts: efforts})
@@ -156,7 +141,6 @@ func TestNewCopiesRefusedEfforts(t *testing.T) {
 	}
 }
 
-// strict is the decoding a profile's loader would use: an unknown member is an error.
 var strict = json.RejectUnknownMembers(true)
 
 func TestOptionsDecode(t *testing.T) {
@@ -170,9 +154,6 @@ func TestOptionsDecode(t *testing.T) {
 	}
 }
 
-// TestOptionsDecodeRefuses wants strict decoding to refuse an unknown member, the other formats'
-// no_allowed_tools among them, a member spelled as the Go field or in another case, even where the
-// decoder matches names case-insensitively, and an effort the protocol doesn't define.
 func TestOptionsDecodeRefuses(t *testing.T) {
 	cases := []struct {
 		name string
@@ -205,8 +186,6 @@ func TestOptionsDecodeRefuses(t *testing.T) {
 	}
 }
 
-// TestOptionsEncode wants Options encoded under its JSON name, a zero field omitted, so the zero
-// profile encodes as an empty object.
 func TestOptionsEncode(t *testing.T) {
 	cases := []struct {
 		name string

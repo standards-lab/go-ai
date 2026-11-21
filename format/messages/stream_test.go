@@ -18,16 +18,11 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// streamResult is what a stream's decoder made: its events, and the error that ended it, nil
-// when it ended with its terminal event.
 type streamResult struct {
 	events []protocol.Event
 	err    error
 }
 
-// decodeStream feeds body, a text/event-stream reply, to a new stream decoder, event by event as
-// the client does, the data alone, and returns the events it made, telling it the stream ended
-// at the body's end. It stops at the first error.
 func decodeStream(t *testing.T, body string) streamResult {
 	t.Helper()
 	wf := messages.New(messages.Options{})
@@ -54,8 +49,6 @@ func decodeStream(t *testing.T, body string) streamResult {
 	}
 }
 
-// stream is an event stream of the events' data, each named for its type, as the router writes
-// them, with a comment, the router's keep-alive, after the first.
 func stream(events ...string) string {
 	var b strings.Builder
 	for i, data := range events {
@@ -71,29 +64,22 @@ func stream(events ...string) string {
 	return b.String()
 }
 
-// The events of a stream of reply msg_1, as Anthropic and the router send them.
 const (
-	// messageStart opens reply msg_1, of 7 input tokens, 2 read from the cache and 1 written to it.
 	messageStart = `{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"m","stop_reason":null,"usage":{"input_tokens":4,"cache_read_input_tokens":2,"cache_creation_input_tokens":1,"output_tokens":1}}}`
 	messageStop  = `{"type":"message_stop"}`
 	ping         = `{"type":"ping"}`
 )
 
-// usageJSON is reply msg_1's usage, unstreamed, as messageStart and messageDelta give it.
 const usageJSON = `"usage":{"input_tokens":4,"cache_read_input_tokens":2,"cache_creation_input_tokens":1,"output_tokens":5}`
 
-// messageDelta is message_delta of stop_reason and 5 output tokens.
 func messageDelta(stopReason string) string {
 	return `{"type":"message_delta","delta":{"stop_reason":"` + stopReason + `","stop_sequence":null},"usage":{"output_tokens":5}}`
 }
 
-// blockStart is content_block_start of the block at index, block its JSON.
 func blockStart(index int, block string) string {
 	return fmt.Sprintf(`{"type":"content_block_start","index":%d,"content_block":%s}`, index, block)
 }
 
-// blockDelta is content_block_delta of the block at index, of a delta of typ whose member of
-// typ's carries s.
 func blockDelta(index int, typ, s string) string {
 	member := map[string]string{
 		"text_delta":       "text",
@@ -107,16 +93,10 @@ func blockDelta(index int, typ, s string) string {
 	return fmt.Sprintf(`{"type":"content_block_delta","index":%d,"delta":{"type":%q,%q:%s}}`, index, typ, member, quote(s))
 }
 
-// blockStop is content_block_stop of the block at index.
 func blockStop(index int) string {
 	return fmt.Sprintf(`{"type":"content_block_stop","index":%d}`, index)
 }
 
-// trace renders events one per line, each its spec type and the members it carries: a part
-// event's output index, content index, and item id, then its part or text, and an arguments
-// event's output index and item id, then its arguments text. A run of reasoning deltas, which a
-// recorded stream makes by the dozen, is one line of its first and last sequence numbers and its
-// count; the reasoning.done after it gives their text joined, which the Accumulator checks.
 func trace(events []protocol.Event) string {
 	var b strings.Builder
 	for i := 0; i < len(events); i++ {
@@ -171,8 +151,6 @@ func trace(events []protocol.Event) string {
 	return b.String()
 }
 
-// assertTrace fails t unless events render as want, a trace with its lines' leading tabs
-// trimmed.
 func assertTrace(t *testing.T, events []protocol.Event, want string) {
 	t.Helper()
 	var lines []string
@@ -184,13 +162,6 @@ func assertTrace(t *testing.T, events []protocol.Event, want string) {
 	}
 }
 
-// asStreamed returns reply, an unstreamed reply's body, with the ids body, a text/event-stream
-// reply to the same request, gave: the reply's, message_start's, and each tool_use block's, the
-// one the stream's block in its place began with; each thinking block's signature, the one the
-// stream's thinking block in its place was given by its signature_delta; and the model and the
-// input usage message_start gave, its split between input_tokens and the cache counts. The
-// recorded replies were each sent twice, and the endpoint makes new ids for each, vLLM a new
-// signature, and the router's prompt cache another split of the same input.
 func asStreamed(t *testing.T, reply, body string) string {
 	t.Helper()
 	var r map[string]any
@@ -272,8 +243,6 @@ func asStreamed(t *testing.T, reply, body string) string {
 	return string(b)
 }
 
-// TestStreamRecorded translates the recorded router streams to events, and folds them to the
-// Response DecodeResponse gives for the same reply unstreamed, item ids included.
 func TestStreamRecorded(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -354,10 +323,6 @@ func TestStreamRecorded(t *testing.T) {
 	}
 }
 
-// TestStreamUsage wants the terminal Response's usage counted as DecodeResponse counts it: its
-// input message_start's input_tokens with both cache counts added, its cached tokens the cache
-// reads, its output message_delta's output_tokens, not message_start's, its reasoning tokens
-// message_delta's thinking_tokens, and its total the input and output's sum.
 func TestStreamUsage(t *testing.T) {
 	const delta = `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5,"output_tokens_details":{"thinking_tokens":3}}}`
 	r := decodeStream(t, stream(messageStart, delta, messageStop))
@@ -376,8 +341,6 @@ func TestStreamUsage(t *testing.T) {
 	}
 }
 
-// TestStreamIDAndModel wants message_start's id and model on the created and the terminal
-// Response, and on the Response the stream folds to.
 func TestStreamIDAndModel(t *testing.T) {
 	r := decodeStream(t, stream(messageStart, messageDelta("end_turn"), messageStop))
 	if r.err != nil {
@@ -402,9 +365,6 @@ func TestStreamIDAndModel(t *testing.T) {
 	}
 }
 
-// TestStreamMessageDeltas covers several message_delta events: the last stop_reason that isn't
-// null is the reply's, each count a delta gives is cumulative and replaces the one before, a
-// count a delta omits keeps its value, and the last item's status waits for message_stop.
 func TestStreamMessageDeltas(t *testing.T) {
 	text := []string{
 		messageStart,
@@ -449,7 +409,6 @@ func TestStreamMessageDeltas(t *testing.T) {
 			},
 			status:  protocol.StatusIncomplete,
 			details: &protocol.IncompleteDetails{Reason: protocol.ReasonContextWindow},
-			// input 10, cache reads 20, and message_start's cache creation 1.
 			usage: protocol.Usage{InputTokens: 31, OutputTokens: 9, TotalTokens: 40,
 				InputTokensDetails:  protocol.InputTokensDetails{CachedTokens: 20},
 				OutputTokensDetails: protocol.OutputTokensDetails{ReasoningTokens: 4}},
@@ -475,8 +434,6 @@ func TestStreamMessageDeltas(t *testing.T) {
 	}
 }
 
-// openAtOnce are the blocks of a reply of thinking, text, and a call, each begun, and deltas
-// given, as the router sends them, every block's stop to follow.
 var openAtOnce = []string{
 	messageStart,
 	blockStart(0, `{"type":"thinking","thinking":""}`),
@@ -490,18 +447,12 @@ var openAtOnce = []string{
 	blockDelta(0, "signature_delta", "sig"),
 }
 
-// openAtOnceReply is the reply openAtOnce's stream makes, unstreamed.
 const openAtOnceReply = `{"id":"msg_1","model":"m","content":[
 	{"type":"thinking","thinking":"Need the tool.","signature":"sig"},
 	{"type":"text","text":"Checking."},
 	{"type":"tool_use","id":"toolu_1","name":"get_weather","input":{"city":"Paris"}}],
 	"stop_reason":"tool_use",` + usageJSON + `}`
 
-// TestStreamOpenAtOnce covers blocks open at once, as the router streams every reply: each part
-// closes at its own block's stop, whatever order the stops come in, each item's output_item.done
-// follows once its blocks have stopped and an item follows it, the last item's at message_delta,
-// and the stream folds to what DecodeResponse gives for the same reply. Anthropic's order, each
-// block stopped before the next begins, folds the same.
 func TestStreamOpenAtOnce(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -613,10 +564,6 @@ func TestStreamOpenAtOnce(t *testing.T) {
 	}
 }
 
-// TestStreamBlocks covers each kind of block, and folds each stream to what DecodeResponse gives
-// for the same reply: consecutive text blocks parts of one message; the signature and the
-// redacted data kept for the reasoning item's envelope; a call of no input_json_delta of the
-// arguments {}; and the status of the last item the stop_reason's.
 func TestStreamBlocks(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -761,9 +708,6 @@ func TestStreamBlocks(t *testing.T) {
 	}
 }
 
-// TestStreamEnvelopes wants the reasoning items' output_item.done to carry the envelopes
-// DecodeResponse writes, the thinking block's signature folded into its envelope, and each to go
-// back out as the block it came as.
 func TestStreamEnvelopes(t *testing.T) {
 	r := decodeStream(t, stream(
 		messageStart,
@@ -798,8 +742,6 @@ func TestStreamEnvelopes(t *testing.T) {
 			{"type":"text","text":"Paris"}]}]}`)
 }
 
-// TestStreamIgnores wants ping events, events of a type the decoder doesn't know, and deltas of
-// a type it doesn't know to make nothing: the stream makes the events it makes without them.
 func TestStreamIgnores(t *testing.T) {
 	events := []string{
 		messageStart,
@@ -823,7 +765,6 @@ func TestStreamIgnores(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// The extra event goes in the open text block, before its delta and after it.
 			withExtra := slices.Concat(events[:2], []string{tc.extra}, events[2:3], []string{tc.extra}, events[3:])
 			got := decodeStream(t, stream(withExtra...))
 			if got.err != nil {
@@ -834,15 +775,12 @@ func TestStreamIgnores(t *testing.T) {
 			}
 		})
 	}
-	// A ping ahead of message_start makes nothing either: response.created waits for it.
 	decoder := messages.New(messages.Options{}).NewStreamDecoder()
 	if events, err := decoder.Decode(format.WireEvent{Data: []byte(ping)}); err != nil || len(events) > 0 {
 		t.Errorf("Decode(ping) first = %v, %v; want nothing", events, err)
 	}
 }
 
-// TestStreamStopReason covers message_delta's stop_reason: the terminal event and the last
-// item's status it gives, as DecodeResponse maps it, and pause_turn and an unknown one refused.
 func TestStreamStopReason(t *testing.T) {
 	text := []string{
 		messageStart,
@@ -894,12 +832,6 @@ func TestStreamStopReason(t *testing.T) {
 	}
 }
 
-// TestStreamErrorFrame wants an error frame, in either shape, recognized from its data alone, to
-// close the stream as the spec has it: the error event of the frame's type, code, and message,
-// then response.failed, its response failed, its error the frame's code and message, holding the
-// output made before the frame, the items open at it in progress with what they had, which is
-// what the Accumulator held just before the frame. An event after it is an error, and End makes
-// nothing.
 func TestStreamErrorFrame(t *testing.T) {
 	const (
 		anthropic = `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`
@@ -907,8 +839,6 @@ func TestStreamErrorFrame(t *testing.T) {
 	)
 	overloaded := protocol.ErrorPayload{Type: "overloaded_error", Message: "Overloaded"}
 	contextShift := protocol.ErrorPayload{Type: "server_error", Code: "500", Message: "context shift is disabled"}
-	// openItems is every kind of item open: the thinking block stopped, its item waiting on the
-	// stop_reason; the text block open; and the call open.
 	openItems := slices.Concat(openAtOnce[:9], []string{blockStop(0)})
 	openOutput := []protocol.Item{
 		protocol.Reasoning{ID: "msg_1/0", Status: protocol.StatusCompleted, Content: []protocol.ReasoningText{{Text: "Need the tool."}}, EncryptedContent: seal(`{"thinking":"Need the tool.","signature":""}`)},
@@ -977,12 +907,10 @@ func TestStreamErrorFrame(t *testing.T) {
 				Usage:  tc.usage,
 			}
 			if tc.events[0] == messageStart {
-				// A frame after message_start fails the reply message_start opened.
 				want.ID, want.Model = "msg_1", "m"
 			}
 			aitest.AssertResponse(t, failed.Response, want)
 			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
-			// The failed response's output is what the Accumulator held just before the frame.
 			if before := aitest.Fold(t, r.events[:n-2]); !reflect.DeepEqual(before.Output, tc.output) {
 				t.Errorf("output before the frame = %#v\nwant the failed response's %#v", before.Output, tc.output)
 			}
@@ -1003,9 +931,6 @@ func TestStreamErrorFrame(t *testing.T) {
 	}
 }
 
-// TestStreamNotAnErrorFrame wants a body of a Messages event's type, or of no string message,
-// read as no error frame: message_start's message is an object, and an unknown event with a
-// message that isn't a string is ignored.
 func TestStreamNotAnErrorFrame(t *testing.T) {
 	r := decodeStream(t, stream(messageStart, `{"type":"content_block_flourish","message":{"text":"hi"}}`, messageDelta("end_turn"), messageStop))
 	if r.err != nil {
@@ -1016,8 +941,6 @@ func TestStreamNotAnErrorFrame(t *testing.T) {
 	}
 }
 
-// TestStreamEnd covers how a stream ends: at message_stop, and io.ErrUnexpectedEOF at an end
-// before it, and End makes nothing once message_stop has made the terminal event.
 func TestStreamEnd(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -1105,9 +1028,6 @@ func TestStreamRefusesEvent(t *testing.T) {
 	}
 }
 
-// TestStreamDecodeErrorIsNoEndOfStream wants an event cut short, whose JSON error wraps
-// io.ErrUnexpectedEOF, reported as an event the format can't decode, not as a stream that ended
-// early.
 func TestStreamDecodeErrorIsNoEndOfStream(t *testing.T) {
 	_, err := messages.New(messages.Options{}).NewStreamDecoder().Decode(format.WireEvent{Data: []byte(`{"type":`)})
 	if err == nil || !strings.Contains(err.Error(), "decode event") || errors.Is(err, io.ErrUnexpectedEOF) {
@@ -1132,9 +1052,6 @@ func TestEncodeStream(t *testing.T) {
 		"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`)
 }
 
-// TestEncodeStreamRefuses wants EncodeStreamRequest to refuse what EncodeRequest refuses, a
-// request of no max output tokens among them, and a Native stream member, which clashes with the
-// stream member the body always sets, streamed or not; each before it sets a header.
 func TestEncodeStreamRefuses(t *testing.T) {
 	f := messages.New(messages.Options{})
 	encodings := map[string]func(*protocol.Request, http.Header) ([]byte, error){

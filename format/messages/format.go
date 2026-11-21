@@ -5,9 +5,7 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// version is the Messages API version the format speaks, sent with every request as its
-// anthropic-version header.
-const version = "2026-10-21"
+const apiVersion = "2026-10-21"
 
 // Options is a profile: it declares the gaps of the one deployment the format targets, where the
 // deployment departs from the Messages API. Its zero value declares none and is the spec's form,

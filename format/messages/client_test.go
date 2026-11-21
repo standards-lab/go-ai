@@ -18,13 +18,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The tests here drive the format through ai.Client.Generate, for what it makes of the request
-// on the wire and of a non-2xx reply, and drive each recorded gap over a loopback server that
-// answers with the gap's recorded reply: under the zero profile the host's reply reaches the
-// caller, and under the profile that declares the gap the format refuses the request before the
-// token source is called or anything is sent.
-
-// newClient returns a Client of the server at base speaking the messages format, with opts.
 func newClient(t *testing.T, base string, opts ai.Options) *ai.Client {
 	t.Helper()
 	c, err := ai.New(base, http.DefaultClient, messages.New(messages.Options{}), opts)
@@ -52,8 +45,6 @@ func TestGeneratePostsToMessagesWithVersionAndBearer(t *testing.T) {
 	aitest.AssertJSON(t, r.Body, `{"model":"m","max_tokens":64,"stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`)
 }
 
-// TestGenerateSendsAPIKey wants Anthropic's x-api-key, set as a fixed header, on the request
-// beside the format's anthropic-version.
 func TestGenerateSendsAPIKey(t *testing.T) {
 	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
 	c := newClient(t, srv.URL(), ai.Options{Header: http.Header{"x-api-key": {"key"}}})
@@ -69,9 +60,6 @@ func TestGenerateSendsAPIKey(t *testing.T) {
 	}
 }
 
-// TestGenerateRefusesBeforeTheToken wants a request the format refuses, with no
-// MaxOutputTokens or with audio input, refused before the token source is called or anything
-// is sent.
 func TestGenerateRefusesBeforeTheToken(t *testing.T) {
 	noMax := ask(text(protocol.RoleUser, "hi"))
 	noMax.MaxOutputTokens = 0
@@ -103,8 +91,6 @@ func TestGenerateRefusesBeforeTheToken(t *testing.T) {
 	}
 }
 
-// TestGenerateAPIError covers the error bodies of both shapes a Messages endpoint answers with,
-// each an *APIError of the body's message and type, and the reply's Retry-After.
 func TestGenerateAPIError(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -150,8 +136,6 @@ func TestGenerateAPIError(t *testing.T) {
 	}
 }
 
-// reply is a transport that answers every request with status, body, and a Retry-After of
-// retryAfter.
 func reply(status int, body, retryAfter string) roundTripper {
 	return func(r *http.Request) (*http.Response, error) {
 		h := http.Header{"Content-Type": {"application/json"}, "Retry-After": {retryAfter}}
@@ -159,13 +143,10 @@ func reply(status int, body, retryAfter string) roundTripper {
 	}
 }
 
-// roundTripper is an http.RoundTripper made of a function.
 type roundTripper func(*http.Request) (*http.Response, error)
 
 func (f roundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// newProfileClient returns a Client of the server at base speaking the messages format under
-// opts, with the token source tokens.
 func newProfileClient(t *testing.T, base string, opts messages.Options, tokens *aitest.TokenCounter) *ai.Client {
 	t.Helper()
 	c, err := ai.New(base, http.DefaultClient, messages.New(opts), ai.Options{Token: tokens.Token})
@@ -175,7 +156,6 @@ func newProfileClient(t *testing.T, base string, opts messages.Options, tokens *
 	return c
 }
 
-// recordedEffort is the request of the recorded effort gaps, of effort e, as record.sh sends it.
 func recordedEffort(e protocol.ReasoningEffort) *protocol.Request {
 	return &protocol.Request{Model: "agent",
 		Input:           []protocol.Item{text(protocol.RoleUser, "Name three French cities, comma-separated, nothing else.")},
@@ -183,12 +163,8 @@ func recordedEffort(e protocol.ReasoningEffort) *protocol.Request {
 		Reasoning:       protocol.ReasoningParam{Effort: e}}
 }
 
-// recordedRefusedEfforts are the efforts vLLM 0.34.0 refused with a recorded 400.
 var recordedRefusedEfforts = []protocol.ReasoningEffort{protocol.ReasoningEffortXHigh, protocol.ReasoningEffortMax}
 
-// TestGenerateRecordedEffortUnderZeroProfile wants each recorded effort's 400, under the zero
-// profile, to reach the caller as an *ai.APIError of the host's status and message, after the
-// token was fetched and the request sent once.
 func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 	for _, e := range recordedRefusedEfforts {
 		t.Run(string(e), func(t *testing.T) {
@@ -214,10 +190,6 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 	}
 }
 
-// TestGenerateRecordedEffortNoneUnderZeroProfile wants effort none, under the zero profile, sent
-// as thinking disabled, and the recorded reply decoded as recorded: vLLM 0.34.0 ignored it and
-// reasoned anyway, so a reasoning item leads the message. The expected response is built from the
-// recording, read apart from the format's own decoding.
 func TestGenerateRecordedEffortNoneUnderZeroProfile(t *testing.T) {
 	reply := aitest.ReadTestdata(t, "vllm-0.34.0/effort_none.json")
 	srv := serve(t, http.StatusOK, string(reply))
@@ -286,9 +258,6 @@ func TestGenerateRecordedEffortNoneUnderZeroProfile(t *testing.T) {
 	}
 }
 
-// TestGenerateRecordedEffortDeclared wants each recorded effort, under the profile that declares
-// it refused, refused as declared before the token source is called or anything is sent: none
-// among them, which vLLM 0.34.0 ignores rather than refuses.
 func TestGenerateRecordedEffortDeclared(t *testing.T) {
 	cases := []struct {
 		effort protocol.ReasoningEffort

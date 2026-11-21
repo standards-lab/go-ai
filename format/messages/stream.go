@@ -97,72 +97,42 @@ func (*Format) NewStreamDecoder() format.StreamDecoder {
 	return &streamDecoder{}
 }
 
-// streamDecoder is a Messages stream's decoder, as NewStreamDecoder describes.
 type streamDecoder struct {
-	// seq is the next event's sequence number.
-	seq int
-	// created is set once response.created is made, started once message_start is read, and
-	// ended once the terminal event is made or an error has broken the stream.
+	seq                     int
 	created, started, ended bool
-	// id and model are the reply's id and model, message_start's.
-	id, model string
-	// usage is the reply's usage so far: message_start's input counts, each updated by the
-	// counts each message_delta gives.
-	usage usage
-	// stopped is set once a message_delta has arrived, and stopReason is the last stop_reason
-	// one gave that isn't null.
-	stopped    bool
-	stopReason string
-	// final is set at message_stop, once the stop_reason is final and gives status and details.
-	final   bool
-	status  protocol.Status
-	details *protocol.IncompleteDetails
-	// blocks are the content blocks begun, by index.
-	blocks map[int]*streamBlock
-	// items are the output items added, in output order, done and open.
-	items []*streamItem
-	// events are the events the current call has made.
-	events []protocol.Event
+	id, model               string
+	usage                   usage
+	stopped                 bool
+	stopReason              string
+	final                   bool
+	status                  protocol.Status
+	details                 *protocol.IncompleteDetails
+	blocks                  map[int]*streamBlock
+	items                   []*streamItem
+	events                  []protocol.Event
 }
 
-// streamItem is an output item a stream is making.
 type streamItem struct {
-	// id is the item's id, and index its place in the output.
-	id    string
-	index int
-	// blocks are the content blocks the item is made of: a message's, one per part, in order,
-	// and a reasoning item's or a function call's one.
+	id     string
+	index  int
 	blocks []*streamBlock
-	// ended is set once a message takes no more parts; a reasoning item or a function call is
-	// one block, and ends at once.
-	ended bool
-	// done is set once output_item.done is made, carrying item.
-	done bool
-	item protocol.Item
+	ended  bool
+	done   bool
+	item   protocol.Item
 }
 
-// streamBlock is a content block a stream is making.
 type streamBlock struct {
-	// typ is the block's type: thinking, redacted_thinking, text, or tool_use.
-	typ string
-	// item is the output item the block belongs to, and part its content index in a message.
-	item *streamItem
-	part int
-	// stopped is set at the block's content_block_stop.
-	stopped bool
-	// text is a thinking block's thinking, a text block's text, or a tool_use block's
-	// arguments, so far; deltas counts the tool_use block's input_json_deltas.
-	text   strings.Builder
-	deltas int
-	// signature is a thinking block's signature, and data a redacted_thinking block's.
+	typ             string
+	item            *streamItem
+	part            int
+	stopped         bool
+	text            strings.Builder
+	deltas          int
 	signature, data string
-	// callID, name, and input are a tool_use block's id, name, and the input its start gave.
-	callID, name string
-	input        jsontext.Value
+	callID, name    string
+	input           jsontext.Value
 }
 
-// eventTypes are the Messages stream's event types. A body of another type with a string message
-// is an error frame, as llama.cpp's is.
 var eventTypes = map[string]bool{
 	"message_start":       true,
 	"message_delta":       true,
@@ -174,9 +144,6 @@ var eventTypes = map[string]bool{
 	"error":               true,
 }
 
-// Decode decodes one event of the stream, as NewStreamDecoder describes, from its data alone:
-// the format names its events, where it does, in the data. With an error, the events it returns
-// are those it made before it.
 func (d *streamDecoder) Decode(e format.WireEvent) ([]protocol.Event, error) {
 	d.events = nil
 	if err := d.decode(e.Data); err != nil {
@@ -186,16 +153,13 @@ func (d *streamDecoder) Decode(e format.WireEvent) ([]protocol.Event, error) {
 	return d.events, nil
 }
 
-// decode decodes data, an event's, making events in d.events.
+// See docs/design.md, "Implementation notes".
 func (d *streamDecoder) decode(data []byte) error {
 	if d.ended {
 		return errors.New("event after the end of the stream")
 	}
 	var e streamEvent
 	if err := json.Unmarshal(data, &e); err != nil {
-		// The JSON error is formatted, not wrapped: an event cut short wraps
-		// io.ErrUnexpectedEOF, which in a stream means the stream ended before its terminal
-		// event, and this event arrived whole.
 		return fmt.Errorf("decode event: %v", err)
 	}
 	if e.Type == "error" || (!eventTypes[e.Type] && e.Message.Kind() == jsontext.KindString) {
@@ -220,12 +184,12 @@ func (d *streamDecoder) decode(data []byte) error {
 		return d.stopBlock(e.Index)
 	case "message_delta":
 		return d.messageDelta(e.Delta.StopReason, e.Usage)
-	default: // message_stop
+	default:
 		return d.end()
 	}
 }
 
-// start reads message_start's message, opening the stream.
+// See docs/design.md, "Implementation notes".
 func (d *streamDecoder) start(message jsontext.Value) error {
 	if d.started {
 		return errors.New("a second message_start")
@@ -237,15 +201,12 @@ func (d *streamDecoder) start(message jsontext.Value) error {
 		}
 	}
 	d.started, d.id, d.model, d.usage = true, m.ID, m.Model, m.Usage
-	// message_start's output counts are placeholders, such as Anthropic's output_tokens of 1;
-	// message_delta gives the reply's.
 	d.usage.OutputTokens, d.usage.OutputTokensDetails = nil, outputTokensDetails{}
 	d.blocks = map[int]*streamBlock{}
 	d.create()
 	return nil
 }
 
-// create makes response.created, once.
 func (d *streamDecoder) create() {
 	if d.created {
 		return
@@ -254,7 +215,6 @@ func (d *streamDecoder) create() {
 	d.emit(protocol.ResponseCreated{SequenceNumber: d.next(), Response: &protocol.Response{ID: d.id, Model: d.model, Status: protocol.StatusInProgress}})
 }
 
-// startBlock begins the content block at index, b, as NewStreamDecoder describes.
 func (d *streamDecoder) startBlock(index int, b block) error {
 	switch {
 	case d.stopped:
@@ -303,8 +263,6 @@ func (d *streamDecoder) startBlock(index int, b block) error {
 	return nil
 }
 
-// openMessage returns the assistant message still taking parts, the last item, or nil when
-// there is none.
 func (d *streamDecoder) openMessage() *streamItem {
 	if n := len(d.items); n > 0 {
 		if last := d.items[n-1]; !last.ended {
@@ -314,11 +272,6 @@ func (d *streamDecoder) openMessage() *streamItem {
 	return nil
 }
 
-// addItem adds the item of b, its first block, at the end of the output: the message the new
-// item follows takes no more parts, the items before the new one close completed if their blocks
-// have stopped, and then the new one's output_item.added, in progress and of no content. A
-// reasoning item or a function call ends at once; a message takes parts until a block of another
-// type begins, or message_delta arrives.
 func (d *streamDecoder) addItem(b *streamBlock) error {
 	if m := d.openMessage(); m != nil {
 		m.ended = true
@@ -326,8 +279,6 @@ func (d *streamDecoder) addItem(b *streamBlock) error {
 	it := &streamItem{id: itemID(d.id, len(d.items)), index: len(d.items), blocks: []*streamBlock{b}, ended: b.typ != "text"}
 	b.item = it
 	d.items = append(d.items, it)
-	// The new item follows every item before it, so those whose blocks have stopped are
-	// completed, and close ahead of its output_item.added.
 	if err := d.settle(it.index); err != nil {
 		return err
 	}
@@ -344,8 +295,6 @@ func (d *streamDecoder) addItem(b *streamBlock) error {
 	return nil
 }
 
-// writeText appends text, a thinking or text block's, to b, with its delta event. An empty text
-// makes nothing.
 func (d *streamDecoder) writeText(b *streamBlock, text string) {
 	if text == "" {
 		return
@@ -359,13 +308,11 @@ func (d *streamDecoder) writeText(b *streamBlock, text string) {
 	}
 }
 
-// delta reads a content_block_delta of the block at index, as NewStreamDecoder describes.
 func (d *streamDecoder) delta(index int, delta streamDelta) error {
 	b, err := d.openBlock(index)
 	if err != nil {
 		return err
 	}
-	// want is the type of block a delta of a known type belongs to.
 	var want string
 	switch delta.Type {
 	case "text_delta":
@@ -393,8 +340,6 @@ func (d *streamDecoder) delta(index int, delta streamDelta) error {
 	return nil
 }
 
-// writeArgs appends args to a tool_use block's arguments, with its delta event. Empty args make
-// nothing.
 func (d *streamDecoder) writeArgs(b *streamBlock, args string) {
 	b.deltas++
 	if args == "" {
@@ -404,7 +349,6 @@ func (d *streamDecoder) writeArgs(b *streamBlock, args string) {
 	d.emit(protocol.FunctionCallArgumentsDelta{SequenceNumber: d.next(), ItemID: b.item.id, OutputIndex: b.item.index, Delta: args})
 }
 
-// openBlock returns the block at index, begun and not stopped.
 func (d *streamDecoder) openBlock(index int) (*streamBlock, error) {
 	b := d.blocks[index]
 	switch {
@@ -416,8 +360,6 @@ func (d *streamDecoder) openBlock(index int) (*streamBlock, error) {
 	return b, nil
 }
 
-// stopBlock reads the content_block_stop of the block at index: its part's done events, or its
-// arguments', and then its item's output_item.done if it may close.
 func (d *streamDecoder) stopBlock(index int) error {
 	b, err := d.openBlock(index)
 	if err != nil {
@@ -435,9 +377,6 @@ func (d *streamDecoder) stopBlock(index int) error {
 		d.emit(protocol.ContentPartDone{SequenceNumber: d.next(), ItemID: it.id, OutputIndex: it.index, Part: protocol.ReasoningText{Text: text}})
 	case "tool_use":
 		if b.deltas == 0 {
-			// A call of no input_json_delta has the input its start gave, {} from
-			// Anthropic, or none from an endpoint that omits it; DecodeResponse gives
-			// the same call's input, {}, as its arguments.
 			input := string(b.input)
 			if input == "" {
 				input = "{}"
@@ -449,9 +388,6 @@ func (d *streamDecoder) stopBlock(index int) error {
 	return d.settle(len(d.items))
 }
 
-// messageDelta reads a message_delta: its stop_reason, kept unless it is null, and its usage's
-// cumulative counts. The first ends the message open, which takes no more parts. Its items'
-// statuses wait for message_stop, as a later message_delta may give another stop_reason.
 func (d *streamDecoder) messageDelta(stopReason string, u usage) error {
 	for i, it := range d.items {
 		if !it.stoppedAll() {
@@ -472,9 +408,7 @@ func (d *streamDecoder) messageDelta(stopReason string, u usage) error {
 	return nil
 }
 
-// settle closes, in output order, each of the first n items that may close: each not done
-// whose blocks have stopped and that has ended, and whose status is known, completed when an
-// item follows it among the n, and the stop_reason's once message_stop has made it final.
+// See docs/design.md, "Implementation notes".
 func (d *streamDecoder) settle(n int) error {
 	for _, it := range d.items[:n] {
 		if it.done || !it.ended || !it.stoppedAll() {
@@ -494,7 +428,6 @@ func (d *streamDecoder) settle(n int) error {
 	return nil
 }
 
-// stoppedAll reports whether every block of it has stopped.
 func (it *streamItem) stoppedAll() bool {
 	for _, b := range it.blocks {
 		if !b.stopped {
@@ -504,8 +437,6 @@ func (it *streamItem) stoppedAll() bool {
 	return true
 }
 
-// content returns a message's parts, an output_text of each of its blocks' text so far, in
-// order.
 func (it *streamItem) content() []protocol.ContentPart {
 	content := make([]protocol.ContentPart, len(it.blocks))
 	for i, b := range it.blocks {
@@ -514,8 +445,6 @@ func (it *streamItem) content() []protocol.ContentPart {
 	return content
 }
 
-// closeItem makes it's output_item.done, carrying the whole item, of status: the item
-// DecodeResponse makes of the same blocks.
 func (d *streamDecoder) closeItem(it *streamItem, status protocol.Status) error {
 	first := it.blocks[0]
 	switch first.typ {
@@ -536,9 +465,6 @@ func (d *streamDecoder) closeItem(it *streamItem, status protocol.Status) error 
 	return nil
 }
 
-// End ends the stream, as NewStreamDecoder describes: it makes nothing once message_stop has
-// made the terminal event, or an error frame or an error has ended it, and is
-// io.ErrUnexpectedEOF before.
 func (d *streamDecoder) End() ([]protocol.Event, error) {
 	if d.ended {
 		return nil, nil
@@ -547,8 +473,6 @@ func (d *streamDecoder) End() ([]protocol.Event, error) {
 	return nil, fmt.Errorf("messages: stream: stream ended before message_stop: %w", io.ErrUnexpectedEOF)
 }
 
-// end reads message_stop: it closes the items still to close, of the status the stop_reason
-// gives, and then the stream, with its terminal event.
 func (d *streamDecoder) end() error {
 	switch {
 	case !d.stopped:
@@ -556,7 +480,6 @@ func (d *streamDecoder) end() error {
 	case d.stopReason == "":
 		return errors.New("message_stop before a message_delta gave a stop_reason")
 	}
-	// The stop_reason was mapped at the message_delta that gave it.
 	d.status, d.details, _ = decodeStop(d.stopReason)
 	d.final = true
 	if err := d.settle(len(d.items)); err != nil {
@@ -579,9 +502,6 @@ func (d *streamDecoder) end() error {
 	return nil
 }
 
-// fail closes the stream at an error frame, data, as NewStreamDecoder describes: the error
-// event, then response.failed. anthropic is set for Anthropic's shape, whose error member holds
-// the error; llama.cpp's holds it at the top level.
 func (d *streamDecoder) fail(anthropic bool, data []byte) {
 	d.ended = true
 	d.create()
@@ -589,9 +509,8 @@ func (d *streamDecoder) fail(anthropic bool, data []byte) {
 	if anthropic {
 		payload.Message, payload.Type, payload.Code = format.DecodeOpenAIError(data)
 	} else {
-		// llama.cpp's body is the error object an OpenAI-style error body holds.
-		wrapped := append(append([]byte(`{"error":`), data...), '}')
-		payload.Message, payload.Type, payload.Code = format.DecodeOpenAIError(wrapped)
+		asOpenAIErrorBody := append(append([]byte(`{"error":`), data...), '}')
+		payload.Message, payload.Type, payload.Code = format.DecodeOpenAIError(asOpenAIErrorBody)
 	}
 	d.emit(protocol.ErrorEvent{SequenceNumber: d.next(), Error: payload})
 	d.emit(protocol.ResponseFailed{SequenceNumber: d.next(), Response: &protocol.Response{
@@ -604,10 +523,6 @@ func (d *streamDecoder) fail(anthropic bool, data []byte) {
 	}})
 }
 
-// output returns the items added, in output order: each done item as it was done, and each open
-// one in progress with the content or the arguments made so far, as the Accumulator holds it: a
-// reasoning item of its reasoning_text part, if it has one, without the encrypted_content its
-// done event gives; a message of its parts; and a function call of its arguments.
 func (d *streamDecoder) output() []protocol.Item {
 	var out []protocol.Item
 	for _, it := range d.items {
@@ -630,12 +545,10 @@ func (d *streamDecoder) output() []protocol.Item {
 	return out
 }
 
-// emit makes e, the stream's next event.
 func (d *streamDecoder) emit(e protocol.Event) {
 	d.events = append(d.events, e)
 }
 
-// next returns the next event's sequence number.
 func (d *streamDecoder) next() int {
 	n := d.seq
 	d.seq++

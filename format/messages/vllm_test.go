@@ -9,14 +9,11 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The thinking of the vLLM replies recorded in testdata/vllm.
 const (
 	vllmCitiesThinking  = "Need to output three French cities, comma-separated, nothing else."
 	vllmWeatherThinking = "We need to call function get_weather."
 )
 
-// TestDecodeVLLM decodes the vLLM replies recorded in testdata/vllm. vLLM signs each thinking
-// block, which the envelope keeps, and reports no cache counts.
 func TestDecodeVLLM(t *testing.T) {
 	message := func(id, s string) protocol.Message {
 		return protocol.Message{
@@ -107,10 +104,6 @@ func TestDecodeVLLM(t *testing.T) {
 	}
 }
 
-// TestStreamVLLM translates the vLLM streams recorded in testdata/vllm to events, and folds
-// them to the Response DecodeResponse gives for the same request unstreamed, given the stream's
-// ids and thinking signature and its calls' arguments text. vLLM stops each content block before
-// the next begins, as Anthropic does.
 func TestStreamVLLM(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -146,7 +139,6 @@ func TestStreamVLLM(t *testing.T) {
 	}
 }
 
-// TestDecodeErrorVLLM decodes vLLM's 404 body for an unknown model, Anthropic's error shape.
 func TestDecodeErrorVLLM(t *testing.T) {
 	message, typ, code := messages.New(messages.Options{}).DecodeError(aitest.ReadTestdata(t, "vllm/not_found.json"))
 	const want = "The model `go-ai/no-such-model` does not exist. Valid aliases: openai/gpt-oss-120b."

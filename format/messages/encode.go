@@ -117,21 +117,17 @@ func (f *Format) EncodeStreamRequest(req *protocol.Request, header http.Header) 
 	return f.encode(req, true, header)
 }
 
-// encode encodes req, streamed when stream is set, and sets the anthropic-version header once
-// the body is encoded, so a refused request adds none.
 func (f *Format) encode(req *protocol.Request, stream bool, header http.Header) ([]byte, error) {
 	b, err := f.encodeRequest(req, stream)
 	if err != nil {
 		return nil, fmt.Errorf("messages: %w", err)
 	}
-	header.Set("anthropic-version", version)
+	header.Set("anthropic-version", apiVersion)
 	return b, nil
 }
 
-// encodeRequest encodes req as EncodeRequest describes, streamed when stream is set.
+// See docs/design.md, "Implementation notes".
 func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
-	// The effort is checked first, so a request of an effort Messages lacks, or one the
-	// deployment's profile declares refused, is refused for that effort, whatever else it holds.
 	switch e := req.Reasoning.Effort; {
 	case e == protocol.ReasoningEffortMinimal:
 		return nil, refuse("reasoning effort", string(e),
@@ -140,8 +136,6 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 		return nil, declare("reasoning effort", string(e),
 			fmt.Sprintf("reasoning effort %s is refused by the deployment, as its profile declares", e))
 	}
-	// The input is encoded next, so a request whose content Messages has no form for is
-	// refused for that content, whatever else it lacks.
 	system, err := encodeSystem(req.Instructions, req.Input)
 	if err != nil {
 		return nil, err
@@ -165,8 +159,6 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 		return nil, err
 	}
 	if req.ParallelToolCalls != nil && native.Has(req.Native, "tool_choice") {
-		// ParallelToolCalls sets tool_choice, so a Native one clashes with it, as Marshal
-		// would report were this request to send it.
 		clash := &native.ClashError{Member: "tool_choice"}
 		return nil, refuse("native member", clash.Member, clash.Error())
 	}
@@ -205,15 +197,11 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 	return b, err
 }
 
-// isSystem reports whether it is a system or a developer message.
 func isSystem(it protocol.Item) bool {
 	m, ok := it.(protocol.Message)
 	return ok && (m.Role == protocol.RoleSystem || m.Role == protocol.RoleDeveloper)
 }
 
-// encodeSystem returns the top-level system, as EncodeRequest describes: nil when there are
-// neither instructions nor leading system messages, the instructions' string when no system
-// message leads the input, and otherwise an array of text blocks.
 func encodeSystem(instructions string, items []protocol.Item) (any, error) {
 	n := 0
 	for n < len(items) && isSystem(items[n]) {
@@ -230,7 +218,6 @@ func encodeSystem(instructions string, items []protocol.Item) (any, error) {
 		blocks = append(blocks, textBlock{Type: "text", Text: instructions})
 	}
 	for i, it := range items[:n] {
-		// A valid system or developer message is of input_text parts alone, each a text block.
 		b, err := encodeContent(it.(protocol.Message).Content)
 		if err != nil {
 			return nil, fmt.Errorf("input %d: %w", i, err)
@@ -240,18 +227,9 @@ func encodeSystem(instructions string, items []protocol.Item) (any, error) {
 	return blocks, nil
 }
 
-// encodeInput encodes the input items as messages, joining each user turn into one user message
-// and each assistant run into one assistant message, as EncodeRequest describes. The system and
-// developer messages that lead the input are encodeSystem's, and are skipped; one after them is
-// refused.
 func encodeInput(items []protocol.Item) ([]message, error) {
 	var messages []message
-	// results and content are the open user turn's tool_result blocks and its messages' blocks,
-	// both nil when no user turn is open.
 	var results, content []any
-	// run is the index in messages of the open run's assistant message, or -1 when no run is
-	// open or the open run is reasoning alone so far. reasoning is that reasoning's blocks,
-	// which lead the assistant message that joins the run.
 	run, reasoning := -1, []any(nil)
 	closeTurn := func() {
 		if results == nil && content == nil {
@@ -260,24 +238,22 @@ func encodeInput(items []protocol.Item) ([]message, error) {
 		messages = append(messages, message{Role: string(protocol.RoleUser), Content: append(results, content...)})
 		results, content = nil, nil
 	}
-	// openRun appends the assistant message of the run's reasoning, and opens the run at it.
 	openRun := func() {
 		closeTurn()
 		messages = append(messages, message{Role: string(protocol.RoleAssistant), Content: reasoning})
 		run, reasoning = len(messages)-1, nil
 	}
-	// leading is set while the items are the system and developer messages that lead the input.
-	leading := true
+	inLeadingSystem := true
 	for i, it := range items {
 		if isSystem(it) {
-			if leading {
+			if inLeadingSystem {
 				continue
 			}
 			role := it.(protocol.Message).Role
 			return nil, fmt.Errorf("input %d: %w", i, refuse("system message placement", string(role),
 				fmt.Sprintf("%s message after the conversation has begun has no Messages form, as Messages takes system content only ahead of the messages", role)))
 		}
-		leading = false
+		inLeadingSystem = false
 		switch it := it.(type) {
 		case protocol.Reasoning:
 			b, ok := openEnvelope(it.EncryptedContent)
@@ -296,7 +272,7 @@ func encodeInput(items []protocol.Item) ([]message, error) {
 			case protocol.RoleUser:
 				run, reasoning = -1, nil
 				content = append(content, blocks...)
-			default: // assistant: system and developer messages were taken above
+			default:
 				openRun()
 				messages[run].Content = append(messages[run].Content, blocks...)
 			}
@@ -330,10 +306,6 @@ func encodeInput(items []protocol.Item) ([]message, error) {
 	return messages, nil
 }
 
-// openEnvelope returns the block the envelope sealed in encryptedContent holds, a thinkingBlock
-// or a redactedThinkingBlock, and whether encryptedContent is this format's envelope at all:
-// false for one that is empty, another format's or version's, or malformed, a well-formed
-// envelope being of exactly one of the two shapes envelope describes.
 func openEnvelope(encryptedContent string) (any, bool) {
 	rest, ok := strings.CutPrefix(encryptedContent, envelopePrefix)
 	if !ok {
@@ -356,8 +328,6 @@ func openEnvelope(encryptedContent string) (any, bool) {
 	return nil, false
 }
 
-// encodeOutput encodes a function_call_output as a tool_result block: its output string, or its
-// parts as text blocks.
 func encodeOutput(o protocol.FunctionCallOutput) (toolResultBlock, error) {
 	b := toolResultBlock{Type: "tool_result", ToolUseID: o.CallID, Content: o.Output}
 	if len(o.OutputParts) > 0 {
@@ -370,11 +340,8 @@ func encodeOutput(o protocol.FunctionCallOutput) (toolResultBlock, error) {
 	return b, nil
 }
 
-// encodeTools encodes the request's tools and tool choice, as EncodeRequest describes, narrowing
-// the tools to an allowed_tools choice's set.
 func encodeTools(tools []protocol.FunctionTool, choice protocol.ToolChoice) ([]tool, *toolChoice, error) {
 	var wire *toolChoice
-	// allowed is the set an allowed_tools choice narrows the tools to, nil for any other choice.
 	var allowed map[string]bool
 	switch c := choice.(type) {
 	case nil:
@@ -405,21 +372,14 @@ func encodeTools(tools []protocol.FunctionTool, choice protocol.ToolChoice) ([]t
 	return out, wire, nil
 }
 
-// refuse returns the format's refusal of a request feature, the spec's: Messages has no form for
-// value, of feature, as message says.
 func refuse(feature, value, message string) error {
 	return &format.UnsupportedError{Format: "messages", Feature: feature, Value: value, Message: message}
 }
 
-// declare returns the format's refusal of a request feature the deployment's profile declares a
-// gap: the deployment refuses value, of feature, though Messages has a form for it, as message
-// says.
 func declare(feature, value, message string) error {
 	return &format.UnsupportedError{Format: "messages", Feature: feature, Value: value, Declared: true, Message: message}
 }
 
-// toolChoiceType returns the tool_choice type of a mode: auto as auto, required as any, and none
-// as none.
 func toolChoiceType(m protocol.ToolChoiceMode) string {
 	if m == protocol.ToolChoiceRequired {
 		return "any"
@@ -427,7 +387,6 @@ func toolChoiceType(m protocol.ToolChoiceMode) string {
 	return string(m)
 }
 
-// encodeContent encodes a message's content parts as blocks, as EncodeRequest describes.
 func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 	blocks := make([]any, 0, len(parts))
 	for i, p := range parts {
@@ -438,7 +397,6 @@ func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 		case protocol.OutputText:
 			b = textBlock{Type: "text", Text: p.Text}
 		case protocol.Refusal:
-			// Messages has no refusal block to send back; the refusal's text stands for it.
 			b = textBlock{Type: "text", Text: p.Refusal}
 		case protocol.InputImage:
 			source, err := encodeImageSource(p.ImageURL)
@@ -455,10 +413,7 @@ func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 	return blocks, nil
 }
 
-// encodeImageSource returns the image source of an input_image's URL: a base64 source for a
-// base64 data URL, data:<media type>;base64,<data>, and a url source for any other URL. A data
-// URL that isn't base64, or has no media type, is refused, as a base64 source needs both; one of
-// no data is malformed, an error but not a refusal.
+// See docs/design.md, "Implementation notes".
 func encodeImageSource(url string) (imageSource, error) {
 	rest, ok := strings.CutPrefix(url, "data:")
 	if !ok {
@@ -472,8 +427,6 @@ func encodeImageSource(url string) (imageSource, error) {
 	if !ok {
 		return imageSource{}, refuse("image data URL encoding", "", "image data URL isn't base64, as a base64 source requires")
 	}
-	// A media type's parameters, such as a charset, precede ;base64; the source takes the type
-	// alone.
 	mediaType, _, _ = strings.Cut(mediaType, ";")
 	if mediaType == "" {
 		return imageSource{}, refuse("image data URL media type", "",
