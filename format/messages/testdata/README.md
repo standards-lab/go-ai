@@ -1,6 +1,6 @@
 # messages testdata
 
-Anthropic Messages replies recorded from llama.cpp b11669, its router on gb10-2 serving set A, each
+Anthropic Messages replies recorded from llama.cpp b11669, its router on gb10-2, each
 unstreamed (`.json`), and some streamed too (`.sse`, the body as it arrived) for the same request,
 sent with `temperature` 0 and `seed` 7 to `/v1/messages?autoload=false`. The decode tests compare
 what `DecodeResponse` gives for each `.json` with the response it should be. The stream tests

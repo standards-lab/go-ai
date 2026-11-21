@@ -5,7 +5,7 @@ through go-ai, in Chat Completions, Anthropic Messages, or Open Responses, with 
 your own.
 
 ```sh
-go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.3.0
+go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.3.1
 ```
 
 ## Quick use
@@ -171,7 +171,7 @@ A failure is reported once on stderr, prefixed with the command, as in `infer ch
 `infer` is a CLI of
 [Go Elemental](https://github.com/standards-lab/architecture/blob/main/standards/go-elemental/README.md),
 laid out from [go-cli-sdk-template](https://github.com/standards-lab/go-cli-sdk-template). Its
-module requires go-ai v0.3.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else. A
+module requires go-ai v0.4.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else. A
 depguard rule holds every file, tests included, to the standard library, go-ai's public
 packages, go-cli-sdk, go-core, and infer's own packages.
 
@@ -185,7 +185,7 @@ The repository's [mise](https://mise.jdx.dev) tasks cover both modules and run f
 repository root:
 
 ```sh
-mise run check        # build, vet, format, fix, tidy, test, and lint every module; writes nothing
+mise run check        # build, vet, format, fix, tidy, test, and lint every module, then lint-context and lint-references; writes nothing
 mise run integration  # run every module's integration tier against the AI_*_BASE_URL endpoints
 ```
 

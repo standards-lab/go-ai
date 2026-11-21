@@ -4,8 +4,8 @@ The judgement calls the standards-reviewer applies to go-ai, beyond what `mise r
 enforces: each one line, with the architecture page that applies. They come from go-ai's design
 review, `docs/design.md`.
 
-- `architecture/principles/context-architecture.md`: the README and each package's `doc.go` hold
-  go-ai's documentation; a change that alters documented behavior updates them with it.
+- `architecture/principles/context-architecture.md`: both modules' READMEs, `docs/design.md`, and
+  each package's `doc.go` are the homes.
 - `architecture/principles/downward-dependencies.md`: no README, `doc.go`, comment, or test names a
   caller of go-ai; the README names what go-ai depends on.
 - `architecture/standards/go-elemental/README.md`, "Member repositories": the README states go-ai's
@@ -30,8 +30,7 @@ review, `docs/design.md`.
 - `architecture/principles/service-tiers.md`, "Native": a native engine parameter goes through the
   request's raw-JSON `Native` field, documented as native tier, never as a typed field.
 - `architecture/standards/go-elemental/principles/construction-and-execution.md`: `ai.New`'s
-  required inputs are positional and its optional ones `Options`, as `responses.New`'s are; every
-  new constructor does the same.
+  required inputs are positional and its optional ones `Options`, as `responses.New`'s are.
 - `architecture/standards/go-elemental/principles/lifecycle-and-context.md`: a nil HTTP client or
   format panics by name, and a base URL, retry policy, or header that can't be used is an error
   ("The wiring rule"); a call takes the caller's plain context, which ends it and closes its stream.
@@ -43,8 +42,8 @@ review, `docs/design.md`.
   express fails before the token source is called or anything is sent; a hint a format has no
   form for is dropped, and its package comment says so.
 - `architecture/standards/go-elemental/principles/topology-and-naming.md`: the root package is
-  `ai` and its errors are prefixed `ai: `; the base module has no provider sub-module; the root is
-  tagged `v<semver>` and `infer` `tools/infer/v<semver>`.
+  `ai` and its errors are prefixed `ai: `; the root is tagged `v<semver>` and `infer`
+  `tools/infer/v<semver>`.
 - `architecture/standards/go-elemental/principles/tests-and-docs.md`, "doc.go and godoc": every
   package's `doc.go` inventories its exported identifiers, and a format's package comment states
   what it sends, refuses, drops, and normalizes, naming no router build.
@@ -61,6 +60,4 @@ review, `docs/design.md`.
 - `architecture/standards/go-elemental/principles/cli-applications.md`: `infer` is laid out from
   go-cli-sdk-template, and `infrastructure.go` is the only file of its composition root that names
   a format.
-- `architecture/principles/comments.md`: every comment is one of the five kinds, in source, tests,
-  scripts, and every configuration file (TOML, YAML, `.gitignore`); a doc comment on an unexported
-  identifier or a test function is not package documentation.
+- `architecture/principles/comments.md`: applies to every file in both modules.

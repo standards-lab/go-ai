@@ -1,6 +1,6 @@
 # responses testdata
 
-Open Responses replies recorded from llama.cpp b11669, its router on gb10-2 serving set A, each
+Open Responses replies recorded from llama.cpp b11669, its router on gb10-2, each
 unstreamed (`.json`), and two streamed too (`.sse`, below), for a request of the body
 `EncodeRequest` sends, `"stream":false`, `"store":false`, and
 `"include":["reasoning.encrypted_content"]` among its members, posted to
