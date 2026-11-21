@@ -866,6 +866,50 @@ unsaid, kept here rather than in comments (`architecture/principles/comments.md`
   Await. Await's bound fails a test whose requests never arrive, naming the count, rather than
   leaving it to hang until the test binary's timeout.
 
+### The completions format
+
+- **Item ids derive from the reply's id**, as `<reply id>/<output index>`, such as
+  `chatcmpl-abc/1`, alike for every kind of item and alike streamed and unstreamed: every chunk
+  carries the reply's id, so a stream's items get the ids DecodeResponse gives the same reply. An
+  id is unique within the reply, as its output index is, and across replies, as the reply's id is.
+  A reply with no id gives its items none: an id made of the index alone would repeat in every
+  reply, which an empty one doesn't claim not to.
+- **Reasoning is read from reasoning_content first.** vLLM sends `reasoning` in its place; a
+  server that sends both sends one text under the two names, so reasoning_content alone is read,
+  never the two joined.
+- **The usage's reasoning tokens** are pointers on the wire, nil when the member is absent or
+  null, so a count of 0 under completion_tokens_details still counts as given and wins over the
+  top-level reasoning_tokens some servers send. A count is taken as given, never clamped, though
+  a server's may exceed completion_tokens, as Foundry's gpt-oss-120b's does.
+- **The request's members.** max_completion_tokens carries MaxOutputTokens: llama.cpp reads it
+  and max_tokens alike, as aliases of n_predict, and it is the name OpenAI keeps, having
+  deprecated max_tokens. stream is always sent, so a Native stream member clashes in both
+  encodings; stream_options is sent with a streamed request alone, as OpenAI refuses it
+  otherwise, and a Native stream_options is refused in both, as it is the stream's.
+  parallel_tool_calls is omitted when the request leaves it to the endpoint, so a Native member
+  of that name clashes only when it is set.
+- **The envelope** is what the format writes into a Reasoning item's encrypted_content and reads
+  back: the prefix `go-ai:completions/v1:`, naming the implementor, the format, and the version,
+  then `{"reasoning_content"}` as JSON in standard, padded base64. A change to the layout or the
+  members' meaning is a new version, and a new prefix; encrypted_content without this prefix was
+  written by another format, or another version, and isn't this format's to read. The tests pin
+  the envelopes as literals, so a layout change, which would orphan the envelopes callers hold,
+  fails there.
+- **A chunk that isn't JSON** is reported with its JSON error formatted, not wrapped: a chunk cut
+  short wraps `io.ErrUnexpectedEOF`, which in a stream means the stream ended before its terminal
+  event, and the chunk arrived whole.
+- **An error frame's param** is read by the format itself, as DecodeOpenAIError reads none; an
+  error of another shape, or a param that isn't a string, gives none.
+- **The stream decoder** records whether any event arrived, so End opens a stream of nothing but
+  chunks of no id and no choices before reporting it incomplete, and makes nothing for an empty
+  one. A call's output index follows from its tool-call index, the first call's index fixing the
+  base, so the output is the tool_calls array's order whatever order the calls begin in; calls
+  whose indexes skip one are refused at the finish_reason, before any closes.
+- **The recorded streams' cached prompt tokens** are pinned from the stream: llama.cpp's cache
+  held another share of the prompt for the stream than for the unstreamed send. Foundry's two
+  replies to one request differ even at temperature 0 and seed 7, so their reasoning and token
+  counts are pinned from the stream too.
+
 ## Rejected alternatives
 
 What the review rules out, one line each with its reason, cited as the sections above cite theirs;

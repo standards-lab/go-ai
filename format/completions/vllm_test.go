@@ -11,9 +11,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// sealReasoning returns the envelope the format writes for reasoning_content r. The envelope's
-// literal is pinned by the envelope constants; this spells it for the recorded replies'
-// reasoning, which is too long to pin by hand.
 func sealReasoning(t *testing.T, r string) string {
 	t.Helper()
 	b, err := json.Marshal(map[string]string{"reasoning_content": r})
@@ -23,14 +20,11 @@ func sealReasoning(t *testing.T, r string) string {
 	return "go-ai:completions/v1:" + base64.StdEncoding.EncodeToString(b)
 }
 
-// The reasoning of the vLLM replies recorded in testdata/vllm.
 const (
 	vllmCitiesReasoning  = "Need to output three French cities, comma-separated, nothing else."
 	vllmWeatherReasoning = "We need to call function get_weather."
 )
 
-// TestDecodeVLLM decodes the vLLM replies recorded in testdata/vllm, whose reasoning is in
-// vLLM's reasoning member.
 func TestDecodeVLLM(t *testing.T) {
 	message := func(id, s string) protocol.Message {
 		return protocol.Message{
@@ -53,7 +47,6 @@ func TestDecodeVLLM(t *testing.T) {
 		want *protocol.Response
 	}{
 		{
-			// A message alone: Gemma's reasoning is null.
 			file: "text.json",
 			want: &protocol.Response{
 				ID:     "chatcmpl-82796f247e0d0dae",
@@ -78,8 +71,6 @@ func TestDecodeVLLM(t *testing.T) {
 			},
 		},
 		{
-			// The content is empty, which gives no message, and the call's arguments are the
-			// JSON vLLM wrote back.
 			file: "tool_call.json",
 			want: &protocol.Response{
 				ID:    "chatcmpl-828cc59b58a5c335",
@@ -147,9 +138,6 @@ func TestDecodeVLLM(t *testing.T) {
 	}
 }
 
-// TestStreamVLLM translates the vLLM streams recorded in testdata/vllm to events, and folds
-// them to the Response DecodeResponse gives for the same request unstreamed, given the stream's
-// ids and its calls' arguments text; response.created bears the reply's id and model too.
 func TestStreamVLLM(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -186,8 +174,6 @@ func TestStreamVLLM(t *testing.T) {
 	}
 }
 
-// TestDecodeErrorVLLM decodes vLLM's 404 body for an unknown model, an OpenAI-style error of a
-// numeric code.
 func TestDecodeErrorVLLM(t *testing.T) {
 	message, typ, code := completions.New(completions.Options{}).DecodeError([]byte(readTestdata(t, "vllm/not_found.json")))
 	const want = "The model `go-ai/no-such-model` does not exist. Valid aliases: openai/gpt-oss-120b."

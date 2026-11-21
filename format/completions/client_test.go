@@ -12,13 +12,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The tests here drive each recorded gap through ai.Client.Generate, over a loopback server that
-// answers with the gap's recorded reply: under the zero profile the host's refusal reaches the
-// caller, and under the profile that declares the gap the format refuses or narrows the request
-// before the token source is called or anything is sent.
-
-// newProfileClient returns a Client of the server at base speaking the completions format under
-// opts, with the token source tokens.
 func newProfileClient(t *testing.T, base string, opts completions.Options, tokens *aitest.TokenCounter) *ai.Client {
 	t.Helper()
 	c, err := ai.New(base, http.DefaultClient, completions.New(opts), ai.Options{Token: tokens.Token})
@@ -28,8 +21,6 @@ func newProfileClient(t *testing.T, base string, opts completions.Options, token
 	return c
 }
 
-// gap is a recorded gap: its reply, a request of the shape it was recorded for, the profile that
-// declares it, and the refusal that profile gives the request, nil for a gap the format narrows.
 type gap struct {
 	name    string
 	reply   string
@@ -38,7 +29,6 @@ type gap struct {
 	refusal *format.UnsupportedError
 }
 
-// recordedGaps are the gaps the completions testdata records.
 func recordedGaps() []gap {
 	effort := func(e protocol.ReasoningEffort) gap {
 		return gap{
@@ -82,9 +72,6 @@ func recordedGaps() []gap {
 	}
 }
 
-// TestGenerateRecordedGapUnderZeroProfile wants each recorded gap's 400, under the zero profile,
-// to reach the caller as an *ai.APIError of the host's status and message, after the token was
-// fetched and the request sent once.
 func TestGenerateRecordedGapUnderZeroProfile(t *testing.T) {
 	for _, g := range recordedGaps() {
 		t.Run(g.name, func(t *testing.T) {
@@ -110,9 +97,6 @@ func TestGenerateRecordedGapUnderZeroProfile(t *testing.T) {
 	}
 }
 
-// TestGenerateRecordedGapDeclared wants each recorded gap the format refuses, under the profile
-// that declares it, refused as declared before the token source is called or anything is sent.
-// The gap the format narrows instead, allowed_tools, is TestGenerateAllowedToolsNarrowed's.
 func TestGenerateRecordedGapDeclared(t *testing.T) {
 	for _, g := range recordedGaps() {
 		if g.refusal == nil {
@@ -139,9 +123,6 @@ func TestGenerateRecordedGapDeclared(t *testing.T) {
 	}
 }
 
-// TestGenerateAllowedToolsNarrowed wants the recorded allowed_tools request, under
-// NoAllowedTools, sent narrowed: its allowed tool alone and its mode as a plain tool_choice, the
-// form vLLM 0.34.0 takes, here answered with a recorded tool call.
 func TestGenerateAllowedToolsNarrowed(t *testing.T) {
 	var g gap
 	for _, r := range recordedGaps() {

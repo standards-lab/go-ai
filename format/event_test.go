@@ -11,9 +11,6 @@ import (
 	"github.com/standards-lab/go-ai/format"
 )
 
-// TestSSE wants SSE to name text/event-stream and to read each event as a WireEvent: its Type
-// the event field, empty when the event has none, and its Data the data, with comments and
-// blocks without data making no event, and io.EOF at the body's end.
 func TestSSE(t *testing.T) {
 	if got := format.SSE.MediaType(); got != "text/event-stream" {
 		t.Errorf("MediaType = %q, want text/event-stream", got)
@@ -40,8 +37,6 @@ func TestSSE(t *testing.T) {
 	}
 }
 
-// TestSSEReadError wants a failed read of the body returned as it is, for the client to
-// classify.
 func TestSSEReadError(t *testing.T) {
 	boom := errors.New("boom")
 	r := format.SSE.NewReader(io.MultiReader(strings.NewReader("data: a\n\ndata: b\n"), iotest.ErrReader(boom)))

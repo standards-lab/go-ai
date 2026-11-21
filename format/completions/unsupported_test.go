@@ -11,18 +11,12 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// unknownItem, unknownPart, unknownChoice, and unknownFormat are an item, a content part, a tool
-// choice, and a text format of a type the format doesn't know, each taking its interface's
-// method from the protocol type it embeds.
 type (
 	unknownItem   struct{ protocol.Message }
 	unknownChoice struct{ protocol.FunctionToolChoice }
 	unknownFormat struct{ protocol.PlainTextFormat }
 )
 
-// TestEncodeRefusalIsUnsupported wants each request the format refuses refused with a
-// *format.UnsupportedError of the feature and value refused, a spec-level refusal, and the
-// refusal's message unchanged.
 func TestEncodeRefusalIsUnsupported(t *testing.T) {
 	user := text(protocol.RoleUser, "hi")
 	req := func(mod func(*protocol.Request)) *protocol.Request {
@@ -83,8 +77,6 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 	for name, encode := range encodings {
 		for _, tc := range cases {
 			if name == "EncodeStreamRequest" && tc.name == "native stream_options" {
-				// The streamed body sets stream_options, so the member is a clash there, which
-				// the native clash case covers.
 				continue
 			}
 			t.Run(name+"/"+tc.name, func(t *testing.T) {

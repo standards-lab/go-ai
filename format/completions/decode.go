@@ -50,8 +50,7 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 	}
 	choice := wire.Choices[0]
 	resp := &protocol.Response{ID: wire.ID, Model: wire.Model, Usage: decodeUsage(wire.Usage)}
-	// id is the next output item's id.
-	id := func() string { return itemID(wire.ID, len(resp.Output)) }
+	nextItemID := func() string { return itemID(wire.ID, len(resp.Output)) }
 	var ok bool
 	if resp.Status, resp.IncompleteDetails, ok = decodeFinish(choice.FinishReason); !ok {
 		return nil, fmt.Errorf("completions: response has unknown finish_reason %q", choice.FinishReason)
@@ -62,7 +61,7 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 			return nil, fmt.Errorf("completions: reasoning: %w", err)
 		}
 		resp.Output = append(resp.Output, protocol.Reasoning{
-			ID:               id(),
+			ID:               nextItemID(),
 			Status:           protocol.StatusCompleted,
 			Content:          []protocol.ReasoningText{{Text: r}},
 			EncryptedContent: sealed,
@@ -77,7 +76,7 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 	}
 	if len(content) > 0 {
 		resp.Output = append(resp.Output, protocol.Message{
-			ID:      id(),
+			ID:      nextItemID(),
 			Status:  protocol.StatusCompleted,
 			Role:    protocol.RoleAssistant,
 			Content: content,
@@ -88,7 +87,7 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 			return nil, fmt.Errorf("completions: response tool call %d has unknown type %q", i, c.Type)
 		}
 		resp.Output = append(resp.Output, protocol.FunctionCall{
-			ID:        id(),
+			ID:        nextItemID(),
 			Status:    protocol.StatusCompleted,
 			CallID:    c.ID,
 			Name:      c.Function.Name,
@@ -101,10 +100,6 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 	return resp, nil
 }
 
-// reasoningText returns the reasoning of a message or a delta: its reasoningContent, the
-// reasoning_content member llama.cpp and other OpenAI-compatible servers send, or, when that is
-// empty, its reasoning, the member vLLM sends in its place. A server that sends both sends one
-// text under the two names, so reasoning_content alone is read, never the two joined.
 func reasoningText(reasoningContent, reasoning string) string {
 	if reasoningContent != "" {
 		return reasoningContent
@@ -112,7 +107,6 @@ func reasoningText(reasoningContent, reasoning string) string {
 	return reasoning
 }
 
-// withStatus returns it, an output item, with status.
 func withStatus(it protocol.Item, status protocol.Status) protocol.Item {
 	switch it := it.(type) {
 	case protocol.Reasoning:
@@ -128,14 +122,7 @@ func withStatus(it protocol.Item, status protocol.Status) protocol.Item {
 	return it
 }
 
-// itemID returns the id of the output item at output in the reply whose id is reply: the reply's
-// id, a slash, and output in decimal, such as "chatcmpl-abc/1". Chat Completions supplies no item
-// ids, and the spec requires one on every output item and on the events about it, so the format
-// derives them, alike for every kind of item and alike streamed and unstreamed: every chunk of a
-// stream carries the reply's id, so a streamed reply's items get the ids DecodeResponse gives the
-// same reply. The id is unique within the reply, as output is, and across replies, as the reply's
-// id is. A reply with no id gives its items none: an id made of output alone would repeat in
-// every reply, which an empty one doesn't claim not to.
+// See docs/design.md, "Implementation notes".
 func itemID(reply string, output int) string {
 	if reply == "" {
 		return ""
@@ -143,11 +130,7 @@ func itemID(reply string, output int) string {
 	return reply + "/" + strconv.Itoa(output)
 }
 
-// decodeUsage returns a reply's usage as the protocol's. Its cached input tokens are
-// prompt_tokens_details.cached_tokens, or 0 when the usage gives none. Its reasoning tokens are
-// completion_tokens_details.reasoning_tokens when the usage gives that member, even as 0, and
-// otherwise the usage's top-level reasoning_tokens, or 0 when it gives neither. A count is taken
-// as given, never clamped, though a server's may exceed completion_tokens.
+// See docs/design.md, "Implementation notes".
 func decodeUsage(u usage) protocol.Usage {
 	reasoning := u.CompletionTokensDetails.ReasoningTokens
 	if reasoning == nil {
@@ -170,8 +153,6 @@ func decodeUsage(u usage) protocol.Usage {
 	}
 }
 
-// decodeFinish returns the status, and the incomplete details, that a finish_reason gives, as
-// DecodeResponse describes, or false for a finish_reason it doesn't know.
 func decodeFinish(reason string) (protocol.Status, *protocol.IncompleteDetails, bool) {
 	switch reason {
 	case "stop", "tool_calls":
@@ -184,8 +165,6 @@ func decodeFinish(reason string) (protocol.Status, *protocol.IncompleteDetails, 
 	return "", nil, false
 }
 
-// sealEnvelope returns e in its encrypted_content layout: envelopePrefix, then e as JSON in
-// base64.
 func sealEnvelope(e envelope) (string, error) {
 	b, err := json.Marshal(e)
 	if err != nil {
@@ -280,86 +259,54 @@ func (*Format) NewStreamDecoder() format.StreamDecoder {
 	return &streamDecoder{}
 }
 
-// streamDecoder is a Chat Completions stream's decoder, as NewStreamDecoder describes.
 type streamDecoder struct {
-	// seq is the next event's sequence number.
-	seq int
-	// id and model are the reply's id and model, the first chunk's that carries an id or
-	// choices; chunked is set once that chunk is read.
-	id, model string
-	chunked   bool
-	// received is set once any event is decoded, so End opens a stream that had only chunks of
-	// no id and no choices before it reports it incomplete.
-	received bool
-	// created is set once response.created is made, and ended once the terminal event is, or
-	// an error has broken the stream.
+	seq            int
+	id, model      string
+	chunked        bool
+	received       bool
 	created, ended bool
-	// finished is set once the finish_reason has arrived, giving status and details.
-	finished bool
-	status   protocol.Status
-	details  *protocol.IncompleteDetails
-	usage    protocol.Usage
-	// output is the items done, in output order.
-	output []protocol.Item
-	// reasoning is the reasoning item open, nil when none is.
-	reasoning *streamReasoning
-	// message is the message open, nil when none is.
-	message *streamMessage
-	// calls are the function calls open, by tool-call index; called is set once the first call
-	// is added, and callBase is then the output index of the call of index 0.
-	calls    map[int]*streamCall
-	called   bool
-	callBase int
-	// events are the events the current call has made.
-	events []protocol.Event
+	finished       bool
+	status         protocol.Status
+	details        *protocol.IncompleteDetails
+	usage          protocol.Usage
+	output         []protocol.Item
+	reasoning      *streamReasoning
+	message        *streamMessage
+	calls          map[int]*streamCall
+	called         bool
+	callBase       int
+	events         []protocol.Event
 }
 
-// streamMessage is the assistant message a stream is making.
 type streamMessage struct {
-	// id is the message's id, and index its place in the output.
-	id    string
-	index int
-	// content is the parts done.
+	id      string
+	index   int
 	content []protocol.ContentPart
-	// part is the part open: partText or partRefusal, or partNone when none is. text is its
-	// text so far.
-	part partKind
-	text strings.Builder
+	part    partKind
+	text    strings.Builder
 }
 
-// streamReasoning is the reasoning item a stream is making, of one reasoning_text part.
 type streamReasoning struct {
-	// id is the item's id, and index its place in the output.
 	id    string
 	index int
-	// text is the reasoning so far.
-	text strings.Builder
+	text  strings.Builder
 }
 
-// streamCall is a function call a stream is making.
 type streamCall struct {
-	// id is the item's id, and index its place in the output.
-	id    string
-	index int
-	// callID and name are the first fragment's id and function name.
+	id           string
+	index        int
 	callID, name string
-	// args is the call's arguments so far.
-	args strings.Builder
+	args         strings.Builder
 }
 
-// partKind is the kind of a message's open part.
 type partKind int
 
-// The kinds of part a stream opens in a message.
 const (
 	partNone partKind = iota
 	partText
 	partRefusal
 )
 
-// Decode decodes one event of the stream, as NewStreamDecoder describes, from its data alone:
-// the format names its events, where it does, in the data. With an error, the events it returns
-// are those it made before it.
 func (d *streamDecoder) Decode(e format.WireEvent) ([]protocol.Event, error) {
 	d.events = nil
 	if err := d.decode(e.Data); err != nil {
@@ -369,7 +316,7 @@ func (d *streamDecoder) Decode(e format.WireEvent) ([]protocol.Event, error) {
 	return d.events, nil
 }
 
-// decode decodes data, an event's, making events in d.events.
+// See docs/design.md, "Implementation notes".
 func (d *streamDecoder) decode(data []byte) error {
 	if d.ended {
 		return errors.New("event after the end of the stream")
@@ -382,23 +329,15 @@ func (d *streamDecoder) decode(data []byte) error {
 	var c chunk
 	if err := json.Unmarshal(data, &c); err != nil {
 		d.open()
-		// The JSON error is formatted, not wrapped: a chunk cut short wraps io.ErrUnexpectedEOF,
-		// which in a stream means the stream ended before its terminal event, and this chunk
-		// arrived whole.
 		return fmt.Errorf("decode chunk: %v", err)
 	}
-	// An error frame is the endpoint's report that the response failed, ahead of its end; its
-	// body is an OpenAI-style error's, which DecodeOpenAIError reads.
 	if len(c.Error) > 0 && c.Error.Kind() != jsontext.KindNull {
 		d.open()
 		d.fail(data, c.Error)
 		return nil
 	}
 	switch {
-	case c.ID == "" && len(c.Choices) == 0:
-		// A chunk of no id and no choices claims nothing about the reply, so it neither sets
-		// the stream's id and model nor is checked against them, and it opens nothing, so
-		// response.created bears the reply's; its usage, if any, is still read.
+	case c.claimsNothing():
 	case !d.chunked:
 		d.id, d.model, d.chunked = c.ID, c.Model, true
 		d.open()
@@ -452,9 +391,6 @@ func (d *streamDecoder) decode(data []byte) error {
 	return nil
 }
 
-// End ends the stream, as NewStreamDecoder describes: with the terminal event once the
-// finish_reason has arrived, or io.ErrUnexpectedEOF before it. After the terminal event or an
-// error, it makes nothing.
 func (d *streamDecoder) End() ([]protocol.Event, error) {
 	if d.ended {
 		return nil, nil
@@ -469,8 +405,6 @@ func (d *streamDecoder) End() ([]protocol.Event, error) {
 	return d.events, nil
 }
 
-// open opens the stream with response.created, bearing the stream's id and model, unless it is
-// open already.
 func (d *streamDecoder) open() {
 	if d.created {
 		return
@@ -479,7 +413,6 @@ func (d *streamDecoder) open() {
 	d.emit(protocol.ResponseCreated{SequenceNumber: d.next(), Response: &protocol.Response{ID: d.id, Model: d.model, Status: protocol.StatusInProgress}})
 }
 
-// end closes the stream with its terminal event, or reports it incomplete.
 func (d *streamDecoder) end() error {
 	d.ended = true
 	if !d.finished {
@@ -501,14 +434,11 @@ func (d *streamDecoder) end() error {
 	return nil
 }
 
-// fail closes the stream at an error frame, data, whose error member is frame, as
-// NewStreamDecoder describes: the error event, then response.failed.
+// See docs/design.md, "Implementation notes".
 func (d *streamDecoder) fail(data []byte, frame jsontext.Value) {
 	d.ended = true
 	var payload protocol.ErrorPayload
 	payload.Message, payload.Type, payload.Code = format.DecodeOpenAIError(data)
-	// DecodeOpenAIError reads no param, which the spec's error payload carries; an error of
-	// another shape, or a param that isn't a string, gives none.
 	var param struct {
 		Param string `json:"param"`
 	}
@@ -528,12 +458,6 @@ func (d *streamDecoder) fail(data []byte, frame jsontext.Value) {
 	}})
 }
 
-// openItems returns the items open, in progress, with the content or the arguments made so far,
-// in output order. The reasoning item and the message close as the next begins, so at most one
-// of them is open, and only before any call: a reasoning item of its reasoning_text part, without
-// the encrypted_content its done event gives; or the message, of its parts done and the one open.
-// The calls are open from their first fragment to the finish_reason, so any number of them may
-// be, each with the arguments it has.
 func (d *streamDecoder) openItems() []protocol.Item {
 	var items []protocol.Item
 	switch {
@@ -558,9 +482,6 @@ func (d *streamDecoder) openItems() []protocol.Item {
 	return items
 }
 
-// reason appends text to the reasoning item, opening it, and its reasoning_text part, when it
-// isn't open. An empty text makes nothing; text once the message or a call has begun is an
-// error.
 func (d *streamDecoder) reason(text string) error {
 	if text == "" {
 		return nil
@@ -580,9 +501,6 @@ func (d *streamDecoder) reason(text string) error {
 	return nil
 }
 
-// closeReasoning closes the open reasoning item, if there is one: reasoning.done,
-// content_part.done, then output_item.done carrying the whole item, of status, its
-// encrypted_content the envelope DecodeResponse gives the same reasoning.
 func (d *streamDecoder) closeReasoning(status protocol.Status) error {
 	r := d.reasoning
 	if r == nil {
@@ -603,9 +521,6 @@ func (d *streamDecoder) closeReasoning(status protocol.Status) error {
 	return nil
 }
 
-// delta appends text to the message's open part of kind, opening the message, and the part,
-// when it isn't open, and closing the reasoning item. An empty text makes nothing; text once a
-// call has begun is an error.
 func (d *streamDecoder) delta(kind partKind, text string) error {
 	if text == "" {
 		return nil
@@ -644,10 +559,6 @@ func (d *streamDecoder) delta(kind partKind, text string) error {
 	return nil
 }
 
-// toolCall folds f, a tool call's fragment, as NewStreamDecoder describes: a call's first
-// fragment adds the call, the first call's closing the reasoning or the message open before it,
-// and its argument text, and every later fragment's, is a delta of the call's arguments. A
-// fragment may be of any call, begun or not, whatever calls began before it.
 func (d *streamDecoder) toolCall(f toolCallDelta) error {
 	if f.Index < 0 {
 		return fmt.Errorf("tool call of negative index %d", f.Index)
@@ -671,8 +582,6 @@ func (d *streamDecoder) toolCall(f toolCallDelta) error {
 			d.closeMessage(protocol.StatusCompleted)
 			d.called, d.callBase, d.calls = true, len(d.output), map[int]*streamCall{}
 		}
-		// The call's output index follows from its tool-call index, not from the order the
-		// calls begin in, so the output is the tool_calls array's order, as DecodeResponse's is.
 		index := d.callBase + f.Index
 		c = &streamCall{id: itemID(d.id, index), index: index, callID: f.ID, name: f.Function.Name}
 		d.calls[f.Index] = c
@@ -689,10 +598,6 @@ func (d *streamDecoder) toolCall(f toolCallDelta) error {
 	return nil
 }
 
-// closeCalls closes the open function calls, in index order, each with
-// function_call_arguments.done, then output_item.done carrying the whole call: the last of
-// status, the ones before it completed. Calls whose indexes skip one are an error, before any
-// closes, as the output would have a gap where DecodeResponse's has none.
 func (d *streamDecoder) closeCalls(status protocol.Status) error {
 	indexes := slices.Sorted(maps.Keys(d.calls))
 	for i, index := range indexes {
@@ -716,8 +621,6 @@ func (d *streamDecoder) closeCalls(status protocol.Status) error {
 	return nil
 }
 
-// closePart closes the message's open part, if it has one: its text's done event, then
-// content_part.done.
 func (d *streamDecoder) closePart() {
 	m := d.message
 	if m.part == partNone {
@@ -738,8 +641,6 @@ func (d *streamDecoder) closePart() {
 	m.text.Reset()
 }
 
-// closeMessage closes the open message, if there is one, with its open part: output_item.done
-// carrying the whole message, of status.
 func (d *streamDecoder) closeMessage(status protocol.Status) {
 	if d.message == nil {
 		return
@@ -751,12 +652,10 @@ func (d *streamDecoder) closeMessage(status protocol.Status) {
 	d.message = nil
 }
 
-// emit makes e, the stream's next event.
 func (d *streamDecoder) emit(e protocol.Event) {
 	d.events = append(d.events, e)
 }
 
-// next returns the next event's sequence number.
 func (d *streamDecoder) next() int {
 	n := d.seq
 	d.seq++

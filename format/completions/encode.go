@@ -84,7 +84,6 @@ func (f *Format) EncodeStreamRequest(req *protocol.Request, _ http.Header) ([]by
 	return f.encodeRequest(req, true)
 }
 
-// encodeRequest encodes req as EncodeRequest describes, streamed when stream is set.
 func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	var err error
 	if e := req.Reasoning.Effort; e != "" && slices.Contains(f.opts.RefusedEfforts, e) {
@@ -103,8 +102,6 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 	if stream {
 		body.StreamOptions = &streamOptions{IncludeUsage: true}
 	} else if native.Has(req.Native, "stream_options") {
-		// The unstreamed body has no stream_options for the member to clash with, but it is
-		// the stream's, so it is refused in both.
 		return nil, fmt.Errorf("completions: %w", refuse("native member", "stream_options",
 			"native member stream_options clashes with the format's streaming"))
 	}
@@ -152,13 +149,8 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 	return b, nil
 }
 
-// encodeInput encodes the input items as messages, joining each run of assistant items into one
-// assistant message, as EncodeRequest describes.
 func encodeInput(items []protocol.Item) ([]message, error) {
 	var messages []message
-	// run is the index in messages of the open run's assistant message, or -1 when no run is
-	// open or the open run is reasoning alone so far. reasoning is that reasoning, the
-	// reasoning_content of the assistant message that joins the run, empty when there is none.
 	run, reasoning := -1, ""
 	for i, it := range items {
 		switch it := it.(type) {
@@ -211,9 +203,6 @@ func encodeInput(items []protocol.Item) ([]message, error) {
 	return messages, nil
 }
 
-// openEnvelope returns the reasoning_content the envelope sealed in encryptedContent holds, and
-// whether encryptedContent is this format's envelope at all: false for one that is empty,
-// another format's or version's, or malformed.
 func openEnvelope(encryptedContent string) (string, bool) {
 	rest, ok := strings.CutPrefix(encryptedContent, envelopePrefix)
 	if !ok {
@@ -230,8 +219,6 @@ func openEnvelope(encryptedContent string) (string, bool) {
 	return e.ReasoningContent, true
 }
 
-// encodeOutput encodes a function_call_output's result as a tool message's content: its output
-// string, or its parts as a message's content.
 func encodeOutput(o protocol.FunctionCallOutput) (jsontext.Value, error) {
 	if len(o.OutputParts) > 0 {
 		return encodeContent(o.OutputParts)
@@ -239,8 +226,6 @@ func encodeOutput(o protocol.FunctionCallOutput) (jsontext.Value, error) {
 	return json.Marshal(o.Output)
 }
 
-// narrow returns the tools allowed lets through, in their order in tools, for a deployment
-// with no allowed_tools choice. A tool allowed names that tools doesn't carry adds none.
 func narrow(tools []protocol.FunctionTool, allowed protocol.AllowedToolChoice) []protocol.FunctionTool {
 	var out []protocol.FunctionTool
 	for _, t := range tools {
@@ -251,8 +236,6 @@ func narrow(tools []protocol.FunctionTool, allowed protocol.AllowedToolChoice) [
 	return out
 }
 
-// encodeToolChoice encodes a tool choice as tool_choice, refusing a mode of required, plain or
-// allowed_tools', where the profile declares the deployment refuses it.
 func (f *Format) encodeToolChoice(tc protocol.ToolChoice) (jsontext.Value, error) {
 	switch tc := tc.(type) {
 	case protocol.ToolChoiceMode:
@@ -284,7 +267,6 @@ func (f *Format) encodeToolChoice(tc protocol.ToolChoice) (jsontext.Value, error
 	}
 }
 
-// encodeTextFormat encodes a text format as response_format.
 func encodeTextFormat(f protocol.TextFormat) (*responseFormat, error) {
 	switch f := f.(type) {
 	case protocol.PlainTextFormat:
@@ -301,26 +283,18 @@ func encodeTextFormat(f protocol.TextFormat) (*responseFormat, error) {
 	}
 }
 
-// refuse returns the format's refusal of a request feature, the spec's: Chat Completions has no
-// form for value, of feature, as message says.
 func refuse(feature, value, message string) error {
 	return &format.UnsupportedError{Format: "completions", Feature: feature, Value: value, Message: message}
 }
 
-// declare returns the format's refusal of a request feature the deployment's profile declares a
-// gap: the deployment refuses value, of feature, though Chat Completions has a form for it, as
-// message says.
 func declare(feature, value, message string) error {
 	return &format.UnsupportedError{Format: "completions", Feature: feature, Value: value, Declared: true, Message: message}
 }
 
-// namedChoice is f as a Chat Completions named tool choice.
 func namedChoice(f protocol.FunctionToolChoice) namedToolChoice {
 	return namedToolChoice{Type: "function", Function: functionName{Name: f.Name}}
 }
 
-// encodeContent encodes a message's content: a single text part as a plain string, anything
-// else, such as a message with an image or audio part, as an array of parts.
 func encodeContent(parts []protocol.ContentPart) (jsontext.Value, error) {
 	if len(parts) == 1 {
 		switch p := parts[0].(type) {

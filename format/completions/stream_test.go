@@ -18,16 +18,11 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// streamResult is what a stream's decoder made: its events, and the error that ended it, nil
-// when it ended with its terminal event.
 type streamResult struct {
 	events []protocol.Event
 	err    error
 }
 
-// decodeStream feeds body, a text/event-stream reply, to a new stream decoder, event by event as
-// the client does, and returns the events it made, telling it the stream ended at the body's
-// end. It stops at the first error.
 func decodeStream(t *testing.T, body string) streamResult {
 	t.Helper()
 	wf := completions.New(completions.Options{})
@@ -54,7 +49,6 @@ func decodeStream(t *testing.T, body string) streamResult {
 	}
 }
 
-// stream is an event stream of data events, one per chunk, as the router writes them.
 func stream(chunks ...string) string {
 	var b strings.Builder
 	for _, c := range chunks {
@@ -63,8 +57,6 @@ func stream(chunks ...string) string {
 	return b.String()
 }
 
-// delta is a chunk of reply chatcmpl-1 of one choice with delta and finish_reason, null when
-// finish is empty.
 func delta(delta, finish string) string {
 	reason := "null"
 	if finish != "" {
@@ -73,21 +65,13 @@ func delta(delta, finish string) string {
 	return `{"id":"chatcmpl-1","choices":[{"index":0,"delta":` + delta + `,"finish_reason":` + reason + `}],"object":"chat.completion.chunk"}`
 }
 
-// usageChunk is reply chatcmpl-1's chunk of no choices that carries the usage.
 const usageChunk = `{"id":"chatcmpl-1","choices":[],"usage":{"completion_tokens":5,"prompt_tokens":7,"total_tokens":12}}`
 
-// readTestdata returns the file name under testdata as text.
 func readTestdata(t *testing.T, name string) string {
 	t.Helper()
 	return string(aitest.ReadTestdata(t, name))
 }
 
-// trace renders events one per line, each its spec type and the members it carries: a part
-// event's output index, content index, and item id, then its part or text, and an arguments
-// event's output index and item id, then its arguments text. A run of reasoning deltas, which a
-// recorded stream makes by the dozen, is one line of its first and last sequence numbers and its
-// count; the reasoning.done after it gives their text joined, which the Accumulator checks. Each
-// backtick is written \x60, so a trace fits in a raw string.
 func trace(events []protocol.Event) string {
 	var b strings.Builder
 	for i := 0; i < len(events); i++ {
@@ -146,8 +130,6 @@ func trace(events []protocol.Event) string {
 	return strings.ReplaceAll(b.String(), "`", `\x60`)
 }
 
-// assertTrace fails t unless events render as want, a trace with its lines' leading tabs
-// trimmed.
 func assertTrace(t *testing.T, events []protocol.Event, want string) {
 	t.Helper()
 	var lines []string
@@ -159,10 +141,6 @@ func assertTrace(t *testing.T, events []protocol.Event, want string) {
 	}
 }
 
-// asStreamed returns reply, an unstreamed reply's body, as the reply body, a text/event-stream
-// reply, gave: its id the stream's, and each tool call's id the one the stream gave the call in
-// its place. The recorded replies were each sent twice, and the endpoint makes new ids for each,
-// so the streamed reply's ids aren't the other's.
 func asStreamed(t *testing.T, reply, body string) string {
 	t.Helper()
 	var r map[string]any
@@ -188,8 +166,6 @@ func asStreamed(t *testing.T, reply, body string) string {
 	return string(b)
 }
 
-// streamID returns the first id a chunk of body, a text/event-stream reply, carries: the
-// stream's id, which a leading chunk of no id doesn't set. It is empty when no chunk carries one.
 func streamID(t *testing.T, body string) string {
 	t.Helper()
 	events := sse.NewDecoder(strings.NewReader(body))
@@ -216,8 +192,6 @@ func streamID(t *testing.T, body string) string {
 	}
 }
 
-// streamCallIDs returns the ids of the tool calls in body, a text/event-stream reply, in the
-// order of their indexes: each call's id, which the fragments that carry one give.
 func streamCallIDs(t *testing.T, body string) []string {
 	t.Helper()
 	var ids []string
@@ -262,8 +236,6 @@ func streamCallIDs(t *testing.T, body string) []string {
 	}
 }
 
-// assertCreated fails t unless events open with response.created bearing the reply's id and
-// model, want's.
 func assertCreated(t *testing.T, events []protocol.Event, want *protocol.Response) {
 	t.Helper()
 	created, ok := events[0].(protocol.ResponseCreated)
@@ -275,10 +247,6 @@ func assertCreated(t *testing.T, events []protocol.Event, want *protocol.Respons
 	}
 }
 
-// TestStreamRecorded translates the recorded router streams to events, and folds them to the
-// Response DecodeResponse gives for the same reply unstreamed, item ids, id, and model included.
-// The cached prompt tokens are pinned from the stream: llama.cpp's cache held another share of
-// the prompt for the stream than for the unstreamed send.
 func TestStreamRecorded(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -389,8 +357,6 @@ func TestStreamRecorded(t *testing.T) {
 	}
 }
 
-// TestStreamUsage wants the usage of the chunk that carries it, after the finish_reason, in
-// the terminal event's response, its cached prompt tokens included.
 func TestStreamUsage(t *testing.T) {
 	r := decodeStream(t, readTestdata(t, "parallel_tool_calls.sse"))
 	completed, ok := r.events[len(r.events)-1].(protocol.ResponseCompleted)
@@ -404,8 +370,6 @@ func TestStreamUsage(t *testing.T) {
 	}
 }
 
-// TestStreamParts covers a message's parts: a run of content and a run of refusal each make a
-// part, in the order they arrive, and the message folds to what DecodeResponse gives.
 func TestStreamParts(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -489,8 +453,6 @@ func TestStreamParts(t *testing.T) {
 	}
 }
 
-// callDelta is a delta of one tool call fragment, of index: the call's first fragment when id is
-// set, carrying id, type function, and name, and a later one, of arguments alone, otherwise.
 func callDelta(index int, id, name, arguments string) string {
 	args, err := json.Marshal(arguments)
 	if err != nil {
@@ -502,14 +464,11 @@ func callDelta(index int, id, name, arguments string) string {
 	return fmt.Sprintf(`{"tool_calls":[{"index":%d,"id":%q,"type":"function","function":{"name":%q,"arguments":%s}}]}`, index, id, name, args)
 }
 
-// parisTokyo is reply chatcmpl-1 of two calls, c1 for Paris and c2 for Tokyo, unstreamed.
 const parisTokyo = `{"id":"chatcmpl-1","choices":[{"message":{"tool_calls":[
 		{"id":"c1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Paris\"}"}},
 		{"id":"c2","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Tokyo\"}"}}]},
 	"finish_reason":"tool_calls"}]}`
 
-// TestStreamToolCallsInterleavedFoldAsSequential wants calls whose fragments interleave folded to
-// the Response the same calls give sent one after the other.
 func TestStreamToolCallsInterleavedFoldAsSequential(t *testing.T) {
 	sequential := decodeStream(t, stream(
 		delta(callDelta(0, "c1", "get_weather", `{"city":`), ""),
@@ -531,12 +490,6 @@ func TestStreamToolCallsInterleavedFoldAsSequential(t *testing.T) {
 	aitest.AssertResponse(t, aitest.Fold(t, interleaved.events), aitest.Fold(t, sequential.events))
 }
 
-// TestStreamToolCalls covers function calls: the first call closes the message ahead of it,
-// completed; calls stay open together, their fragments assembled by index in whatever order they
-// arrive, interleaved, several in one chunk, or begun out of index order, each at the output
-// index its tool-call index gives; at the finish_reason they close in index order, the last
-// taking the status it gives, those before it completed; and each folds to what DecodeResponse
-// gives for the same reply, which the same calls sent one after another give too.
 func TestStreamToolCalls(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -639,7 +592,6 @@ func TestStreamToolCalls(t *testing.T) {
 		{
 			name: "one chunk of call 1's fragment before call 0's",
 			chunks: []string{
-				// One line, as a data event's.
 				delta(`{"tool_calls":[`+
 					`{"index":1,"id":"c2","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Tokyo\"}"}},`+
 					`{"index":0,"id":"c1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}]}`, ""),
@@ -707,11 +659,6 @@ func TestStreamToolCalls(t *testing.T) {
 	}
 }
 
-// TestStreamReasoning covers the reasoning item: it comes first, its one reasoning_text part
-// streamed as reasoning deltas, added in progress; it closes, completed, when the message or a
-// call begins, or at the finish_reason, of the status it gives; its output_item.done carries the
-// envelope DecodeResponse gives the same reasoning; and it folds to what DecodeResponse gives for
-// the same reply.
 func TestStreamReasoning(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -747,8 +694,6 @@ func TestStreamReasoning(t *testing.T) {
 				"usage":{"completion_tokens":5,"prompt_tokens":7,"total_tokens":12}}`,
 		},
 		{
-			// vLLM names the delta's reasoning reasoning; a server that sends both names sends
-			// one text, read once.
 			name: "vLLM's reasoning, then both names in one chunk",
 			chunks: []string{
 				delta(`{"reasoning":"The user"}`, ""),
@@ -832,9 +777,6 @@ func TestStreamReasoning(t *testing.T) {
 	}
 }
 
-// TestStreamReasoningRoundTrip folds the recorded reasoning and tool call stream, sends its
-// output back with the call's output, and wants the reasoning the stream carried on the assistant
-// message that makes the call, as an unstreamed reply's would be.
 func TestStreamReasoningRoundTrip(t *testing.T) {
 	r := decodeStream(t, readTestdata(t, "tool_call.sse"))
 	if r.err != nil {
@@ -859,8 +801,6 @@ func TestStreamReasoningRoundTrip(t *testing.T) {
 		{"role":"tool","tool_call_id":"LsrzvhpPKdbtJyriZMr6ivjrWBgmWA3j","content":"21"}]}`)
 }
 
-// TestStreamNoReplyID wants a stream whose chunks carry no id to give its message no id, as
-// DecodeResponse gives the same reply: there is nothing to derive one from.
 func TestStreamNoReplyID(t *testing.T) {
 	noID := func(chunk string) string { return strings.Replace(chunk, `"id":"chatcmpl-1",`, "", 1) }
 	r := decodeStream(t, stream(noID(delta(`{"content":"Paris"}`, "")), noID(delta(`{}`, "stop")), "[DONE]"))
@@ -879,10 +819,6 @@ func TestStreamNoReplyID(t *testing.T) {
 	aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 }
 
-// TestStreamChunkOfNoIDNorChoices wants a chunk of no id and no choices, as an endpoint may send
-// with only the prompt's content filter verdict, to claim nothing about the reply: first or
-// between the reply's chunks, it neither sets the stream's id nor is checked against it, so every
-// item's id derives from the id the reply's chunks carry, and the usage it carries is read.
 func TestStreamChunkOfNoIDNorChoices(t *testing.T) {
 	const filter = `{"choices":[],"created":0,"id":"","model":"","object":"","prompt_filter_results":[{"prompt_index":0}]}`
 	const noIDUsage = `{"id":"","choices":[],"usage":{"completion_tokens":5,"prompt_tokens":7,"total_tokens":12}}`
@@ -918,11 +854,6 @@ func TestStreamChunkOfNoIDNorChoices(t *testing.T) {
 	}
 }
 
-// TestStreamIDAndModel wants response.created and the terminal response to bear the reply's id
-// and model, those of the first chunk that claims the reply. A leading chunk of no id and no
-// choices claims nothing, so it makes no event: response.created comes at the chunk after it,
-// still first, bearing that chunk's id and model, and the events after it are numbered as they
-// would be without the leading chunk. The model isn't checked against later chunks'.
 func TestStreamIDAndModel(t *testing.T) {
 	const filter = `{"choices":[],"created":0,"id":"","model":"","object":"","prompt_filter_results":[{"prompt_index":0}]}`
 	withModel := func(chunk, model string) string {
@@ -964,8 +895,6 @@ func TestStreamIDAndModel(t *testing.T) {
 		})
 	}
 
-	// A stream of nothing but chunks of no id and no choices still opens before it reports
-	// itself cut short, bearing no id or model; an empty stream makes nothing.
 	r := decodeStream(t, stream(filter))
 	if !errors.Is(r.err, io.ErrUnexpectedEOF) {
 		t.Errorf("stream error = %v, want io.ErrUnexpectedEOF", r.err)
@@ -976,7 +905,6 @@ func TestStreamIDAndModel(t *testing.T) {
 		t.Errorf("empty stream made %v, want nothing", r.events)
 	}
 
-	// An error frame's response.failed bears the stream's id and model.
 	r = decodeStream(t, stream(filter, text, `{"error":{"message":"model unloaded"}}`))
 	failed, ok := r.events[len(r.events)-1].(protocol.ResponseFailed)
 	if !ok {
@@ -987,9 +915,6 @@ func TestStreamIDAndModel(t *testing.T) {
 	}
 }
 
-// TestStreamChunkOfNoIDWithChoices wants a chunk of no id that carries choices held to the
-// stream's id as before: first, it sets the stream's id, empty, so a later chunk of an id is of
-// another reply; after a chunk of an id, it is of another reply.
 func TestStreamChunkOfNoIDWithChoices(t *testing.T) {
 	noID := func(chunk string) string { return strings.Replace(chunk, `"id":"chatcmpl-1",`, `"id":"",`, 1) }
 	text := delta(`{"content":"Paris"}`, "")
@@ -1012,8 +937,6 @@ func TestStreamChunkOfNoIDWithChoices(t *testing.T) {
 	}
 }
 
-// TestStreamChunksOfTwoIDs wants two different ids an error even when a chunk of no id and no
-// choices comes between them: that chunk claims nothing, so the stream's id is still the first's.
 func TestStreamChunksOfTwoIDs(t *testing.T) {
 	const filter = `{"id":"","choices":[]}`
 	text := delta(`{"content":"Paris"}`, "")
@@ -1025,8 +948,6 @@ func TestStreamChunksOfTwoIDs(t *testing.T) {
 	}
 }
 
-// TestStreamEnd covers how a stream ends: at [DONE], or at the stream's end once the
-// finish_reason has arrived, and io.ErrUnexpectedEOF before it.
 func TestStreamEnd(t *testing.T) {
 	text := delta(`{"content":"Paris"}`, "")
 	cases := []struct {
@@ -1061,8 +982,6 @@ func TestStreamEnd(t *testing.T) {
 	}
 }
 
-// TestStreamEndMakesNothingAfterTheTerminalEvent wants End to make nothing once [DONE] has made
-// the terminal event.
 func TestStreamEndMakesNothingAfterTheTerminalEvent(t *testing.T) {
 	decoder := completions.New(completions.Options{}).NewStreamDecoder()
 	for _, data := range []string{delta(`{"content":"Paris"}`, "stop"), "[DONE]"} {
@@ -1122,14 +1041,6 @@ func TestStreamRefusesChunk(t *testing.T) {
 	}
 }
 
-// TestStreamErrorFrame wants an error frame, llama.cpp's report that generation failed mid-stream,
-// to close the stream as the spec has it: the error event of the frame's type, code, message, and
-// param, then response.failed, its response failed, its error the frame's code and message, holding
-// the output made before the frame, the item open at it in progress with what it had, which is what
-// the Accumulator held just before the frame, and bearing the stream's id. The frame alone carries
-// no id; it comes as the first event, after response.created, or after chunks of an id, in each
-// shape an OpenAI-style error body takes, and with each kind of item open. An event after it is an
-// error, and End makes nothing.
 func TestStreamErrorFrame(t *testing.T) {
 	text := delta(`{"content":"Paris"}`, "")
 	const llama = `{"error":{"code":500,"message":"context shift is disabled","type":"server_error"}}`
@@ -1137,9 +1048,8 @@ func TestStreamErrorFrame(t *testing.T) {
 		return protocol.Message{ID: "chatcmpl-1/0", Status: protocol.StatusInProgress, Role: protocol.RoleAssistant, Content: content}
 	}
 	cases := []struct {
-		name   string
-		chunks []string
-		// payload is the error event's, output the failed response's, and usage its usage.
+		name    string
+		chunks  []string
 		payload protocol.ErrorPayload
 		output  []protocol.Item
 		usage   protocol.Usage
@@ -1224,7 +1134,6 @@ func TestStreamErrorFrame(t *testing.T) {
 			}
 			aitest.AssertResponse(t, failed.Response, want)
 			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
-			// The failed response's output is what the Accumulator held just before the frame.
 			before := aitest.Fold(t, r.events[:n-2])
 			if !reflect.DeepEqual(before.Output, tc.output) {
 				t.Errorf("output before the frame = %#v\nwant the failed response's %#v", before.Output, tc.output)
@@ -1246,9 +1155,6 @@ func TestStreamErrorFrame(t *testing.T) {
 	}
 }
 
-// TestStreamDecodeErrorIsNoEndOfStream wants a chunk cut short, whose JSON error wraps
-// io.ErrUnexpectedEOF, reported as a chunk the format can't decode, not as a stream that ended
-// early.
 func TestStreamDecodeErrorIsNoEndOfStream(t *testing.T) {
 	_, err := completions.New(completions.Options{}).NewStreamDecoder().Decode(format.WireEvent{Data: []byte(`{"choices":`)})
 	if err == nil || !strings.Contains(err.Error(), "decode chunk") || errors.Is(err, io.ErrUnexpectedEOF) {
@@ -1256,8 +1162,6 @@ func TestStreamDecodeErrorIsNoEndOfStream(t *testing.T) {
 	}
 }
 
-// TestStreamReturnsEventsBeforeAnError wants the events a chunk made before its error: the
-// first chunk opens the stream before it is found not to be JSON.
 func TestStreamReturnsEventsBeforeAnError(t *testing.T) {
 	events, err := completions.New(completions.Options{}).NewStreamDecoder().Decode(format.WireEvent{Data: []byte("not JSON")})
 	if err == nil {
@@ -1287,8 +1191,6 @@ func TestEncodeStream(t *testing.T) {
 		"stream":true,"stream_options":{"include_usage":true},"temperature":0}`)
 }
 
-// TestEncodeRefusesNativeStream wants a Native stream or stream_options member refused as a
-// clash, streamed or not.
 func TestEncodeRefusesNativeStream(t *testing.T) {
 	f := completions.New(completions.Options{})
 	encodings := map[string]func(*protocol.Request, http.Header) ([]byte, error){

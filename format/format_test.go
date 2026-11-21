@@ -6,8 +6,6 @@ import (
 	"github.com/standards-lab/go-ai/format"
 )
 
-// TestDecodeOpenAIError covers the details an OpenAI-style error body gives: the shapes the
-// Chat Completions format and the client's embeddings read their error bodies in.
 func TestDecodeOpenAIError(t *testing.T) {
 	cases := []struct {
 		name               string
@@ -37,9 +35,6 @@ func TestDecodeOpenAIError(t *testing.T) {
 	}
 }
 
-// TestUnsupportedErrorMessage wants Error to return the refusal's Message when it has one, and
-// otherwise an account of its Format, Feature, and Value, as a Format built outside this module
-// may leave Message empty.
 func TestUnsupportedErrorMessage(t *testing.T) {
 	cases := []struct {
 		name string

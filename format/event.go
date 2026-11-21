@@ -42,7 +42,6 @@ type EventStream interface {
 // "\n", decoded as UTF-8 with replacement.
 var SSE EventStream = sseStream{}
 
-// sseStream is SSE's EventStream, over the internal sse decoder.
 type sseStream struct{}
 
 func (sseStream) MediaType() string { return "text/event-stream" }
@@ -51,7 +50,6 @@ func (sseStream) NewReader(body io.Reader) WireEventReader {
 	return sseReader{sse.NewDecoder(body)}
 }
 
-// sseReader is SSE's WireEventReader.
 type sseReader struct{ d *sse.Decoder }
 
 func (r sseReader) Next() (WireEvent, error) {

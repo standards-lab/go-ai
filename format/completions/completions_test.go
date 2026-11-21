@@ -13,9 +13,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// encode encodes req, failing t if it is invalid or EncodeRequest refuses it, or if
-// EncodeRequest adds a header, which the format never does. The client validates every request
-// before encoding it, so a request the format is given here is a valid one.
 func encode(t *testing.T, req *protocol.Request) []byte {
 	t.Helper()
 	if err := req.Validate(); err != nil {
@@ -32,7 +29,6 @@ func encode(t *testing.T, req *protocol.Request) []byte {
 	return body
 }
 
-// decode decodes reply as the body of a 2xx reply.
 func decode(reply string) (*protocol.Response, error) {
 	return completions.New(completions.Options{}).DecodeResponse([]byte(reply))
 }
@@ -41,7 +37,6 @@ func text(role protocol.Role, s string) protocol.Message {
 	return protocol.Message{Role: role, Content: []protocol.ContentPart{protocol.InputText{Text: s}}}
 }
 
-// weather is a function tool with every field set.
 var weather = protocol.FunctionTool{
 	Name:        "get_weather",
 	Description: "Get the current weather in a city.",
@@ -49,8 +44,6 @@ var weather = protocol.FunctionTool{
 	Strict:      true,
 }
 
-// withTools is a request of one user message with weather and a get_time tool of name alone,
-// and the tool choice tc.
 func withTools(tc protocol.ToolChoice) *protocol.Request {
 	return &protocol.Request{
 		Model:      "m",
@@ -60,7 +53,6 @@ func withTools(tc protocol.ToolChoice) *protocol.Request {
 	}
 }
 
-// toolsWire is the wire tools of withTools.
 const toolsWire = `"tools":[
 	{"type":"function","function":{"name":"get_weather","description":"Get the current weather in a city.",
 		"parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},"strict":true}},
@@ -70,9 +62,6 @@ func assistant(s string) protocol.Message {
 	return protocol.Message{Role: protocol.RoleAssistant, Content: []protocol.ContentPart{protocol.OutputText{Text: s}}}
 }
 
-// The format's envelopes, as it writes them into encrypted_content, of the reasoning_content
-// their names give. They are literal so a change to the envelope's layout, which would orphan
-// the envelopes callers hold, fails here.
 const (
 	envelopeUserAsks    = "go-ai:completions/v1:eyJyZWFzb25pbmdfY29udGVudCI6IlRoZSB1c2VyIGFza3MuIn0="
 	envelopeWeatherTool = "go-ai:completions/v1:eyJyZWFzb25pbmdfY29udGVudCI6Ik5lZWQgdGhlIHdlYXRoZXIgdG9vbC4ifQ=="
@@ -80,8 +69,6 @@ const (
 	envelopeEmpty       = "go-ai:completions/v1:eyJyZWFzb25pbmdfY29udGVudCI6IiJ9"
 )
 
-// reasoning is a reasoning item of the envelope encrypted, with a status, content, and a summary
-// its format ignores on input, as it came back in a response's output.
 func reasoning(encrypted string) protocol.Reasoning {
 	return protocol.Reasoning{
 		Status:           protocol.StatusCompleted,
@@ -411,8 +398,6 @@ func TestEncode(t *testing.T) {
 				"response_format":{"type":"json_schema","json_schema":{"name":"capital","schema":{"type":"object"}}}}`,
 		},
 		{
-			// The spec's request has no json_object format; Chat Completions' JSON mode is
-			// reached through the native tier.
 			name: "native response_format json_object when text format is unset",
 			req: &protocol.Request{
 				Model:  "m",
@@ -494,8 +479,6 @@ func TestEncode(t *testing.T) {
 				reasoning("gAAAAABo-opaque-provider-blob"),
 				reasoning("go-ai:messages/v1:eyJ0aGlua2luZyI6IngifQ=="),
 				reasoning("go-ai:completions/v2:" + strings.TrimPrefix(envelopeUserAsks, "go-ai:completions/v1:")),
-				// This format's envelope under another implementor's slug, as one written before
-				// the slug was go-ai's.
 				reasoning("other:completions/v1:" + strings.TrimPrefix(envelopeUserAsks, "go-ai:completions/v1:")),
 				reasoning("go-ai:completions/v1:not base64!"),
 				reasoning("go-ai:completions/v1:bm90IEpTT04="),
@@ -558,8 +541,6 @@ func TestEncode(t *testing.T) {
 	}
 }
 
-// TestReasoningRoundTrip sends a reply's output back as input, and wants the reasoning_content
-// it came with sent back exactly, on the assistant message it led to.
 func TestReasoningRoundTrip(t *testing.T) {
 	const reasoningContent = "The user wants Paris's weather.\n\nCall get_weather with {\"city\":\"Paris\"} — \u00e9t\u00e9 \U0001F600."
 	reply, err := json.Marshal(map[string]any{
@@ -748,7 +729,6 @@ func TestDecode(t *testing.T) {
 			},
 		},
 		{
-			// A server that sends both names sends one text under them, read once.
 			name: "reasoning_content and reasoning both, reasoning_content read",
 			reply: `{"id":"chatcmpl-1","choices":[{"finish_reason":"stop","message":{"role":"assistant",
 				"reasoning_content":"The user asks.","reasoning":"The user asks."}}]}`,
@@ -934,8 +914,6 @@ func TestDecode(t *testing.T) {
 	}
 }
 
-// TestDecodeUsageCachedTokens covers the cached input tokens, read from
-// prompt_tokens_details.cached_tokens, and 0 when the details are absent, null, or give none.
 func TestDecodeUsageCachedTokens(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -965,9 +943,6 @@ func TestDecodeUsageCachedTokens(t *testing.T) {
 	}
 }
 
-// TestDecodeUsageReasoningTokens covers where a usage's reasoning tokens are read from:
-// completion_tokens_details.reasoning_tokens, or the usage's top-level reasoning_tokens when the
-// details give none; the details' count wins, even 0, and a usage of neither gives 0.
 func TestDecodeUsageReasoningTokens(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -1025,7 +1000,6 @@ func TestDecodeRefusesReply(t *testing.T) {
 	}
 }
 
-// TestEncodeEfforts wants each of the protocol's efforts sent as reasoning_effort by its own name.
 func TestEncodeEfforts(t *testing.T) {
 	efforts := []protocol.ReasoningEffort{
 		protocol.ReasoningEffortNone, protocol.ReasoningEffortMinimal, protocol.ReasoningEffortLow,
@@ -1042,9 +1016,6 @@ func TestEncodeEfforts(t *testing.T) {
 	}
 }
 
-// TestEncodeParallelToolCalls covers ParallelToolCalls: true and false as the top-level
-// parallel_tool_calls, and nil sending nothing, leaving it to the endpoint; and a Native
-// parallel_tool_calls beside nil, the native tier's to send.
 func TestEncodeParallelToolCalls(t *testing.T) {
 	cases := []struct {
 		name     string
