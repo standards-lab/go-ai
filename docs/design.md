@@ -16,7 +16,7 @@ names the spike's package or file, what it is measured against, and a verdict wi
 The measures are cited in short. A bare page name, such as `dependencies.md`, is a Go Elemental
 principle under the architecture repository's `standards/go-elemental/principles/`;
 `principles/<page>` is an architecture principle; a quoted name is the page's section. "layers" is
-docproc's `context/layers.md`, which states the processing layer's boundaries, its "go-ai's
+docproc's [`context/layers.md` at commit f3633c3](https://github.com/standards-lab/docproc/blob/f3633c3/context/layers.md), which states the processing layer's boundaries, its "go-ai's
 surface" listing the names that layer calls. "data-intelligence" is standards-lab's
 `context/data-intelligence.md`, which states what go-ai's first long-running service consumer asks
 of it; cited bare, it is the section "What it asks of the goals beneath it". "ai-strategy" is
