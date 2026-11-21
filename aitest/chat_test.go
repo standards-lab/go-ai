@@ -17,8 +17,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// chatClient returns a Client of e speaking Chat Completions, adjusted by opts. Its zero
-// RetryPolicy, unless opts sets one, retries nothing, so an error reply is the call's at once.
 func chatClient(t *testing.T, e *aitest.Endpoint, opts ai.Options) *ai.Client {
 	t.Helper()
 	c, err := ai.New(e.URL(), http.DefaultClient, completions.New(completions.Options{}), opts)
@@ -28,8 +26,6 @@ func chatClient(t *testing.T, e *aitest.Endpoint, opts ai.Options) *ai.Client {
 	return c
 }
 
-// stream ranges c's stream of req, folding its events, and returns the folded Response and the
-// error that ended the stream, if any.
 func stream(t *testing.T, c *ai.Client, req *protocol.Request) (*protocol.Response, error) {
 	t.Helper()
 	var acc protocol.Accumulator
@@ -44,9 +40,6 @@ func stream(t *testing.T, c *ai.Client, req *protocol.Request) (*protocol.Respon
 	return acc.Response(), nil
 }
 
-// TestChatRequestDecoded wants the route function to get the request go-ai's Chat Completions
-// client sends decoded: its model, stream flag, max tokens, reasoning effort, and schema name, and
-// each message's role, text, images from data URLs and remote URLs, and audio.
 func TestChatRequestDecoded(t *testing.T) {
 	png, clip := []byte("\x89PNG fake"), []byte("RIFF fake wav")
 	req := &protocol.Request{
@@ -105,8 +98,6 @@ func TestChatRequestDecoded(t *testing.T) {
 	}
 }
 
-// TestChatRequestMaxTokens wants max_tokens read when a request has no max_completion_tokens,
-// and max_completion_tokens preferred when it has both.
 func TestChatRequestMaxTokens(t *testing.T) {
 	var got int
 	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(_ context.Context, r aitest.ChatRequest) aitest.Reply {
@@ -129,8 +120,6 @@ func TestChatRequestMaxTokens(t *testing.T) {
 	}
 }
 
-// TestChatRequestUndecodable wants a chat request body that doesn't decode answered 400 with an
-// OpenAI-style error, the route function never called.
 func TestChatRequestUndecodable(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(context.Context, aitest.ChatRequest) aitest.Reply {
 		t.Error("route function called for an undecodable request")
@@ -151,9 +140,6 @@ func TestChatRequestUndecodable(t *testing.T) {
 	}
 }
 
-// TestChatReply wants a typed chat reply to reach Generate as its Response: the text or the
-// refusal as the message's part, the finish reason as its status and incomplete reason, and the
-// usage.
 func TestChatReply(t *testing.T) {
 	usage := protocol.Usage{InputTokens: 5, OutputTokens: 3, TotalTokens: 8}
 	cases := []struct {
@@ -199,8 +185,6 @@ func TestChatReply(t *testing.T) {
 	}
 }
 
-// checkChatResponse fails t unless resp is the model m's, of one assistant message of part, with
-// status, details, and usage.
 func checkChatResponse(t *testing.T, resp *protocol.Response, streamed bool, part protocol.ContentPart,
 	status protocol.Status, details *protocol.IncompleteDetails, usage protocol.Usage) {
 	t.Helper()
@@ -217,9 +201,6 @@ func checkChatResponse(t *testing.T, resp *protocol.Response, streamed bool, par
 	}
 }
 
-// TestChatReplyStreamChunks wants a streamed chat reply's text in the chunks given, each a
-// delta, then its finish, usage, and [DONE], and the usage left out when the request doesn't ask
-// for it.
 func TestChatReplyStreamChunks(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(context.Context, aitest.ChatRequest) aitest.Reply {
 		return aitest.ChatReply{Chunks: []string{"Hel", "lo"}, PromptTokens: 2, CompletionTokens: 2, TotalTokens: 4}
@@ -251,8 +232,6 @@ func TestChatReplyStreamChunks(t *testing.T) {
 	}
 }
 
-// TestChatReplyStreamBreak wants a stream that breaks after a chunk to end with no finish reason
-// or [DONE], which GenerateStream reports as io.ErrUnexpectedEOF after the text so far.
 func TestChatReplyStreamBreak(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(context.Context, aitest.ChatRequest) aitest.Reply {
 		return aitest.ChatReply{Chunks: []string{"one ", "two ", "three"}, BreakAfter: 2}
@@ -270,9 +249,6 @@ func TestChatReplyStreamBreak(t *testing.T) {
 	}
 }
 
-// TestErrorReply wants an error reply, on the chat route and any other, to reach the client as an
-// *ai.APIError of its status and message, its Retry-After written as given and read as the
-// client reads it: seconds, an HTTP date, or nothing for a value it can't read.
 func TestErrorReply(t *testing.T) {
 	date := time.Now().Add(time.Hour).UTC().Format(http.TimeFormat)
 	cases := []struct {
@@ -328,8 +304,6 @@ func TestErrorReply(t *testing.T) {
 	}
 }
 
-// TestChatTranscription wants a chat-mode Transcribe to reach the chat route with its clip
-// decoded as audio, and the typed reply's text to come back as the transcript.
 func TestChatTranscription(t *testing.T) {
 	clip := []byte("RIFF fake wav")
 	var got aitest.ChatRequest
@@ -357,9 +331,6 @@ func TestChatTranscription(t *testing.T) {
 	}
 }
 
-// TestChatReplyReasoning wants a chat reply's reasoning and reasoning tokens to reach Generate
-// and GenerateStream: the Response a reasoning item of the reasoning ahead of the message, and
-// its usage the reasoning tokens.
 func TestChatReplyReasoning(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(context.Context, aitest.ChatRequest) aitest.Reply {
 		return aitest.ChatReply{Reasoning: "France's capital is Paris.", Chunks: []string{"Pa", "ris"},

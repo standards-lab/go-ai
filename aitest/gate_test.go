@@ -10,9 +10,6 @@ import (
 	"github.com/standards-lab/go-ai/aitest"
 )
 
-// gatedChat serves a chat route that parks each request on g, then answers ok, or, when the
-// request's context ends first, an error reply. waited, when not nil, gets each Wait's result.
-// It returns the endpoint and a Chat Completions client of it, which retries nothing.
 func gatedChat(t *testing.T, g *aitest.Gate, waited chan<- error) (*aitest.Endpoint, *ai.Client) {
 	t.Helper()
 	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(ctx context.Context, _ aitest.ChatRequest) aitest.Reply {
@@ -28,14 +25,11 @@ func gatedChat(t *testing.T, g *aitest.Gate, waited chan<- error) (*aitest.Endpo
 	return e, chatClient(t, e, ai.Options{})
 }
 
-// generate sends c one chat request with ctx, giving its error to errs.
 func generate(ctx context.Context, c *ai.Client, errs chan<- error) {
 	_, err := c.Generate(ctx, userText("m", "hi"))
 	errs <- err
 }
 
-// receive returns the next value of ch, failing t if none comes within five seconds, which
-// names what.
 func receive(t *testing.T, ch <-chan error, what string) error {
 	t.Helper()
 	select {
@@ -47,9 +41,6 @@ func receive(t *testing.T, ch <-chan error, what string) error {
 	}
 }
 
-// TestGateBoundsInFlight wants a caller that bounds its own concurrency at 4 to have exactly 4
-// requests in flight of the 5 it sends, the fifth unsent, while the gate holds them; then, once
-// released, all 5 to succeed.
 func TestGateBoundsInFlight(t *testing.T) {
 	var g aitest.Gate
 	e, c := gatedChat(t, &g, nil)
@@ -63,15 +54,12 @@ func TestGateBoundsInFlight(t *testing.T) {
 		}()
 	}
 	g.Await(t, 4)
-	// Every parked request was recorded before it parked, and the fifth can't be sent while the
-	// four hold the semaphore, so the count is exact without waiting.
 	if n := len(e.Requests()); n != 4 {
 		t.Errorf("with 4 parked, endpoint got %d requests, want 4", n)
 	}
 	if n := g.Parked(); n != 4 {
 		t.Errorf("Parked = %d, want 4", n)
 	}
-	// Four for the parked requests and one for the fifth, which passes at once when it comes.
 	g.Release(5)
 	for i := range 5 {
 		if err := receive(t, errs, "Generate"); err != nil {
@@ -83,8 +71,6 @@ func TestGateBoundsInFlight(t *testing.T) {
 	}
 }
 
-// TestGateWaitEndsWithClientContext wants a parked request whose client cancels to end at once:
-// Wait returns context.Canceled, and the client sees context.Canceled.
 func TestGateWaitEndsWithClientContext(t *testing.T) {
 	var g aitest.Gate
 	waited := make(chan error, 1)
@@ -105,29 +91,21 @@ func TestGateWaitEndsWithClientContext(t *testing.T) {
 	}
 }
 
-// TestGateTestEndsWhileParked wants a test that ends with a request still parked, its client's
-// context never ending, to end rather than hang: the endpoint's cleanup ends the request's
-// context, and Wait returns context.Canceled.
 func TestGateTestEndsWhileParked(t *testing.T) {
 	waited := make(chan error, 1)
 	errs := make(chan error, 1)
 	t.Run("parked", func(t *testing.T) {
 		var g aitest.Gate
 		_, c := gatedChat(t, &g, waited)
-		// The client's context is Background, not t's, so only the endpoint can end the request.
 		go generate(context.Background(), c, errs)
 		g.Await(t, 1)
 	})
 	if err := receive(t, waited, "Wait after the test ended"); !errors.Is(err, context.Canceled) {
 		t.Errorf("Wait = %v, want context.Canceled", err)
 	}
-	// The client ends too, with whatever the closing endpoint gave it.
 	_ = receive(t, errs, "Generate after the test ended")
 }
 
-// TestGateReleaseAndOpen wants Release(n) to let exactly n requests go, a release with none
-// parked to let the next request through at once, and Open to let the rest go and every later
-// request through.
 func TestGateReleaseAndOpen(t *testing.T) {
 	var g aitest.Gate
 	_, c := gatedChat(t, &g, nil)

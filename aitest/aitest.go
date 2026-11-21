@@ -18,7 +18,6 @@ import (
 	"testing"
 )
 
-// The typed routes' paths, below the server's root.
 const (
 	chatPath           = "/v1/chat/completions"
 	embeddingsPath     = "/v1/embeddings"
@@ -26,9 +25,7 @@ const (
 	modelsPath         = "/v1/models"
 )
 
-// maxForm bounds the part of a transcription upload held in memory; the rest goes to temporary
-// files, which the request's end removes.
-const maxForm = 32 << 20
+const maxFormMemory = 32 << 20
 
 // Routes gives the function that answers each route of an [Endpoint]. A route whose function is
 // nil answers 404 with an OpenAI-style error body, as an endpoint without the route does.
@@ -110,11 +107,10 @@ type RawRequest struct {
 // Endpoint is a loopback OpenAI-compatible model endpoint: an httptest server that records each
 // request, then answers it with the function its Routes give.
 type Endpoint struct {
-	t      testing.TB
-	url    string
-	routes Routes
-	// ctx ends when the test ends, and with it every request's context.
-	ctx context.Context
+	t       testing.TB
+	url     string
+	routes  Routes
+	testCtx context.Context
 
 	mu       sync.Mutex
 	reqs     []Request
@@ -131,12 +127,13 @@ func Serve(t testing.TB, routes Routes) *Endpoint {
 		}
 	}
 	e := &Endpoint{t: t, routes: routes, arrivals: map[string]int{}}
-	hs := httptest.NewServer(http.HandlerFunc(e.serve))
-	t.Cleanup(hs.Close)
-	// Cleanups run last first, so the contexts end before Close waits on the handlers using them.
 	var cancel context.CancelFunc
-	e.ctx, cancel = context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	e.testCtx, cancel = context.WithCancel(context.Background())
+	hs := httptest.NewServer(http.HandlerFunc(e.serve))
+	t.Cleanup(func() {
+		cancel()
+		hs.Close()
+	})
 	e.url = hs.URL + "/v1"
 	return e
 }
@@ -153,7 +150,6 @@ func (e *Endpoint) Requests() []Request {
 	return slices.Clone(e.reqs)
 }
 
-// serve records r, then dispatches it to its route's function and writes the reply.
 func (e *Endpoint) serve(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -166,7 +162,7 @@ func (e *Endpoint) serve(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	defer context.AfterFunc(e.ctx, cancel)()
+	defer context.AfterFunc(e.testCtx, cancel)()
 
 	reply, a, ok, err := e.dispatch(ctx, req)
 	switch {
@@ -183,9 +179,6 @@ func (e *Endpoint) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// dispatch decodes req for its route and calls the route's function, returning its reply and
-// what req asked of the reply's shape. It reports false when no function answers req, and an
-// error when req can't be decoded for its route.
 func (e *Endpoint) dispatch(ctx context.Context, req Request) (Reply, asked, bool, error) {
 	rt := e.routes
 	switch {
@@ -221,7 +214,6 @@ func (e *Endpoint) dispatch(ctx context.Context, req Request) (Reply, asked, boo
 	return nil, asked{}, false, nil
 }
 
-// arrive counts a request to the route at path and returns its arrival number.
 func (e *Endpoint) arrive(path string) int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -229,8 +221,6 @@ func (e *Endpoint) arrive(path string) int {
 	return e.arrivals[path]
 }
 
-// decodeEmbeddingRequest decodes an embeddings request body, whose input is a string or an
-// array of strings.
 func decodeEmbeddingRequest(body []byte) (EmbeddingRequest, error) {
 	var wire struct {
 		Model string         `json:"model"`
@@ -255,15 +245,13 @@ func decodeEmbeddingRequest(body []byte) (EmbeddingRequest, error) {
 	return req, nil
 }
 
-// decodeTranscriptionRequest decodes a transcription request's multipart form.
 func decodeTranscriptionRequest(req Request) (TranscriptionRequest, error) {
-	// The body was read whole to record it, so the form is parsed from that copy.
 	r, err := http.NewRequest(req.Method, "http://aitest"+req.Path, bytes.NewReader(req.Body))
 	if err != nil {
 		return TranscriptionRequest{}, err
 	}
 	r.Header = req.Header
-	if err := r.ParseMultipartForm(maxForm); err != nil {
+	if err := r.ParseMultipartForm(maxFormMemory); err != nil {
 		return TranscriptionRequest{}, fmt.Errorf("decode transcription form: %w", err)
 	}
 	defer func() { _ = r.MultipartForm.RemoveAll() }()
@@ -275,8 +263,6 @@ func decodeTranscriptionRequest(req Request) (TranscriptionRequest, error) {
 	if err != nil {
 		return TranscriptionRequest{}, fmt.Errorf("read transcription form's file: %w", err)
 	}
-	// The file name as sent: the parsed form's Filename keeps a path's base name alone, which
-	// would hide a client that sends the path it read the clip from.
 	_, disposition, err := mime.ParseMediaType(header.Header.Get("Content-Disposition"))
 	if err != nil {
 		return TranscriptionRequest{}, fmt.Errorf("decode transcription form's file disposition: %w", err)
@@ -298,7 +284,6 @@ func decodeTranscriptionRequest(req Request) (TranscriptionRequest, error) {
 	return tr, nil
 }
 
-// readPart reads a form's file part whole and closes it.
 func readPart(f multipart.File) ([]byte, error) {
 	defer func() { _ = f.Close() }()
 	return io.ReadAll(f)

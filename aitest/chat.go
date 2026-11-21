@@ -72,7 +72,6 @@ type ChatAudio struct {
 	Data []byte
 }
 
-// chatWire is the part of a Chat Completions request body ChatRequest decodes.
 type chatWire struct {
 	Model               string `json:"model"`
 	Stream              bool   `json:"stream"`
@@ -93,7 +92,6 @@ type chatWire struct {
 	} `json:"messages"`
 }
 
-// chatPartWire is one part of a message's content array.
 type chatPartWire struct {
 	Type     string `json:"type"`
 	Text     string `json:"text"`
@@ -106,9 +104,6 @@ type chatPartWire struct {
 	} `json:"input_audio"`
 }
 
-// decodeChatRequest decodes a Chat Completions request body, and what it asks of its reply's
-// shape. A content part of a type it doesn't know, or an image or clip whose data doesn't decode,
-// is an error, as is a body that isn't the request's JSON.
 func decodeChatRequest(body []byte) (ChatRequest, asked, error) {
 	var wire chatWire
 	if err := json.Unmarshal(body, &wire); err != nil {
@@ -137,7 +132,6 @@ func decodeChatRequest(body []byte) (ChatRequest, asked, error) {
 	return req, a, nil
 }
 
-// decodeChatContent decodes a message's content: absent or null, a string, or an array of parts.
 func decodeChatContent(content jsontext.Value) (ChatMessage, error) {
 	var msg ChatMessage
 	switch content.Kind() {
@@ -177,8 +171,6 @@ func decodeChatContent(content jsontext.Value) (ChatMessage, error) {
 	return msg, nil
 }
 
-// decodeImageURL decodes an image_url part's URL: a data URL, data:[<media type>][;base64],<data>,
-// to its media type and bytes, or any other URL as given.
 func decodeImageURL(u string) (ChatImage, error) {
 	rest, ok := strings.CutPrefix(u, "data:")
 	if !ok {
@@ -251,7 +243,6 @@ type ChatReply struct {
 	HoldAfter int
 }
 
-// chatUsage is a chat reply's usage.
 type chatUsage struct {
 	PromptTokens            int               `json:"prompt_tokens"`
 	CompletionTokens        int               `json:"completion_tokens"`
@@ -259,7 +250,6 @@ type chatUsage struct {
 	CompletionTokensDetails chatTokensDetails `json:"completion_tokens_details,omitzero"`
 }
 
-// chatTokensDetails is a chat reply's usage.completion_tokens_details, omitted when zero.
 type chatTokensDetails struct {
 	ReasoningTokens int `json:"reasoning_tokens"`
 }
@@ -297,8 +287,6 @@ func (r ChatReply) write(ctx context.Context, w http.ResponseWriter, a asked) {
 	}{r.id(a), "chat.completion", 0, a.model, []choice{{Message: msg, FinishReason: r.finish()}}, r.usage()})
 }
 
-// stream writes r as the stream ChatReply describes, flushing each event on its own, and holds
-// it on r.Hold, waiting on ctx, where HoldAfter says.
 func (r ChatReply) stream(ctx context.Context, w http.ResponseWriter, a asked) {
 	type delta struct {
 		Role             string `json:"role,omitzero"`
@@ -322,19 +310,14 @@ func (r ChatReply) stream(ctx context.Context, w http.ResponseWriter, a asked) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.WriteHeader(http.StatusOK)
 	rc := http.NewResponseController(w)
-	// send writes one event and flushes it, reporting false once the client is gone.
-	send := func(data string) bool {
+	flushEvent := func(data string) bool {
 		if _, err := io.WriteString(w, Frame{Data: data}.encode()); err != nil {
 			return false
 		}
 		return rc.Flush() == nil
 	}
 	sendChunk := func(choices []choice, usage *chatUsage) bool {
-		b, err := json.Marshal(chunk{r.id(a), "chat.completion.chunk", 0, a.model, choices, usage})
-		if err != nil {
-			panic(err) // a chunk is strings, integers, and their structs
-		}
-		return send(string(b))
+		return flushEvent(string(mustMarshal(chunk{r.id(a), "chat.completion.chunk", 0, a.model, choices, usage})))
 	}
 	if !sendChunk([]choice{{Delta: delta{Role: "assistant"}}}, nil) {
 		return
@@ -377,10 +360,9 @@ func (r ChatReply) stream(ctx context.Context, w http.ResponseWriter, a asked) {
 			return
 		}
 	}
-	send("[DONE]")
+	flushEvent("[DONE]")
 }
 
-// text is the reply's whole text: Chunks joined, or Text when Chunks is nil.
 func (r ChatReply) text() string {
 	if r.Chunks != nil {
 		return strings.Join(r.Chunks, "")
@@ -388,7 +370,6 @@ func (r ChatReply) text() string {
 	return r.Text
 }
 
-// finish is the reply's finish_reason, stop when Finish is empty.
 func (r ChatReply) finish() string {
 	if r.Finish == "" {
 		return "stop"
@@ -396,12 +377,10 @@ func (r ChatReply) finish() string {
 	return r.Finish
 }
 
-// usage is the reply's usage.
 func (r ChatReply) usage() chatUsage {
 	return chatUsage{r.PromptTokens, r.CompletionTokens, r.TotalTokens, chatTokensDetails{r.ReasoningTokens}}
 }
 
-// id is the reply's id, made from the request's arrival number.
 func (ChatReply) id(a asked) string {
 	return "chatcmpl-aitest-" + strconv.Itoa(a.arrival)
 }

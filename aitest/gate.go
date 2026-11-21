@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-// awaitBound bounds how long [Gate.Await] waits for its requests before it fails the test, so a
-// test whose requests never arrive fails, naming the count, rather than hanging until the test
-// binary's timeout.
 const awaitBound = 10 * time.Second
 
 // Gate parks requests inside route functions until the test lets them go, so a test can hold
@@ -25,22 +22,17 @@ const awaitBound = 10 * time.Second
 // which an [Endpoint] does when the client cancels or disconnects and when the test ends, so a
 // test that ends with requests still parked doesn't hang.
 type Gate struct {
-	mu sync.Mutex
-	// waiters holds each parked request's channel, in the order they parked; closing one lets
-	// its request go.
+	mu      sync.Mutex
 	waiters []chan struct{}
-	// permits counts the releases no parked request has taken yet, each letting a later
-	// request through at once.
 	permits int
-	// open lets every request through.
-	open bool
-	// parked is closed, and replaced, when a request parks, waking Await.
-	parked chan struct{}
+	open    bool
+	parked  chan struct{}
 }
 
 // Wait parks the calling request until the test lets it go, by Release or Open, and returns nil;
 // or until ctx ends, and returns ctx's error. A route function calls it with its context. A
-// request whose ctx has already ended returns ctx's error at once and takes no release.
+// request whose ctx has already ended returns ctx's error at once and takes no release; one a
+// release let go as its ctx ended returns nil, since it was let go.
 func (g *Gate) Wait(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -76,7 +68,6 @@ func (g *Gate) Wait(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-	// A release took ch from waiters as ctx ended; the request had already been let go.
 	return nil
 }
 
