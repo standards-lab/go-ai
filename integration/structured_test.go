@@ -10,9 +10,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// TestStructuredOutput asks for a country's capital under a strict JSON schema in each format,
-// and wants a completed answer whose output_text decodes into a Go value of the schema's shape,
-// no member unknown, as a caller decodes it, holding Paris and France.
 func TestStructuredOutput(t *testing.T) {
 	eachFormat(t, agent, func(t *testing.T, c *ai.Client, model string) {
 		resp, err := c.Generate(requestContext(t), &protocol.Request{

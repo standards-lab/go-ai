@@ -739,8 +739,9 @@ depguard rules hold them too, and the check runs golangci-lint a second time und
 
 ## Implementation notes
 
-The reasoning behind the base module's unexported code that its names and exported docs leave
-unsaid, kept here rather than in comments (`architecture/principles/comments.md`).
+The reasoning behind the unexported code and the tests of the base module, its integration tier,
+and infer that their names and exported docs leave unsaid, kept here rather than in comments
+(`architecture/principles/comments.md`).
 
 ### The transport
 
@@ -979,6 +980,125 @@ unsaid, kept here rather than in comments (`architecture/principles/comments.md`
 - **An error frame's param** that isn't a string, such as null, leaves the payload's param empty;
   the rest is still the error. An event that isn't JSON is reported with its JSON error
   formatted, not wrapped, as the other formats' are.
+
+### The integration tier
+
+- **What a scenario proves is what the exported API shows.** That a reasoning round trip put the
+  reasoning on the wire, as the assistant message's reasoning, a thinking block, or a reasoning
+  item's content, is the unit tier's to prove: the exported API doesn't show the body. Each
+  scenario runs as one piece of test code per format, the format the only difference, and a
+  scenario an endpoint honors in some formats only runs through those alone.
+- **Every request carries a bound.** Messages requires max_tokens, and a reasoning model reasons
+  ahead of its answer or its call within the same bound, so a request to the agent, and the
+  vision stream's, leaves room for both. One request is bounded in time too: the endpoints have
+  their models loaded, so the bound covers generation alone, tens of seconds on a reasoning model.
+- **The model list is a check of its own.** TestModels wants each role's endpoint to list exactly
+  one model, so a misnamed or crowded endpoint fails there by name before any scenario of it runs.
+  A route the formats don't shape, such as embeddings', is sent in Chat Completions as the
+  client's format.
+- **A declared gap skips from inside the client.** A format refuses a request as it encodes it,
+  before anything is sent, on the goroutine that called Generate, GenerateStream's iterator, or
+  Transcribe, which is the test's own, so skipDeclared may skip the test there. Every scenario's
+  format is wrapped in one, so the skip is the tier's one rule.
+- **No failure prints a secret.** A header line that doesn't parse is reported by its number,
+  never its text, and a refused client by its variable and base URL; the model is read apart from
+  the credentials, so a scenario that prints it prints neither.
+- **The allowed_tools choice runs on Messages alone**, whose format sends it as the one tool it
+  allows under tool_choice any. Chat Completions and Open Responses send their own forms, as the
+  unit tier proves, and vLLM 0.33.0 honors neither: it refuses Chat Completions' with a 400 and
+  answers Open Responses' as auto, with no call.
+- **The embed scenario reads the vectors' decoding from their geometry.** Two alike inputs closer
+  to each other than either is to an unrelated one fails a vector decoded with the wrong byte
+  order or width, its components noise; the third input embedded alone matching the batch's third
+  vector, and not its first, fails vectors in arrival order or swapped. Their lengths are not
+  asserted: vLLM 0.33.0 gives granite-embedding-english-r2's vectors unnormalized, where llama.cpp
+  normalizes them.
+- **Media answers are read loosely.** Each shape of `shapes.png` must be named as a word of its
+  own, singular or plural, in any phrasing. A transcript of `phrase.wav` is compared with
+  everything but letters and digits stripped, so the access code passes as digits or words,
+  spaced or not, after "accesscode". The transcription route scenario skips unless
+  `AI_TRANSCRIPTION_BASE_URL` is set, as an audio endpoint may serve no route.
+- **A cancelled stream** yields no event after the cancel, the context's error as its one error,
+  and leaves the accumulated Response in progress, its message holding the text so far.
+
+### infer
+
+- **cmd/infer's run is apart from main** so its deferred stop releases the signal registration
+  before os.Exit, which skips deferred calls. The version is the build info's main module version,
+  `(devel)` when the binary carries none, as under go test.
+- **Nothing is read until a Build reaches it.** defineInfrastructure constructs nothing: each
+  setting is read in its node's constructor, so configuration is read only for a command that
+  declares a node, never in New. The dispatcher adds the lifecycle configuration node to every
+  Build. A setting is its default, replaced by its variable when that is set and non-empty, and
+  in turn by its flag when the dispatch set the flag, even to an empty value: the root's PreRun,
+  and each command flag's Validate, record which flags the dispatch set, as a flag variable can't
+  tell a flag given its default value, which still overrides the environment. A command's own
+  flag over a variable is that command's alone, so no other command accepts it or reads its
+  variable; `--mode`'s variable is named for the setting, `INFER_TRANSCRIPTION_MODE`, so it reads
+  as transcription's beside the other `INFER_` variables.
+- **The profile is decoded whole**, every member checked, not only the format in use's.
+- **The client sets no timeout**: a long stream is bounded by the run's context and the idle
+  timeout alone. The token and the headers are read once, as the client is built, and the client
+  makes no request. A header line that doesn't parse is reported by its number, never its text,
+  as the value is a secret, as the token is, which is why neither has a flag. The root help's
+  footer naming them renders in memory, so its write can't fail.
+- **ai.New's refusals are attributed by probing.** go-ai's errors carry no field, so only when
+  New refuses does infer put each setting to it again alone, beside values it never refuses: the
+  base URL with no options, the headers alone, the attempt count alone, the most delay alone, and
+  the base delay under the longest most delay. A base delay above the most delay is refused only
+  with both, so a policy refused when no field is names both delays; with the most delay zero,
+  the refusal says the base delay needs one at least as long, which says what to change. A most
+  delay left unset is the default, never zero.
+- **infer retries by default** because it is run by hand and by scripts against endpoints that
+  shed load, where a transient 503 shouldn't end the run; go-ai's zero policy, which retries
+  nothing, suits a library. The default base delay is capped at a most delay given below it, but
+  a negative most delay is left for ai.New to refuse, naming it alone, and a base delay given
+  above the default most delay isn't raised to, so ai.New refuses it naming both. go-ai sets no
+  bound for a negative StreamIdleTimeout rather than refusing one, so infer refuses it: a negative
+  bound is a mistake, not a request for none. An unknown transcription mode is refused in infer's
+  words rather than go-ai's.
+- **chat checks its request before it resolves the model**, so a refusal is found before the
+  models are listed; an unresolved request is checked under a stand-in name, as the checks refuse
+  only a request with none. A refusal with no feature is attributed by clearing one flag's field
+  at a time rather than setting it on a request of none: Messages refuses a request with no max
+  output tokens, so no request of no fields is accepted by every format. A max-tokens refusal with
+  no `--max-tokens` given is Messages'. `--instructions` and `--image` are never attributed: go-ai
+  refuses neither as chat sets them. An image's media type is its extension's, or else its
+  content's sniffed type, without parameters such as a charset, which a data URL doesn't take.
+- **chat's text reaches the terminal as it arrives.** Its writer flushes after each delta when
+  stdout buffers, and remembers the last byte, so the text ends with exactly one newline and an
+  empty text is an empty line.
+- **embed reads stdin line for line.** A final newline ends the last line rather than starting an
+  empty one, and a blank line is an empty input, which keeps the vectors line for line with the
+  input. A line may be as long as a model's context, which the scanner's default 64 KiB would
+  refuse, so a line may run to 64 MiB. models writes an entry's root only when it is a string: a
+  missing, null, or other root, or an entry that doesn't decode, is no root rather than a failure
+  on a member only some endpoints send.
+- **transcribe leaves the file to go-ai**, which opens it once per attempt, so a retry sends the
+  whole clip; infer neither reads nor checks it. go-ai is the authority on a format that can't
+  carry audio: infer reads its typed refusal only to word it, exit 1 rather than a usage error, as
+  it is the format and the mode together that can't transcribe. A chat-mode reply that isn't
+  completed writes no transcript, as it holds part of one at most. A route-mode 404's hint is a
+  line of its own, in parentheses, so the error is reported once, whole on its first line;
+  infer neither probes chat mode nor falls back to it, as a 404 can mean a wrong base URL too.
+- **The unit tier's graph test** takes the leaves from the App's own tree, not a copied list, so a
+  command mounted later is checked too, and proves its layer guard fails a fixture leaf that
+  declares a node ordered after one its path doesn't. New is shown to build nothing by a Replace
+  succeeding after it, as the graph freezes on its first Build. The live-stream test writes
+  through a buffering writer, as a terminal's may be, so a delta left unflushed never arrives
+  while the stream is held.
+- **The integration tier** builds the program once per run in TestMain; without the build tag the
+  harness only type-checks and needs no binary, so the unit tier runs its untagged tests of the
+  harness's mapping of a role's variables and of SkipDeclared. Every scenario on an endpoint runs
+  through runOn, so each gets the declared-gap skip. It reads go-ai's own integration testdata in
+  place, so the repository holds one copy of the media and one account of where it came from; the
+  tier runs from a checkout of go-ai, where that directory is always beside `tools/infer`.
+  TestChatReasoningEffort runs on the vision endpoint, not the agent's: gpt-oss-120b speaks
+  Harmony, which always reasons, and vLLM 0.33.0 refuses its effort none with a 400 through Chat
+  Completions and Open Responses and reasons anyway under Messages' thinking disabled, where
+  Gemma 4 honors the effort in all three. The reasoning at low gives none's zero its meaning, so
+  it is wanted only where none ran: Foundry's gpt-5-mini reasons at low through Open Responses but
+  reports none through Chat Completions, whose spec has no reasoning output.
 
 ## Rejected alternatives
 

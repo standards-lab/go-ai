@@ -15,11 +15,6 @@ import (
 	"github.com/standards-lab/go-ai/tools/infer/integration"
 )
 
-// TestCredentials runs the built program against a loopback endpoint, as
-// a role whose AI_<ROLE>_TOKEN and AI_<ROLE>_HEADER are set: the token and
-// header reach the endpoint through INFER_TOKEN and INFER_HEADER, and the
-// run's log, the shell line that replays it included, shows neither value.
-// It needs no live endpoint, so it never skips.
 func TestCredentials(t *testing.T) {
 	var mu sync.Mutex
 	var got http.Header

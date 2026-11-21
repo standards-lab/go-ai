@@ -15,8 +15,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// TestImageDescription sends shapes.png to the vision model in each format and wants a completed
-// description that names each of its shapes.
 func TestImageDescription(t *testing.T) {
 	eachFormat(t, vision, func(t *testing.T, c *ai.Client, model string) {
 		resp, err := c.Generate(requestContext(t), &protocol.Request{
@@ -31,8 +29,6 @@ func TestImageDescription(t *testing.T) {
 			t.Fatalf("Generate: %v", err)
 		}
 		text := completedText(t, resp)
-		// shapes.png is a red circle, a blue square, and a green triangle. Each shape must be
-		// named as a word of its own, singular or plural, in any phrasing.
 		words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) })
 		for _, want := range []string{"circle", "square", "triangle"} {
 			if !slices.Contains(words, want) && !slices.Contains(words, want+"s") {
@@ -42,9 +38,6 @@ func TestImageDescription(t *testing.T) {
 	})
 }
 
-// TestAudioInResponsesRefused sends phrase.wav to the audio model as Open Responses' audio
-// extension, go-ai:input_audio, which the spec has no part for, and wants the endpoint to refuse
-// it with an *APIError of 400 carrying its message.
 func TestAudioInResponsesRefused(t *testing.T) {
 	c, model := endpoint(t, audio, openResponses, ai.Options{})
 	_, err := c.Generate(requestContext(t), &protocol.Request{
@@ -64,10 +57,6 @@ func TestAudioInResponsesRefused(t *testing.T) {
 	}
 }
 
-// assertAccessCode fails t unless text, a transcript of phrase.wav, carries its words.
-// phrase.wav says "The access code is seven four two nine." The code may come back as digits or
-// words, spaced or not: compared with everything but letters and digits stripped, either form
-// passes, after "accesscode".
 func assertAccessCode(t *testing.T, text string) {
 	t.Helper()
 	got := strings.Map(func(r rune) rune {

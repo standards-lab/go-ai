@@ -16,7 +16,6 @@ import (
 	"github.com/standards-lab/go-ai/format/responses"
 )
 
-// envPrefix opens the name of every variable the program reads.
 const envPrefix = "INFER_"
 
 // Main is the suite's TestMain: it unsets every INFER_ variable the suite
@@ -116,10 +115,6 @@ func Model(baseVariable string) string {
 	return os.Getenv(strings.TrimSuffix(baseVariable, "_BASE_URL") + "_MODEL")
 }
 
-// profile is the shape of a deployment's profile, as infer's --profile and
-// INFER_PROFILE take it: a JSON object keyed by format name, each member
-// that go-ai format's Options under the snake_case, case-strict names their
-// tags give them.
 type profile struct {
 	Completions completions.Options `json:"completions,omitzero,case:strict"`
 	Messages    messages.Options    `json:"messages,omitzero,case:strict"`
@@ -149,17 +144,10 @@ func Profile(baseVariable string) (string, error) {
 	return v, nil
 }
 
-// profileVariable is the variable that holds the profile of the role whose
-// API root variable is baseVariable: AI_<ROLE>_PROFILE, such as
-// AI_AGENT_PROFILE for AI_AGENT_BASE_URL.
 func profileVariable(baseVariable string) string {
 	return strings.TrimSuffix(baseVariable, "_BASE_URL") + "_PROFILE"
 }
 
-// declaredSuffix ends infer's error line for a request the deployment's
-// profile refuses before sending, a go-ai *format.UnsupportedError of
-// Declared true: chat names the setting that declared the gap after the
-// format's reason, which names the gap's feature and value.
 const declaredSuffix = "; declared by --profile (INFER_PROFILE)"
 
 // SkipDeclared skips t when res, a run on the endpoint of the role whose
@@ -187,12 +175,7 @@ func SkipDeclared(t testing.TB, baseVariable string, res processtest.Result) {
 	}
 }
 
-// mediaDir is the directory of the media the suite sends, from the suite's
-// package directory, where go test runs it: go-ai's own integration
-// testdata, whose README gives each file's provenance. It is read in place
-// rather than copied, so the repository holds one copy and one account of
-// where it came from; the tier runs from a checkout of go-ai, where the
-// directory is always present beside tools/infer.
+// See docs/design.md, "Implementation notes".
 const mediaDir = "../../../integration/testdata"
 
 // Media returns the absolute path of the integration medium name, such as

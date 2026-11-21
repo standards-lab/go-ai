@@ -12,8 +12,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// TestChat asks the agent a one-word question in each format and wants a completed answer that
-// names it, with input and output tokens counted.
 func TestChat(t *testing.T) {
 	eachFormat(t, agent, func(t *testing.T, c *ai.Client, model string) {
 		resp, err := c.Generate(requestContext(t), &protocol.Request{
@@ -35,8 +33,6 @@ func TestChat(t *testing.T) {
 	})
 }
 
-// TestChatIncompleteAtMaxOutputTokens asks for a long answer under a small bound, and wants the
-// response incomplete for max_output_tokens, with no more output tokens than the bound.
 func TestChatIncompleteAtMaxOutputTokens(t *testing.T) {
 	eachFormat(t, agent, func(t *testing.T, c *ai.Client, model string) {
 		const bound = 16
@@ -58,8 +54,6 @@ func TestChatIncompleteAtMaxOutputTokens(t *testing.T) {
 	})
 }
 
-// TestChatUnknownModelIsAPIError asks the agent's endpoint for a model it doesn't serve, and wants
-// an *APIError of 404 carrying the endpoint's message and type.
 func TestChatUnknownModelIsAPIError(t *testing.T) {
 	eachFormat(t, agent, func(t *testing.T, c *ai.Client, _ string) {
 		_, err := c.Generate(requestContext(t), &protocol.Request{

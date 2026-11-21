@@ -12,15 +12,11 @@ import (
 	"github.com/standards-lab/go-ai/aitest"
 )
 
-// embedding is the part of an embeddings request body a test asserts.
 type embedding struct {
 	Model string   `json:"model"`
 	Input []string `json:"input"`
 }
 
-// embedEndpoint serves an endpoint that lists ids as its models and answers
-// an embeddings request with vectors and usage of 7 prompt tokens and 9
-// total, so a test tells the two counts apart.
 func embedEndpoint(t *testing.T, ids []string, vectors ...[]float32) *aitest.Endpoint {
 	t.Helper()
 	return aitest.Serve(t, aitest.Routes{
@@ -29,8 +25,6 @@ func embedEndpoint(t *testing.T, ids []string, vectors ...[]float32) *aitest.End
 	})
 }
 
-// embedRequests returns the embeddings requests e received, decoded, and
-// fails t on any other request but GET /v1/models, which it counts.
 func embedRequests(t *testing.T, e *aitest.Endpoint) (sent []embedding, listed int) {
 	t.Helper()
 	for _, r := range e.Requests() {
@@ -50,8 +44,6 @@ func embedRequests(t *testing.T, e *aitest.Endpoint) (sent []embedding, listed i
 	return sent, listed
 }
 
-// wantVectors fails t unless stdout is one line per vector, each a JSON
-// array of numbers equal to the vector the endpoint sent, in order.
 func wantVectors(t *testing.T, stdout string, vectors ...[]float32) {
 	t.Helper()
 	lines := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
@@ -76,8 +68,6 @@ var (
 	vecC = []float32{42}
 )
 
-// With no model set, embed lists the endpoint's models and sends to the one
-// listed.
 func TestEmbed_FallsBackToTheOneModel(t *testing.T) {
 	e := embedEndpoint(t, []string{"embedder"}, vecA)
 
@@ -97,9 +87,6 @@ func TestEmbed_FallsBackToTheOneModel(t *testing.T) {
 	}
 }
 
-// An endpoint that lists no model, or several, leaves the model open: embed
-// exits 1, saying so or naming each in the endpoint's order, and sends no
-// embeddings request.
 func TestEmbed_FallbackRefusals(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -129,8 +116,6 @@ func TestEmbed_FallbackRefusals(t *testing.T) {
 	}
 }
 
-// A model the endpoint can't list is reported with exit 1, the listing's
-// error named.
 func TestEmbed_FallbackListingFails(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{Models: always[aitest.ModelsRequest](aitest.ErrorReply{Status: http.StatusInternalServerError, Message: "engine down"})})
 
@@ -145,8 +130,6 @@ func TestEmbed_FallbackListingFails(t *testing.T) {
 	}
 }
 
-// A set model, from the variable or the flag, is sent as it is, and the
-// models are never listed, even on an endpoint that lists several.
 func TestEmbed_SetModelListsNothing(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -176,10 +159,6 @@ func TestEmbed_SetModelListsNothing(t *testing.T) {
 	}
 }
 
-// The inputs are the positional arguments, or with none each line of
-// stdin; either way they go out in order as one request, and each vector
-// is written as one JSON array per line, in input order. A final newline
-// ends the last line, and a blank line is an empty input.
 func TestEmbed_Inputs(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -210,8 +189,6 @@ func TestEmbed_Inputs(t *testing.T) {
 	}
 }
 
-// The usage goes to stderr, both counts named, and stdout holds the vectors
-// alone.
 func TestEmbed_UsageOnStderr(t *testing.T) {
 	e := embedEndpoint(t, nil, vecA)
 
@@ -227,8 +204,6 @@ func TestEmbed_UsageOnStderr(t *testing.T) {
 	wantVectors(t, r.stdout, vecA)
 }
 
-// No input at all, neither an argument nor a line of stdin, is a usage
-// error, exit 2, before any request.
 func TestEmbed_NoInput(t *testing.T) {
 	e := embedEndpoint(t, []string{"embedder"}, vecA)
 

@@ -43,7 +43,6 @@ func TestRecorder_LogIsACopy(t *testing.T) {
 	}
 }
 
-// Run under -race, concurrent Records prove the Recorder's lock.
 func TestRecorder_ConcurrentRecords(t *testing.T) {
 	var r apptest.Recorder[string]
 	var wg sync.WaitGroup
@@ -58,7 +57,6 @@ func TestRecorder_ConcurrentRecords(t *testing.T) {
 	}
 }
 
-// Names reads each handle's name, in order.
 func TestNames_ReadsEachHandle(t *testing.T) {
 	g := graph.New()
 	refs := []graph.Ref{g.Value("no color", false), g.Value("lifecycle config", 0)}
@@ -71,8 +69,6 @@ func TestNames_ReadsEachHandle(t *testing.T) {
 	}
 }
 
-// Env empties an inherited INFER_ variable, sets the test's own, and
-// leaves any other variable alone.
 func TestEnv_ClearsInheritedAndSetsGiven(t *testing.T) {
 	t.Setenv("INFER_INHERITED", "inherited")
 	t.Setenv("APPTEST_OTHER", "other")

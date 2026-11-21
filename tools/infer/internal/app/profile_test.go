@@ -7,17 +7,8 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// refusesHigh is a profile whose completions member refuses the effort
-// high, so a chat at --reasoning high through completions is refused
-// before it is sent when the profile reaches the format.
 const refusesHigh = `{"completions":{"refused_efforts":["high"]}}`
 
-// The format in use is built with its member of the profile: an effort the
-// profile refuses is refused before any request, exit 2, the endpoint
-// receiving nothing, through chat's request check and so through its
-// client. A profile from --profile wins over INFER_PROFILE's, wherever on
-// the command line; a profile with no member for the format in use, or
-// none at all, is the format's spec, which sends the effort.
 func TestProfile_ReachesTheFormat(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -62,9 +53,6 @@ func TestProfile_ReachesTheFormat(t *testing.T) {
 	}
 }
 
-// Each format in use is built with its own member: through messages and
-// responses, an effort their member refuses is refused, and the same
-// profile's completions member reaches no other format.
 func TestProfile_EachFormatItsMember(t *testing.T) {
 	const profile = `{"completions":{"refused_efforts":["low"]},"messages":{"refused_efforts":["high"]},"responses":{"refused_efforts":["medium"]}}`
 	for _, format := range []string{"messages", "responses"} {
@@ -86,16 +74,12 @@ func TestProfile_EachFormatItsMember(t *testing.T) {
 	}
 }
 
-// A profile that doesn't decode strictly as go-ai's Options, keyed by
-// format name, is a usage error, exit 2, before any request, naming the
-// flag and its variable ahead of the decoder's error; every member is
-// checked, not only the format in use's. Chat and transcribe read it.
 func TestProfile_Refusals(t *testing.T) {
 	clip := writeClip(t, "clip.wav")
 	for _, tc := range []struct {
 		name    string
 		profile string
-		detail  string // a part of the decoder's error the message carries
+		detail  string
 	}{
 		{"not JSON", `{"completions":`, "unexpected EOF"},
 		{"not an object", `["completions"]`, "array"},
@@ -131,8 +115,6 @@ func TestProfile_Refusals(t *testing.T) {
 	}
 }
 
-// The flag's malformed profile is refused as the variable's is, naming
-// both.
 func TestProfile_FlagRefused(t *testing.T) {
 	e := completedStream(t, "agent")
 
@@ -145,8 +127,6 @@ func TestProfile_FlagRefused(t *testing.T) {
 	wantNoRequest(t, e)
 }
 
-// models and embed send no request a profile changes, so they read none: a
-// malformed INFER_PROFILE, or --profile, fails neither.
 func TestProfile_IgnoredByModelsAndEmbed(t *testing.T) {
 	for _, tc := range []struct {
 		name string

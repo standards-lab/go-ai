@@ -16,9 +16,6 @@ import (
 	"github.com/standards-lab/go-ai/tools/infer/internal/app"
 )
 
-// probe adds a leaf at a's root that declares node and writes its value,
-// formatted with %T for the format node and %q otherwise, to stdout, so a
-// test observes the setting a run resolves.
 func probe[T any](a *app.App, node *graph.Node[T], verb string) {
 	a.Root().Add((&cli.Command{
 		Name:    "probe",
@@ -30,9 +27,6 @@ func probe[T any](a *app.App, node *graph.Node[T], verb string) {
 	}).Use(node))
 }
 
-// The format is completions when unset, else INFER_FORMAT's, else
-// --format's when given, wherever on the command line; each maps to its
-// format package's format.
 func TestFormat_FlagOverVariable(t *testing.T) {
 	want := map[string]string{
 		"completions": fmt.Sprintf("%T", completions.New(completions.Options{})),
@@ -65,8 +59,6 @@ func TestFormat_FlagOverVariable(t *testing.T) {
 	}
 }
 
-// The model is empty when unset, else INFER_MODEL's, else --model's when
-// given, even given empty.
 func TestModel_FlagOverVariable(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -94,9 +86,6 @@ func TestModel_FlagOverVariable(t *testing.T) {
 	}
 }
 
-// The base URL is INFER_BASE_URL's, or --base-url's when given, wherever on
-// the command line: the request goes to the endpoint the flag names, and
-// the variable's receives none.
 func TestBaseURL_FlagOverVariable(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -128,16 +117,13 @@ func TestBaseURL_FlagOverVariable(t *testing.T) {
 	}
 }
 
-// Each refused setting exits 2 before any request, its error reported
-// once on stderr, naming the flag and its variable. The endpoint a valid
-// setting would reach receives nothing.
 func TestRefusals(t *testing.T) {
 	e := serveModels(t, "agent")
 	for _, tc := range []struct {
 		name string
 		env  map[string]string
 		args []string
-		want string // the error, after the command's label
+		want string
 	}{
 		{
 			name: "no base URL",

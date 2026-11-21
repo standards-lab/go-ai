@@ -24,24 +24,12 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// defineDomain defines the domain services on g into n. infer has none: its
-// commands call the client node's methods directly, so the domain layer is
-// its commands alone.
 func defineDomain(g *graph.Graph, n *Nodes) {}
 
-// mountDomain mounts infer's commands at root, each declaring with Use the
-// nodes it reads, so a run builds only what its command needs. cmdFlags
-// are the commands' own flags over a variable, each bound by its command:
-// chat's --idle-timeout, which the idle timeout node reads, and
-// transcribe's --mode, which the transcription mode node reads.
 func mountDomain(root *cli.Command, n *Nodes, cmdFlags commandFlags) {
 	root.Add(modelsCommand(n), embedCommand(n), chatCommand(n, cmdFlags.idleTimeout), transcribeCommand(n, cmdFlags.mode))
 }
 
-// modelsCommand returns the models command, which writes each model the
-// endpoint lists, one per line, in the endpoint's order: its ID, then a
-// tab and its root where the listing entry carries one, as vLLM's does
-// for a served alias, as in "agent\topenai/gpt-oss-120b".
 func modelsCommand(n *Nodes) *cli.Command {
 	return (&cli.Command{
 		Name:    "models",
@@ -66,11 +54,6 @@ func modelsCommand(n *Nodes) *cli.Command {
 	}).Use(n.Client)
 }
 
-// modelRoot returns the string member root of m's listing entry, the
-// model a vLLM alias serves, or "" when the entry has none: a root that is
-// missing, null, or not a string is no root, as is an entry that doesn't
-// decode, so models writes the ID alone rather than failing on a member
-// only some endpoints send.
 func modelRoot(m ai.Model) string {
 	var entry struct {
 		Root string `json:"root"`
@@ -81,15 +64,6 @@ func modelRoot(m ai.Model) string {
 	return entry.Root
 }
 
-// resolveModel returns the model a request to client names: model, the
-// model setting, when it is set, without a request; otherwise the one model
-// the endpoint lists, which serves an endpoint that hosts a single model,
-// such as a gateway's per-purpose API root. An endpoint that lists no
-// model, or several, is refused with exit 1, not as a usage error: the
-// command line is sound, and the endpoint's answer is what leaves the model
-// open. Several are named in the endpoint's order. Every command that sends
-// to a model resolves it here, after its own input is read and before it
-// sends.
 func resolveModel(ctx context.Context, client *ai.Client, model string) (string, error) {
 	if model != "" {
 		return model, nil
@@ -111,13 +85,6 @@ func resolveModel(ctx context.Context, client *ai.Client, model string) (string,
 	return "", fmt.Errorf("several models: %s; pass --model", strings.Join(ids, ", "))
 }
 
-// embedCommand returns the embed command, which sends its inputs to the
-// model as one batch, one Embed request, and writes each input's vector as
-// one JSON array of numbers per line, in input order, then the request's
-// token usage to stderr, so stdout holds the vectors alone. Each positional
-// argument is one input, or, with none, each line of stdin, as
-// [stdinLines] splits it. No input at all is a usage error, found before
-// any request.
 func embedCommand(n *Nodes) *cli.Command {
 	return (&cli.Command{
 		Name:     "embed",
@@ -158,16 +125,10 @@ func embedCommand(n *Nodes) *cli.Command {
 	}).Use(n.Client, n.Model)
 }
 
-// stdinLines reads r to its end and returns each of its lines, without its
-// line ending, "\n" or "\r\n". A final newline ends the last line rather
-// than starting an empty one, so "a\nb\n" is two lines and an empty r is
-// none. A blank line is a line, an empty input, which keeps the vectors
-// embed writes line for line with the input it read.
+// See docs/design.md, "Implementation notes".
 func stdinLines(r io.Reader) ([]string, error) {
 	var lines []string
 	sc := bufio.NewScanner(r)
-	// A line is one input, so it may be as long as a model's context; the
-	// scanner's default bound of 64 KiB would refuse a long one.
 	sc.Buffer(nil, maxLine)
 	for sc.Scan() {
 		lines = append(lines, sc.Text())
@@ -178,55 +139,17 @@ func stdinLines(r io.Reader) ([]string, error) {
 	return lines, nil
 }
 
-// maxLine is the longest stdin line embed reads as one input: 64 MiB, far
-// beyond any embedding model's context.
 const maxLine = 64 << 20
 
-// chatFlags are chat's own flags, each setting a field of the request it
-// sends.
 type chatFlags struct {
 	instructions string
-	images       []string // each a file or an http(s) URL, in the order given
-	reasoning    string   // the effort; empty leaves it to the endpoint
-	maxTokens    int      // zero leaves the bound to the endpoint
-	native       string   // a JSON object; empty sends none
+	images       []string
+	reasoning    string
+	maxTokens    int
+	native       string
 	stream       bool
 }
 
-// chatCommand returns the chat command, which sends one prompt to the
-// model, with chat's flags setting the request's other fields, and writes
-// the reply's text to stdout, ending it with a newline, and then the
-// reply's summary to stderr, as [writeSummary] writes it. It streams by
-// default, writing each text delta as it arrives; with --stream=false it
-// sends one unstreamed request and writes the reply's text once it is
-// whole. The prompt is the positional arguments joined by spaces, or, with
-// none, stdin, less one final line ending; no prompt at all is a usage
-// error.
-//
-// The request is checked before anything is sent, the model listing of
-// [resolveModel] included, by go-ai itself: protocol.Request's Validate and
-// then the format's own encoding, the same checks the client makes before
-// it sends. A refusal is a usage error, as each is a flag's value or a
-// combination of them the format can't carry, such as a negative
-// --max-tokens, or, through responses, one below its spec's minimum, 16,
-// an effort go-ai doesn't define, a --native that isn't a JSON object with
-// unique members or that sets a member a typed flag sets, or, through
-// messages, no --max-tokens at all. It names the flag to change ahead of
-// go-ai's reason, as [refusedRequest] finds it, as in "--max-tokens:
-// responses: request's max output tokens 15 is below the minimum, 16", and,
-// for a refusal the deployment's profile declares, the setting that
-// declared it after the reason. The model isn't resolved yet when the
-// request is checked, so an unset one is checked as a stand-in name.
-//
-// A reply that isn't completed keeps the text already written, and its
-// summary, and exits 1 naming its status, with the reason an incomplete
-// reply gives, as in "incomplete: max_output_tokens", or the error a failed
-// one gives.
-//
-// chat sends through the chat client, whose streams idle, chat's
-// --idle-timeout, set from INFER_IDLE_TIMEOUT, bounds: a stream that sends
-// no bytes for that long ends with go-ai's error, exit 1, the text already
-// written kept. An unstreamed reply isn't bounded by it.
 func chatCommand(n *Nodes, idle *commandFlag) *cli.Command {
 	var f chatFlags
 	cmd := &cli.Command{
@@ -249,7 +172,6 @@ func chatCommand(n *Nodes, idle *commandFlag) *cli.Command {
 	return cmd.Use(n.ChatClient, n.Model, n.ProfiledFormat, n.FormatName)
 }
 
-// chat is the chat command's Run, over the flags f holds.
 func chat(ctx context.Context, inv *cli.Invocation, n *Nodes, f *chatFlags) error {
 	prompt, err := chatPrompt(inv)
 	if err != nil {
@@ -278,7 +200,6 @@ func chat(ctx context.Context, inv *cli.Invocation, n *Nodes, f *chatFlags) erro
 		err = out.write(resp.OutputText())
 	}
 	if err != nil {
-		// The text already written is kept, its line ended.
 		if out.last != 0 {
 			_ = out.end()
 		}
@@ -293,9 +214,6 @@ func chat(ctx context.Context, inv *cli.Invocation, n *Nodes, f *chatFlags) erro
 	return replyError(resp)
 }
 
-// chatPrompt returns the prompt: the positional arguments joined by spaces,
-// or, with none, all of stdin less one final line ending, "\n" or "\r\n",
-// which ends the prompt's last line rather than belonging to it.
 func chatPrompt(inv *cli.Invocation) (string, error) {
 	if len(inv.Args) > 0 {
 		return strings.Join(inv.Args, " "), nil
@@ -311,9 +229,6 @@ func chatPrompt(inv *cli.Invocation) (string, error) {
 	return s, nil
 }
 
-// request returns the request of prompt to model, which may be empty, not
-// yet resolved, with f's fields set: one user message of prompt's text and
-// then each image, in the order given.
 func (f *chatFlags) request(prompt, model string) (*protocol.Request, error) {
 	content := []protocol.ContentPart{protocol.InputText{Text: prompt}}
 	for _, ref := range f.images {
@@ -336,12 +251,6 @@ func (f *chatFlags) request(prompt, model string) (*protocol.Request, error) {
 	return req, nil
 }
 
-// imageURL returns the URL an --image of ref sends: ref as given when it is
-// an http or https URL, and otherwise the file ref names, read whole and
-// inlined as a base64 data URL. The file's media type is its extension's,
-// or, for an extension with none, the one its content is sniffed as; one
-// that isn't an image type is a usage error. A file that can't be read is
-// an error, exit 1.
 func imageURL(ref string) (string, error) {
 	if u, err := url.Parse(ref); err == nil && (u.Scheme == "http" || u.Scheme == "https") {
 		return ref, nil
@@ -354,8 +263,6 @@ func imageURL(ref string) (string, error) {
 	if t := mime.TypeByExtension(filepath.Ext(ref)); t != "" {
 		mediaType = t
 	}
-	// A type may carry parameters, such as a charset; the data URL takes
-	// the type alone.
 	mediaType, _, err = mime.ParseMediaType(mediaType)
 	if err != nil || !strings.HasPrefix(mediaType, "image/") {
 		return "", cli.Usagef("--image %s: not an image, by its extension or its content", ref)
@@ -363,15 +270,8 @@ func imageURL(ref string) (string, error) {
 	return protocol.DataURL(mediaType, data), nil
 }
 
-// standInModel is the model an unresolved request is checked under: any
-// name will do, as the checks refuse only a request with none.
 const standInModel = "unresolved"
 
-// checkRequest returns go-ai's refusal of req, or nil: its Validate, and
-// then wireFormat's encoding of it, streamed when stream is set, which
-// refuses what the format can't carry. The client makes the same checks
-// before it sends; making them here finds a refusal before resolveModel
-// lists the models. An unresolved req is checked under standInModel.
 func checkRequest(req *protocol.Request, wireFormat format.Format, stream bool) error {
 	check := *req
 	if check.Model == "" {
@@ -388,48 +288,10 @@ func checkRequest(req *protocol.Request, wireFormat format.Format, stream bool) 
 	return err
 }
 
-// refusedRequest returns the usage error of err, go-ai's refusal of req,
-// as [checkRequest] makes it in wireFormat, which the format setting
-// formatName names, streamed when stream is set: err, after the flag whose
-// field it is about, as in "--max-tokens: ", or alone when it is
-// attributed to none.
-//
-// A format's refusal is a *format.UnsupportedError, whose Feature names the
-// request feature refused, so the flag is the one that sets that feature,
-// as [featureFlag] reads it, with no further check. When the refusal is
-// Declared, of a gap the deployment's profile declares rather than one the
-// format's spec has, the error names the setting that declared it too,
-// after err: "; declared by --profile (INFER_PROFILE)", as the request flag
-// is the one to change for this deployment and the profile is why it is
-// refused. A max-tokens refusal with no --max-tokens given is messages',
-// which requires one, and names the format: "--format messages needs
-// --max-tokens: ".
-//
-// Any other refusal, protocol.Request's Validate's or a Feature no flag
-// sets, carries no field, so it is attributed as [settingsRefusal]
-// attributes ai.New's, by checking the request again: once for each flag
-// that set a field go-ai checks, with that field alone put back to a value
-// go-ai accepts in every format, [anyFormatMaxTokens], no effort, or no
-// native object. The flag is the refusal's when that request alone is
-// accepted, and so is the only cause. When none is, as with two flags each
-// refused, the flag is the one whose request alone is refused for another
-// reason, its field the one err is about, as a --native that isn't an
-// object is through messages with no --max-tokens, where the request
-// without it is refused for having no max output tokens. The errors are
-// compared whole, not read. Two flags refused only together, each request
-// accepted, or a refusal no request changes, or that more than one does,
-// name none. Clearing a field, rather than setting one on a request of
-// none, keeps the probes free of what to start from: messages refuses a
-// request with no max output tokens, so there is no request of no fields
-// every format accepts.
-//
-// --instructions and --image are not attributed: go-ai refuses neither
-// as chat sets them, the instructions any text and each image an http(s)
-// URL or a base64 data URL of an image type, which every format carries.
+// See docs/design.md, "Implementation notes".
 func refusedRequest(req *protocol.Request, wireFormat format.Format, formatName string, stream bool, err error) error {
 	maxTokens := "--max-tokens"
 	if req.MaxOutputTokens == 0 {
-		// Only messages refuses a request with no max output tokens.
 		maxTokens = fmt.Sprintf("--format %s needs --max-tokens", formatName)
 	}
 	if u, ok := errors.AsType[*format.UnsupportedError](err); ok {
@@ -469,13 +331,6 @@ func refusedRequest(req *protocol.Request, wireFormat format.Format, formatName 
 	return cli.Usagef("%s: %w", flags[0], err)
 }
 
-// featureFlag returns the chat flag that sets the request feature a
-// *format.UnsupportedError's Feature names, maxTokens standing for
-// --max-tokens as [refusedRequest] words it, or empty for a feature no chat
-// flag sets, such as a tool choice. The Features are the ones go-ai's
-// formats refuse a request of chat's fields for: an effort, a max output
-// tokens, and a native member, which --native sets, a typed member it
-// clashes with included.
 func featureFlag(feature, maxTokens string) string {
 	switch feature {
 	case "reasoning effort":
@@ -488,10 +343,6 @@ func featureFlag(feature, maxTokens string) string {
 	return ""
 }
 
-// streamReply sends req through client as a stream, writing each output
-// text delta to out as it arrives, and returns the response the stream's
-// events fold to. A stream that breaks returns its error, the text already
-// written kept.
 func streamReply(ctx context.Context, client *ai.Client, req *protocol.Request, out *textOut) (*protocol.Response, error) {
 	var acc protocol.Accumulator
 	for event, err := range client.GenerateStream(ctx, req) {
@@ -510,15 +361,11 @@ func streamReply(ctx context.Context, client *ai.Client, req *protocol.Request, 
 	return acc.Response(), nil
 }
 
-// textOut writes a reply's text to w as it comes, flushing w after each
-// write when w buffers, as a *bufio.Writer does, and remembers the last
-// byte written, so [textOut.end] ends the text with one newline.
 type textOut struct {
 	w    io.Writer
-	last byte // the last byte written; zero before any
+	last byte
 }
 
-// write writes s to o's writer, and flushes it.
 func (o *textOut) write(s string) error {
 	if s == "" {
 		return nil
@@ -533,8 +380,6 @@ func (o *textOut) write(s string) error {
 	return nil
 }
 
-// end ends the text with a newline, unless it ends with one already; an
-// empty text is an empty line.
 func (o *textOut) end() error {
 	if o.last == '\n' {
 		return nil
@@ -542,22 +387,6 @@ func (o *textOut) end() error {
 	return o.write("\n")
 }
 
-// writeSummary writes resp's summary to w: its status, its token usage,
-// with the output tokens spent reasoning shown as part of the output, and
-// the count of its reasoning output items, each on its own line:
-//
-//	status: completed
-//	usage: 78 input tokens, 38 output tokens (27 reasoning), 116 total tokens
-//	reasoning items: 1
-//
-// The summary reads the reply alone, whatever its format. The reasoning
-// tokens are shown when the usage reports some. When it reports none but
-// the output holds a reasoning item, the summary says "(reasoning not
-// reported)", as the model did reason and a zero is go-ai's decoding of a
-// count the endpoint left out, as messages' thinking_tokens may be. With
-// neither, the reply shows no reasoning, and the summary shows no count.
-// The item count is the output's own, so it shows a reply with no
-// reasoning whatever the endpoint reports.
 func writeSummary(w io.Writer, resp *protocol.Response) error {
 	items := 0
 	for _, it := range resp.Output {
@@ -578,9 +407,6 @@ func writeSummary(w io.Writer, resp *protocol.Response) error {
 	return err
 }
 
-// replyError returns nil for a completed resp, and otherwise the error,
-// exit 1, that names its status: with an incomplete reply's reason, as in
-// "incomplete: max_output_tokens", or a failed reply's error.
 func replyError(resp *protocol.Response) error {
 	switch resp.Status {
 	case protocol.StatusCompleted:
@@ -603,30 +429,6 @@ func replyError(resp *protocol.Response) error {
 	return fmt.Errorf("reply ended %s", resp.Status)
 }
 
-// transcribeCommand returns the transcribe command, which sends one audio
-// file, its one positional argument, to the model through the transcriber,
-// in the transcription mode --mode or INFER_TRANSCRIPTION_MODE sets, and
-// writes the transcript to stdout, ending it with a newline, and then the
-// token usage to stderr, so stdout holds the transcript alone.
-//
-// The file is opened only by go-ai's Transcribe, through the request's
-// Open, once per attempt, so each attempt a retry makes sends the whole
-// clip again; the file's base name names it, its extension giving a chat
-// mode clip's encoding. infer neither reads nor checks the file itself, so
-// a missing one is go-ai's error, exit 1. In chat mode, go-ai refuses a
-// format that can't carry audio, such as messages, before the file is
-// opened or anything is sent; the refusal is exit 1, not a usage error, as
-// it is the endpoint's format and the mode together, not either value,
-// that can't transcribe, and names both settings ahead of go-ai's reason,
-// as in "--mode chat needs a format that carries audio; --format messages
-// doesn't: ai: transcribe: messages: ...". It follows the model's
-// resolution, as go-ai
-// refuses in Transcribe, so with no model set the models are listed first.
-// A chat-mode reply that isn't completed is go-ai's
-// *ai.IncompleteTranscriptError, exit 1, naming its status and reason, and
-// writes no transcript, as it holds part of one at most. A route-mode 404
-// is the endpoint's error, exit 1, and a second line hinting at chat mode,
-// as [transcribeError] words it.
 func transcribeCommand(n *Nodes, mode *commandFlag) *cli.Command {
 	cmd := &cli.Command{
 		Name:     "transcribe",
@@ -666,23 +468,7 @@ func transcribeCommand(n *Nodes, mode *commandFlag) *cli.Command {
 	return cmd.Use(n.Transcriber, n.Model, n.TranscriptionMode, n.FormatName)
 }
 
-// transcribeError returns err, Transcribe's error in mode through the
-// format the format setting formatName names, worded to name the setting
-// to change, still exit 1.
-//
-// In chat mode, when err is the format's refusal of the audio part, as
-// [refusesAudio] reads it, it names the mode and the format ahead of err:
-// go-ai has refused before the file is opened, and the format can't
-// transcribe. Any other chat-mode refusal, such as of a file name with no
-// audio extension, is err alone, as its reason is the one to fix first.
-//
-// In route mode, a 404, an *ai.APIError of status 404, is err and then, on
-// a second line, a hint at chat mode: the endpoint has no transcription
-// route, and chat mode, which sends a chat request instead, may serve. The
-// hint is a line of its own, in parentheses, so the error is reported once,
-// whole on its first line, and the hint reads as advice on it rather than
-// as part of the endpoint's reply. infer neither probes chat mode nor falls
-// back to it: a 404 can mean a wrong base URL as well.
+// See docs/design.md, "Implementation notes".
 func transcribeError(err error, mode ai.TranscriptionMode, formatName string) error {
 	switch mode {
 	case ai.TranscribeChat:

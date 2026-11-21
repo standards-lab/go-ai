@@ -19,16 +19,10 @@ import (
 	"github.com/standards-lab/go-ai/aitest"
 )
 
-// transcriptionsRoute is the route a route-mode transcription goes to.
 const transcriptionsRoute = "audio/transcriptions"
 
-// clipBytes is the content of the clip a test transcribes: not real audio,
-// as neither infer nor the endpoint reads it, but bytes a test can find on
-// the wire.
 var clipBytes = []byte("RIFF\x00\x01fake wav clip\xff")
 
-// writeClip writes clipBytes to a file named name in a fresh directory and
-// returns its path.
 func writeClip(t *testing.T, name string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -38,15 +32,10 @@ func writeClip(t *testing.T, name string) string {
 	return path
 }
 
-// routeReply is a transcription route reply of text, with usage of 11 input
-// tokens, 4 output, and 15 total.
 func routeReply(text string) aitest.TranscriptionReply {
 	return aitest.TranscriptionReply{Text: text, InputTokens: 11, OutputTokens: 4, TotalTokens: 15}
 }
 
-// transcribeEndpoint serves an endpoint that lists ids as its models,
-// answers the transcription route with routeReply's "hello world", and
-// answers a completions chat request with chat.
 func transcribeEndpoint(t *testing.T, ids []string, chat aitest.Reply) *aitest.Endpoint {
 	t.Helper()
 	return aitest.Serve(t, aitest.Routes{
@@ -56,21 +45,16 @@ func transcribeEndpoint(t *testing.T, ids []string, chat aitest.Reply) *aitest.E
 	})
 }
 
-// completedChat is a completions reply of "the clip's words", completed.
 func completedChat() aitest.Reply {
 	return chatReply("", "stop", "the clip's words")
 }
 
-// upload is the multipart form of a route-mode transcription request.
 type upload struct {
 	fields   map[string]string
 	fileName string
 	file     []byte
 }
 
-// uploads returns the form of each transcription route request e received,
-// in order, and fails t on any request but those, chat requests, and GET
-// /v1/models.
 func uploads(t *testing.T, e *aitest.Endpoint) []upload {
 	t.Helper()
 	var forms []upload
@@ -87,7 +71,6 @@ func uploads(t *testing.T, e *aitest.Endpoint) []upload {
 	return forms
 }
 
-// parseUpload decodes r's multipart form, failing t when it isn't one.
 func parseUpload(t *testing.T, r aitest.Request) upload {
 	t.Helper()
 	mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -109,8 +92,6 @@ func parseUpload(t *testing.T, r aitest.Request) upload {
 			t.Fatalf("multipart part %s: %v", p.FormName(), err)
 		}
 		if p.FormName() == "file" {
-			// The header's own filename, as sent: Part.FileName would
-			// reduce a path to its base name.
 			_, disposition, err := mime.ParseMediaType(p.Header.Get("Content-Disposition"))
 			if err != nil {
 				t.Fatalf("file part's Content-Disposition: %v", err)
@@ -122,14 +103,10 @@ func parseUpload(t *testing.T, r aitest.Request) upload {
 	}
 }
 
-// whisper is the environment of a run against e with the model whisper set.
 func whisper(e *aitest.Endpoint) map[string]string {
 	return map[string]string{"INFER_BASE_URL": e.URL(), "INFER_MODEL": "whisper"}
 }
 
-// wantRouteUpload fails t unless e received exactly one transcription route
-// request, its form naming model and carrying the clip as clip.wav, and no
-// chat request.
 func wantRouteUpload(t *testing.T, e *aitest.Endpoint, model string) {
 	t.Helper()
 	forms := uploads(t, e)
@@ -147,9 +124,6 @@ func wantRouteUpload(t *testing.T, e *aitest.Endpoint, model string) {
 	}
 }
 
-// Route mode, the default, posts the clip's bytes and the model as a
-// multipart form to the transcription route, writes the transcript to
-// stdout, ending it with a newline, and the usage to stderr alone.
 func TestTranscribe_Route(t *testing.T) {
 	e := transcribeEndpoint(t, nil, completedChat())
 
@@ -165,10 +139,6 @@ func TestTranscribe_Route(t *testing.T) {
 	}
 }
 
-// Chat mode sends one chat request in the client's format, completions by
-// default: one user message of the clip as an input_audio part, in the
-// encoding its extension gives, and go-ai's transcription instruction; the
-// reply's text is the transcript.
 func TestTranscribe_Chat(t *testing.T) {
 	e := transcribeEndpoint(t, nil, completedChat())
 
@@ -203,10 +173,6 @@ func TestTranscribe_Chat(t *testing.T) {
 	}
 }
 
-// Each attempt opens the file again, so an attempt a retry makes sends the
-// whole clip, not what a first attempt left of a reader: --retries reaches
-// the transcriber. The endpoint answers the first upload 503 with
-// Retry-After 0, then the route's reply.
 func TestTranscribe_ReopensEachAttempt(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{Transcriptions: func(_ context.Context, req aitest.TranscriptionRequest) aitest.Reply {
 		if req.Arrival == 1 {
@@ -232,10 +198,6 @@ func TestTranscribe_ReopensEachAttempt(t *testing.T) {
 	}
 }
 
-// Chat mode through messages, a format that can't carry audio, is go-ai's
-// refusal, exit 1, after the mode and the format it names, before the file
-// is opened or anything is sent: the file doesn't exist, so a run that
-// opened it would fail with a file error instead.
 func TestTranscribe_ChatThroughMessages(t *testing.T) {
 	e := transcribeEndpoint(t, nil, completedChat())
 	env := whisper(e)
@@ -256,9 +218,6 @@ func TestTranscribe_ChatThroughMessages(t *testing.T) {
 	wantNoRequest(t, e)
 }
 
-// Chat mode through messages with a file name go-ai refuses first, one with
-// no audio extension, is that refusal alone, exit 1: only the format's
-// refusal of the audio part names the mode and the format.
 func TestTranscribe_ChatThroughMessagesNoExtension(t *testing.T) {
 	e := transcribeEndpoint(t, nil, completedChat())
 	env := whisper(e)
@@ -274,23 +233,17 @@ func TestTranscribe_ChatThroughMessagesNoExtension(t *testing.T) {
 	wantNoRequest(t, e)
 }
 
-// notFound answers 404, as an endpoint without the route does, with vLLM's
-// body.
 func notFound() aitest.Reply {
 	return aitest.RawReply{Status: http.StatusNotFound, Body: []byte(`{"detail":"Not Found"}`)}
 }
 
-// A route-mode 404 is the endpoint's error, exit 1, reported once, and a
-// second line hinting at chat mode; infer sends the upload once and tries
-// no chat request. A 404 in chat mode, or another status in route mode,
-// is the error alone: the hint is for a missing transcription route.
 func TestTranscribe_NotFound(t *testing.T) {
 	const notFoundError = `infer transcribe: ai: transcribe: 404 Not Found: {"detail":"Not Found"}`
 	for _, tc := range []struct {
 		name    string
 		mode    string
-		route   aitest.Reply // the transcription route's reply
-		chat    aitest.Reply // the chat route's reply
+		route   aitest.Reply
+		chat    aitest.Reply
 		want    string
 		uploads int
 	}{
@@ -333,8 +286,6 @@ func TestTranscribe_NotFound(t *testing.T) {
 	}
 }
 
-// A chat-mode reply the model didn't complete is exit 1, naming its status
-// and reason, with no transcript written.
 func TestTranscribe_ChatIncomplete(t *testing.T) {
 	e := transcribeEndpoint(t, nil, chatReply("", "length", "the clip's"))
 
@@ -349,8 +300,6 @@ func TestTranscribe_ChatIncomplete(t *testing.T) {
 	}
 }
 
-// A file that doesn't exist is exit 1, the open's error named, and sends
-// no upload.
 func TestTranscribe_MissingFile(t *testing.T) {
 	e := transcribeEndpoint(t, nil, completedChat())
 	missing := filepath.Join(t.TempDir(), "missing.wav")
@@ -364,8 +313,6 @@ func TestTranscribe_MissingFile(t *testing.T) {
 	wantNoRequest(t, e)
 }
 
-// The mode is INFER_TRANSCRIPTION_MODE's when set, and --mode's when given,
-// whichever the variable says; neither is route.
 func TestTranscribe_ModeSetting(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -399,8 +346,6 @@ func TestTranscribe_ModeSetting(t *testing.T) {
 	}
 }
 
-// An unknown mode, from the flag or the variable, is a usage error, exit
-// 2, naming the flag and its variable, before any request.
 func TestTranscribe_UnknownMode(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -425,8 +370,6 @@ func TestTranscribe_UnknownMode(t *testing.T) {
 	}
 }
 
-// With no model set, transcribe lists the endpoint's models and sends to
-// the one listed.
 func TestTranscribe_FallsBackToTheOneModel(t *testing.T) {
 	e := transcribeEndpoint(t, []string{"whisper-large"}, completedChat())
 
@@ -439,8 +382,6 @@ func TestTranscribe_FallsBackToTheOneModel(t *testing.T) {
 	}
 }
 
-// transcribe takes exactly one positional argument; none, or two, is a
-// usage error, exit 2, that builds and sends nothing.
 func TestTranscribe_OneFile(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -464,8 +405,6 @@ func TestTranscribe_OneFile(t *testing.T) {
 	}
 }
 
-// transcribe's help names --mode and its variable, and builds and sends
-// nothing.
 func TestTranscribe_Help(t *testing.T) {
 	e := transcribeEndpoint(t, []string{"whisper"}, completedChat())
 

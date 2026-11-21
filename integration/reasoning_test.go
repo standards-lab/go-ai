@@ -10,8 +10,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// reasoningRequest is the weather question under the required choice, with a reasoning effort,
-// to the agent's model.
 func reasoningRequest(model string) *protocol.Request {
 	return &protocol.Request{
 		Model:           model,
@@ -23,8 +21,6 @@ func reasoningRequest(model string) *protocol.Request {
 	}
 }
 
-// leadingReasoning returns resp's first output item, failing t unless it is reasoning with text
-// and the encrypted content a format sends back.
 func leadingReasoning(t *testing.T, resp *protocol.Response) protocol.Reasoning {
 	t.Helper()
 	if len(resp.Output) == 0 {
@@ -40,11 +36,6 @@ func leadingReasoning(t *testing.T, resp *protocol.Response) protocol.Reasoning 
 	return r
 }
 
-// TestReasoningRoundTrip asks with a reasoning effort for a call in each format, wants reasoning
-// ahead of it, sends the response's output back as it came, reasoning included, with the call's
-// output, and wants a completed answer that uses it. That the reasoning reached the wire, as the
-// assistant message's reasoning, its thinking block, or the reasoning item's content, is the unit
-// tier's to prove; the exported API doesn't show the body.
 func TestReasoningRoundTrip(t *testing.T) {
 	eachFormat(t, agent, func(t *testing.T, c *ai.Client, model string) {
 		generate := generator(t, c)
@@ -55,7 +46,6 @@ func TestReasoningRoundTrip(t *testing.T) {
 	})
 }
 
-// reasoningText returns r's reasoning text, its parts joined.
 func reasoningText(r protocol.Reasoning) string {
 	var b strings.Builder
 	for _, p := range r.Content {

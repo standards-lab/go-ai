@@ -14,11 +14,8 @@ import (
 	"github.com/standards-lab/go-ai/tools/infer/integration"
 )
 
-// role is an endpoint a scenario runs on, named by the environment variable
-// that holds its API root, as go-ai's integration tier names it.
 type role string
 
-// The roles, each its variable.
 const (
 	agent         role = "AI_AGENT_BASE_URL"
 	vision        role = "AI_VISION_BASE_URL"
@@ -27,28 +24,12 @@ const (
 	transcription role = "AI_TRANSCRIPTION_BASE_URL"
 )
 
-// roles are every role, for the scenario that runs on each.
 var roles = []role{agent, vision, audio, embedding, transcription}
 
-// formats are the --format values, each a scenario that runs in every
-// format runs through.
 var formats = []string{"completions", "messages", "responses"}
 
-// answerBound is the --max-tokens of a chat that wants an answer: a
-// reasoning model reasons ahead of it, within the same bound. Messages
-// requires one, so every chat scenario passes a bound.
 const answerBound = "1024"
 
-// runOn runs the built program once against r's endpoint, its API root
-// mapped onto INFER_BASE_URL, its model, when AI_<ROLE>_MODEL names one,
-// onto INFER_MODEL, its profile, when AI_<ROLE>_PROFILE holds one, onto
-// INFER_PROFILE, and its credentials, when set, onto INFER_TOKEN and
-// INFER_HEADER, as [integration.Endpoint] maps them, with env added; with
-// no model named, infer sends to the one model the endpoint lists, and
-// with no profile, it speaks each format's spec. It skips t when r's
-// variable is unset, and when the run is infer's refusal of a request the
-// profile declares a gap of, as [integration.SkipDeclared] reads it: every
-// scenario on an endpoint runs through here, so each gets that skip.
 func runOn(t *testing.T, r role, env []string, args ...string) processtest.Result {
 	t.Helper()
 	res := integration.RunEnv(t, append(integration.Endpoint(t, string(r)), env...), args...)
@@ -56,8 +37,6 @@ func runOn(t *testing.T, r role, env []string, args ...string) processtest.Resul
 	return res
 }
 
-// eachFormat runs scenario as a subtest of t for each of formats, named for
-// the format, given the INFER_FORMAT setting that selects it.
 func eachFormat(t *testing.T, scenario func(t *testing.T, formatEnv string)) {
 	t.Helper()
 	for _, f := range formats {
@@ -65,9 +44,6 @@ func eachFormat(t *testing.T, scenario func(t *testing.T, formatEnv string)) {
 	}
 }
 
-// eachChat runs scenario as a subtest of t for each of formats, and in each
-// both streamed and unstreamed, named as "completions/stream=true", given
-// the INFER_FORMAT setting and the --stream flag that select them.
 func eachChat(t *testing.T, scenario func(t *testing.T, formatEnv, streamFlag string)) {
 	t.Helper()
 	eachFormat(t, func(t *testing.T, formatEnv string) {
@@ -78,8 +54,6 @@ func eachChat(t *testing.T, scenario func(t *testing.T, formatEnv, streamFlag st
 	})
 }
 
-// wantCode fails t now unless res exited with code, so the assertions that
-// follow read the output of the run they expect.
 func wantCode(t *testing.T, res processtest.Result, code int) {
 	t.Helper()
 	if res.Code != code {
@@ -87,14 +61,11 @@ func wantCode(t *testing.T, res processtest.Result, code int) {
 	}
 }
 
-// summary is chat's stderr summary, as its lines give it.
 type summary struct {
 	status         string
 	reasoningItems int
 }
 
-// chatSummary returns the summary chat wrote to stderr, failing t unless
-// stderr holds its status and reasoning item lines.
 func chatSummary(t *testing.T, stderr string) summary {
 	t.Helper()
 	var s summary
@@ -118,10 +89,6 @@ func chatSummary(t *testing.T, stderr string) summary {
 	return s
 }
 
-// TestModels lists each role's endpoint and wants exactly one model ID, one
-// line, as the one-model fallback of every other scenario needs. A role
-// whose AI_<ROLE>_MODEL names its model needs no fallback, so it wants at
-// least one model ID line.
 func TestModels(t *testing.T) {
 	for _, r := range roles {
 		t.Run(string(r), func(t *testing.T) {

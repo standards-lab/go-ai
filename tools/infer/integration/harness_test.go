@@ -13,13 +13,6 @@ import (
 	"github.com/standards-lab/go-ai/tools/infer/integration"
 )
 
-// This file is untagged, so the unit tier runs its tests: Endpoint's
-// mapping of a role's variables, and SkipDeclared's reading of a run, which
-// every scenario runs through, are checked on every pull request.
-
-// logRecorder is a testing.TB that keeps the text of each Log, Logf,
-// Fatalf, and Skipf call before passing it on, so a test reads what the
-// harness, or a run through it, printed.
 type logRecorder struct {
 	testing.TB
 	mu   sync.Mutex
@@ -56,21 +49,17 @@ func (r *logRecorder) Skipf(format string, args ...any) {
 	r.TB.Skipf(format, args...)
 }
 
-// String returns everything recorded so far.
 func (r *logRecorder) String() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.text.String()
 }
 
-// The token and header values a test maps, which nothing may print.
 const (
 	tokenSecret  = "t0ken-secret"
 	headerSecret = "head3r-secret"
 )
 
-// unsetInfer unsets INFER_TOKEN and INFER_HEADER for the test, as Main
-// does for the suite, restoring them when it ends.
 func unsetInfer(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{"INFER_TOKEN", "INFER_HEADER"} {
@@ -81,10 +70,6 @@ func unsetInfer(t *testing.T) {
 	}
 }
 
-// Endpoint maps a role's base URL onto the INFER_BASE_URL override, and
-// its token and header onto INFER_TOKEN and INFER_HEADER in the test's
-// environment, never in the overrides a run logs; it logs the mapping by
-// name, never a value.
 func TestEndpoint_MapsCredentials(t *testing.T) {
 	unsetInfer(t)
 	header := "api-key: " + headerSecret + "\nx-tenant: docs"
@@ -119,9 +104,6 @@ func TestEndpoint_MapsCredentials(t *testing.T) {
 	}
 }
 
-// With neither credential variable set, nor the model's, Endpoint sets
-// none of infer's, and logs nothing of them, so the program runs as it did
-// before they existed.
 func TestEndpoint_NoCredentials(t *testing.T) {
 	unsetInfer(t)
 	t.Setenv("AI_TEST_BASE_URL", "http://localhost:8000/v1")
@@ -147,9 +129,6 @@ func TestEndpoint_NoCredentials(t *testing.T) {
 	}
 }
 
-// A role's AI_<ROLE>_MODEL becomes the INFER_MODEL override, shown in the
-// run's shell line beside its base URL, while its credentials stay out of
-// the overrides and the log.
 func TestEndpoint_MapsModel(t *testing.T) {
 	unsetInfer(t)
 	t.Setenv("AI_TEST_BASE_URL", "http://localhost:8000/v1")
@@ -171,12 +150,9 @@ func TestEndpoint_MapsModel(t *testing.T) {
 	}
 }
 
-// vllmAgent is a profile of every format, as AI_<ROLE>_PROFILE holds one.
 const vllmAgent = `{"completions":{"refused_efforts":["none","max"],"no_allowed_tools":true},` +
 	`"responses":{"refused_efforts":["xhigh"],"resend_reasoning_text":true},"messages":{"refused_efforts":["none"]}}`
 
-// A role's AI_<ROLE>_PROFILE becomes the INFER_PROFILE override as it was
-// given, beside the base URL and the model; another role's reaches no run.
 func TestEndpoint_MapsProfile(t *testing.T) {
 	unsetInfer(t)
 	t.Setenv("AI_TEST_BASE_URL", "http://localhost:8000/v1")
@@ -194,8 +170,6 @@ func TestEndpoint_MapsProfile(t *testing.T) {
 	}
 }
 
-// Profile returns AI_<ROLE>_PROFILE as given when it decodes strictly as
-// go-ai's Options keyed by format name, and "" when it is unset or empty.
 func TestProfile(t *testing.T) {
 	for _, tc := range []struct{ name, v string }{
 		{"unset", ""},
@@ -218,10 +192,6 @@ func TestProfile(t *testing.T) {
 	}
 }
 
-// A profile that doesn't decode strictly is an error naming the role's
-// variable first, rather than infer's --profile: not JSON, an unknown
-// format name, an unknown field, a Go field name, and an effort go-ai
-// lacks.
 func TestProfile_Malformed(t *testing.T) {
 	for _, tc := range []struct{ name, v string }{
 		{"not JSON", `{"completions":`},
@@ -245,10 +215,6 @@ func TestProfile_Malformed(t *testing.T) {
 	}
 }
 
-// A run infer refused for a gap the profile declares, exit 2 and the
-// declared suffix, skips, naming the role's variable and quoting the line
-// that names the gap; a spec's refusal, the same exit with no suffix, and
-// any other run, the suffix at another code among them, don't.
 func TestSkipDeclared(t *testing.T) {
 	const declared = "infer chat: --reasoning: responses: reasoning effort none is refused by the deployment, as its profile declares; declared by --profile (INFER_PROFILE)"
 	for _, tc := range []struct {

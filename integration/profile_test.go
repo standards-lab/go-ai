@@ -19,32 +19,16 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// This file is untagged, so the unit tier runs its tests: the reading of a role's profile and the
-// skip of a request it declares a gap of, which every tagged scenario runs through, are checked
-// hermetically on every pull request.
-
-// profile is a role's deployment profile, as AI_<ROLE>_PROFILE holds it: a JSON object keyed by
-// format name, each member that format's Options under the snake_case, case-strict names their
-// tags give them, the shape infer's --profile and INFER_PROFILE take. A member absent is that
-// format's zero Options, its spec's form, and so is the whole profile when the variable is unset.
 type profile struct {
 	Completions completions.Options `json:"completions,omitzero,case:strict"`
 	Messages    messages.Options    `json:"messages,omitzero,case:strict"`
 	Responses   responses.Options   `json:"responses,omitzero,case:strict"`
 }
 
-// profileVariable is the variable that holds the profile of the role whose API root variable is
-// baseVariable: AI_<ROLE>_PROFILE, such as AI_AGENT_PROFILE for AI_AGENT_BASE_URL.
 func profileVariable(baseVariable string) string {
 	return strings.TrimSuffix(baseVariable, "_BASE_URL") + "_PROFILE"
 }
 
-// readProfile returns the profile AI_<ROLE>_PROFILE holds, read through getenv, for the role
-// whose API root variable is baseVariable, or the zero profile when it is unset or empty. It is
-// decoded as infer decodes INFER_PROFILE, with encoding/json/v2 and json.RejectUnknownMembers, so
-// an unknown format name or field, a Go field name, or a value a field refuses, such as an effort
-// protocol.ReasoningEffort doesn't name, is an error naming the variable ahead of the decoder's.
-// A profile is no secret, so the error may show it.
 func readProfile(baseVariable string, getenv func(string) string) (profile, error) {
 	var p profile
 	variable := profileVariable(baseVariable)
@@ -58,38 +42,25 @@ func readProfile(baseVariable string, getenv func(string) string) (profile, erro
 	return p, nil
 }
 
-// skipDeclared is a format.Format that skips its scenario's test when the format it wraps
-// refuses a request as a gap of the role's profile, a *format.UnsupportedError of Declared true:
-// the profile says the deployment can't serve that request, so the scenario has nothing to
-// assert of it. It is the tier's one skip rule, and every scenario gets it, as endpoint builds
-// each format wrapped in one. A refusal of the spec's own, Declared false, is returned as it
-// came, so the scenario fails on it. Each refusal happens as the request is encoded, before
-// anything is sent, on the goroutine that called Generate, GenerateStream's iterator, or
-// Transcribe, which is the test's.
+// See docs/design.md, "Implementation notes".
 type skipDeclared struct {
 	format.Format
-	// t is the scenario's test, which a declared refusal skips.
-	t testing.TB
-	// variable is the role's AI_<ROLE>_PROFILE, which the skip names as the gap's source.
+	t        testing.TB
 	variable string
 }
 
-// EncodeRequest encodes req as the wrapped format does, skipping t on a declared refusal.
 func (f skipDeclared) EncodeRequest(req *protocol.Request, header http.Header) ([]byte, error) {
 	body, err := f.Format.EncodeRequest(req, header)
 	f.skipIfDeclared(err)
 	return body, err
 }
 
-// EncodeStreamRequest encodes req as the wrapped format does, skipping t on a declared refusal.
 func (f skipDeclared) EncodeStreamRequest(req *protocol.Request, header http.Header) ([]byte, error) {
 	body, err := f.Format.EncodeStreamRequest(req, header)
 	f.skipIfDeclared(err)
 	return body, err
 }
 
-// skipIfDeclared skips t when err is a declared refusal, naming the profile's variable, the
-// format, and the gap, its Feature and its Value, with the refusal's account.
 func (f skipDeclared) skipIfDeclared(err error) {
 	f.t.Helper()
 	u, ok := errors.AsType[*format.UnsupportedError](err)
@@ -104,8 +75,6 @@ func (f skipDeclared) skipIfDeclared(err error) {
 		f.variable, gap, u.Format, err)
 }
 
-// A role's AI_<ROLE>_PROFILE decodes to each format's Options, a member absent its zero Options;
-// the variable unset or empty, or another role's alone, is the zero profile.
 func TestReadProfile(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -151,8 +120,6 @@ func TestReadProfile(t *testing.T) {
 	}
 }
 
-// A profile that doesn't decode strictly is an error naming the role's variable: not JSON, an
-// unknown format name, an unknown field, a Go field name, and an effort the protocol lacks.
 func TestReadProfile_Malformed(t *testing.T) {
 	for _, tc := range []struct{ name, v string }{
 		{"not JSON", `{"completions":`},
@@ -173,8 +140,6 @@ func TestReadProfile_Malformed(t *testing.T) {
 	}
 }
 
-// skipRecorder is a testing.TB that records a Skipf call's text instead of skipping, so a test
-// reads whether, and how, skipDeclared would skip.
 type skipRecorder struct {
 	testing.TB
 	skipped string
@@ -184,7 +149,6 @@ func (r *skipRecorder) Skipf(format string, args ...any) {
 	r.skipped = fmt.Sprintf(format, args...)
 }
 
-// effortRequest is a request of effort e, which a profile may refuse.
 func effortRequest(e protocol.ReasoningEffort) *protocol.Request {
 	return &protocol.Request{
 		Model:           "m",
@@ -194,18 +158,12 @@ func effortRequest(e protocol.ReasoningEffort) *protocol.Request {
 	}
 }
 
-// A request the profile declares a gap of skips, streamed or not, naming the variable, the
-// format, and the gap; one the spec refuses, Declared false, is returned as it came, and one the
-// format sends is encoded, neither skipping.
 func TestSkipDeclared(t *testing.T) {
 	refusesNone := responses.New(responses.Options{RefusedEfforts: []protocol.ReasoningEffort{protocol.ReasoningEffortNone}})
 	for _, tc := range []struct {
-		name   string
-		effort protocol.ReasoningEffort
-		// skip is what the skip's text holds, or empty for no skip.
-		skip []string
-		// specRefusal is whether the request comes back as the spec's refusal; else it is
-		// encoded. It is read only when skip is empty.
+		name        string
+		effort      protocol.ReasoningEffort
+		skip        []string
 		specRefusal bool
 	}{
 		{"declared", protocol.ReasoningEffortNone, []string{"AI_AGENT_PROFILE", "the responses format", `"reasoning effort none"`}, false},
@@ -246,8 +204,6 @@ func TestSkipDeclared(t *testing.T) {
 	}
 }
 
-// Through a Client, a declared refusal skips the scenario's test from inside Generate and from
-// inside GenerateStream's iterator, the test's own goroutine, and nothing reaches the endpoint.
 func TestSkipDeclared_ThroughClient(t *testing.T) {
 	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
