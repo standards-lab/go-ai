@@ -122,7 +122,7 @@ The repository is a Go workspace of two modules, the base module and `tools/infe
 through [mise](https://mise.jdx.dev):
 
 ```sh
-mise run check        # build, vet, format, fix, tidy, test, and lint every module, then lint-context and lint-references; writes nothing
+mise run check        # build, vet, format, fix, tidy, test, and lint every module, then lint-context, lint-references, and lint-secrets; writes nothing
 mise run currency     # report requirements, Go, tools, and action pins behind their latest
 mise run upgrade      # upgrade every module's go directive and requirements, and the tools, to their latest
 mise run integration  # run every module's integration tier against the AI_*_BASE_URL endpoints
@@ -146,7 +146,10 @@ which an endpoint that lists more than one, such as a cloud account's whole cata
 | `AI_TRANSCRIPTION_BASE_URL` | serves the transcription route | route-mode `Transcribe` |
 
 An endpoint that needs credentials takes them from `AI_<ROLE>_TOKEN`, sent as the bearer token,
-and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value.
+and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value. For each role
+whose base URL is set and whose `AI_<ROLE>_TOKEN` is unset, `mise run integration` fills it from
+`AI_GATEWAY_TOKEN`, from the committed `fnox.toml` ([Secrets](#secrets)), and redacts it in its
+output. Without a key that decrypts it, fnox warns and the tier runs with what you export.
 
 A role's [profile](docs/concepts.md#profiles) goes in `AI_<ROLE>_PROFILE`, the JSON object keyed
 by format name that `infer`'s `--profile` takes. Unset, each format follows its spec. A scenario
@@ -159,6 +162,30 @@ AI_AGENT_BASE_URL=https://gateway.example/agent/v1 AI_AGENT_HEADER='api-key: …
 `mise run integration` then runs `infer`'s tier against the same variables. The check builds the
 tier but never runs it, and no CI job runs it, because the models are on the organization's own
 machines.
+
+### Secrets
+
+`fnox.toml` holds go-ai's development-time secret, `AI_GATEWAY_TOKEN`, the integration tier's
+model gateway key, encrypted with [age](https://age-encryption.org) to the maintainer's
+recipients. It says what it is and how to get your own; list it, with no key, with:
+
+```sh
+mise secrets ls
+```
+
+To use your own value, generate an age identity with `age-keygen -o ~/.config/fnox/age.txt`, then
+write the value to the gitignored `fnox.local.toml`, which overrides `fnox.toml`. Give that file
+an age provider whose recipient is your own public key (`age-keygen -y ~/.config/fnox/age.txt`),
+then run:
+
+```sh
+fnox -c ./fnox.local.toml set AI_GATEWAY_TOKEN
+```
+
+In a fork, replace the recipients in `fnox.toml` with your own and set the value again. A plain
+`fnox set` writes to the committed `fnox.toml`, so name `fnox.local.toml` with `-c` unless you
+mean to change the committed file. The architecture's development-secrets principle,
+`architecture/principles/development-secrets.md`, governs this arrangement.
 
 ## Modules and tags
 

@@ -20,7 +20,10 @@
 // gateway or a cloud endpoint: AI_<ROLE>_TOKEN, such as AI_AGENT_TOKEN, sent as the bearer token
 // through Options.Token, and AI_<ROLE>_HEADER, one or more "Name: value" lines separated by
 // newlines, each trimmed and a blank one skipped, sent through Options.Header, such as
-// AI_AGENT_HEADER='api-key: …'. With neither set, the role's requests carry no credential. A
+// AI_AGENT_HEADER='api-key: …'. With neither set, the role's requests carry no credential.
+// `mise run integration` fills an unset AI_<ROLE>_TOKEN, for each role whose base URL is set,
+// from AI_GATEWAY_TOKEN, which comes from the committed, age-encrypted fnox.toml; without a key
+// that decrypts it, the token stays unset. The README's "Secrets" says how to give your own. A
 // header line with no colon or no name fails the scenario naming the variable and the line, and
 // a header ai.New refuses fails it naming the role's base URL; no failure prints a token or a
 // header value. The reading of them is untagged, so the unit tier tests it.
