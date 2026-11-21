@@ -10,18 +10,12 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// unknownItem, unknownChoice, and unknownFormat are an item, a tool choice, and a text format of
-// a type the format doesn't know, each taking its interface's method from the protocol type it
-// embeds.
 type (
 	unknownItem   struct{ protocol.Message }
 	unknownChoice struct{ protocol.FunctionToolChoice }
 	unknownFormat struct{ protocol.PlainTextFormat }
 )
 
-// TestEncodeRefusalIsUnsupported wants each request the format refuses refused with a
-// *format.UnsupportedError of the feature and value refused, a spec-level refusal, and the
-// refusal's message unchanged, streamed or not.
 func TestEncodeRefusalIsUnsupported(t *testing.T) {
 	user := text(protocol.RoleUser, "hi")
 	reasoningText := protocol.ReasoningText{Text: "hm"}

@@ -13,9 +13,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// foundryEncrypted returns the encrypted_content of each reasoning item in the output of reply,
-// an unstreamed reply recorded in testdata/foundry. Foundry's are some thousands of characters,
-// too long to pin by hand.
 func foundryEncrypted(t *testing.T, reply []byte) []string {
 	t.Helper()
 	var r struct {
@@ -36,9 +33,6 @@ func foundryEncrypted(t *testing.T, reply []byte) []string {
 	return enc
 }
 
-// TestDecodeFoundry decodes the Azure AI Foundry replies recorded in testdata/foundry. gpt-5-mini
-// reasons on every request, and gives its reasoning item no text, no summary, and a null status,
-// which decodes as empty, and the envelope holds the server's encrypted_content alone.
 func TestDecodeFoundry(t *testing.T) {
 	message := func(id, s string) protocol.Message {
 		return protocol.Message{
@@ -50,12 +44,9 @@ func TestDecodeFoundry(t *testing.T) {
 	}
 	cases := []struct {
 		file string
-		// want is the response but its reasoning item's envelope, which holds the reply's own
-		// encrypted_content.
 		want *protocol.Response
 	}{
 		{
-			// No reasoning asked for: the deployment's default effort, medium.
 			file: "text.json",
 			want: &protocol.Response{
 				ID:    "resp_0ed6014bde04d50e016afc4f69fad08195a25bbe0fe3a1e843",
@@ -105,16 +96,6 @@ func TestDecodeFoundry(t *testing.T) {
 	}
 }
 
-// TestStreamFoundry translates the Azure AI Foundry streams recorded in testdata/foundry and
-// folds them to the Response DecodeResponse gives for the terminal event's response, its
-// reasoning item, of null status there, completed as its output_item.done gives it. The
-// unstreamed .json beside each is another reply, of other token counts and encrypted content.
-//
-// Foundry adds gpt-5-mini's reasoning item with an encrypted_content of its own, unlike the one
-// its output_item.done gives, which is unlike the terminal response's again: the item is added
-// with none, the envelope of the done item holds the done item's, and the folded item, the
-// terminal response's, holds the terminal response's. Each done item is otherwise the
-// terminal response's.
 func TestStreamFoundry(t *testing.T) {
 	for _, name := range []string{"text", "reasoning"} {
 		t.Run(name, func(t *testing.T) {
@@ -152,8 +133,6 @@ func TestStreamFoundry(t *testing.T) {
 	}
 }
 
-// foundryStreamEncrypted returns the encrypted_content of the reasoning item that body, a stream
-// recorded in testdata/foundry, adds, and of the one it gives at the item's output_item.done.
 func foundryStreamEncrypted(t *testing.T, body string) (added, done string) {
 	t.Helper()
 	events := sse.NewDecoder(strings.NewReader(body))

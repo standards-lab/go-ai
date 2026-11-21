@@ -9,7 +9,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// weatherTool is a function tool of every field set, strict.
 var weatherTool = protocol.FunctionTool{
 	Name:        "get_weather",
 	Description: "Get the weather.",
@@ -17,14 +16,11 @@ var weatherTool = protocol.FunctionTool{
 	Strict:      true,
 }
 
-// weatherToolJSON is weatherTool on the wire.
 const weatherToolJSON = `{"type":"function","name":"get_weather","description":"Get the weather.",
 	"parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},"strict":true}`
 
-// userHi is the input every case here opens with, on the wire.
 const userHi = `{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}`
 
-// withTools is a request of a user's "hi" with tools and choice.
 func withTools(choice protocol.ToolChoice, tools ...protocol.FunctionTool) *protocol.Request {
 	return &protocol.Request{Model: "m", Input: []protocol.Item{text(protocol.RoleUser, "hi")}, Tools: tools, ToolChoice: choice}
 }
@@ -37,7 +33,6 @@ func TestEncodeTools(t *testing.T) {
 		want string
 	}{
 		{
-			// strict false is sent, as llama.cpp's router defaults a tool's strict to true.
 			name: "tools of every field, and of a name alone, strict always sent",
 			req:  withTools(nil, weatherTool, timeTool),
 			want: `{"model":"m",` + stateless + `,"input":[` + userHi + `],"tools":[` + weatherToolJSON + `,
@@ -65,7 +60,6 @@ func TestEncodeTools(t *testing.T) {
 				"tool_choice":{"type":"function","name":"get_weather"}}`,
 		},
 		{
-			// Every tool goes out; the choice narrows them, as the spec has it.
 			name: "tool choice of allowed tools, with its mode",
 			req: withTools(protocol.AllowedToolChoice{
 				Tools: []protocol.FunctionToolChoice{{Name: "get_weather"}},
@@ -112,8 +106,6 @@ func TestEncodeTools(t *testing.T) {
 	}
 }
 
-// TestEncodeFunctionItems covers function_call and function_call_output input items, with and
-// without their ids, their statuses never sent, and a call of no arguments sent with "{}".
 func TestEncodeFunctionItems(t *testing.T) {
 	req := ask(
 		text(protocol.RoleUser, "hi"),
@@ -134,9 +126,6 @@ func TestEncodeFunctionItems(t *testing.T) {
 		{"type":"function_call_output","call_id":"call_3","output":""}]}`)
 }
 
-// TestEncodeEffortsAndBound covers the efforts the spec defines, each sent as reasoning's effort,
-// and max_output_tokens at the spec's minimum. The efforts and the bound it refuses are
-// TestEncodeRefusalIsUnsupported's.
 func TestEncodeEffortsAndBound(t *testing.T) {
 	efforts := []protocol.ReasoningEffort{
 		protocol.ReasoningEffortNone, protocol.ReasoningEffortLow, protocol.ReasoningEffortMedium,
@@ -157,9 +146,6 @@ func TestEncodeEffortsAndBound(t *testing.T) {
 	})
 }
 
-// TestEncodeParallelToolCalls covers ParallelToolCalls: true and false as the top-level
-// parallel_tool_calls, and nil sending nothing, leaving it to the endpoint; and a Native
-// parallel_tool_calls beside nil, the native tier's to send.
 func TestEncodeParallelToolCalls(t *testing.T) {
 	cases := []struct {
 		name     string

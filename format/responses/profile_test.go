@@ -14,15 +14,10 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The tests here hold the format to its Options, the profile of the deployment it targets: what
-// each field refuses, narrows, and leaves as the spec's form, and how Options decodes from JSON.
-
-// timeTool is a function tool of a name alone, on the wire as timeToolJSON.
 var timeTool = protocol.FunctionTool{Name: "get_time"}
 
 const timeToolJSON = `{"type":"function","name":"get_time","strict":false}`
 
-// encodings are the format's two encodings of a request under opts, unstreamed and streamed.
 func encodings(opts responses.Options) map[string]func(*protocol.Request, http.Header) ([]byte, error) {
 	f := responses.New(opts)
 	return map[string]func(*protocol.Request, http.Header) ([]byte, error){
@@ -31,8 +26,6 @@ func encodings(opts responses.Options) map[string]func(*protocol.Request, http.H
 	}
 }
 
-// toolMembers returns body's tools and tool_choice members alone, as a JSON object, so a test can
-// compare them across both encodings, whose bodies differ in their stream members.
 func toolMembers(t *testing.T, body []byte) []byte {
 	t.Helper()
 	var m struct {
@@ -49,7 +42,6 @@ func toolMembers(t *testing.T, body []byte) []byte {
 	return b
 }
 
-// allowed is an allowed_tools choice of mode and the tools of names.
 func allowed(mode protocol.ToolChoiceMode, names ...string) protocol.AllowedToolChoice {
 	c := protocol.AllowedToolChoice{Mode: mode}
 	for _, n := range names {
@@ -58,17 +50,12 @@ func allowed(mode protocol.ToolChoiceMode, names ...string) protocol.AllowedTool
 	return c
 }
 
-// TestProfileSends wants each request a profile lets through sent as the profile has it: the
-// spec's form where it declares nothing of the request, and an allowed_tools choice narrowed under
-// NoAllowedTools, whatever its mode.
 func TestProfileSends(t *testing.T) {
 	narrowing := responses.Options{NoAllowedTools: true}
 	cases := []struct {
-		name string
-		opts responses.Options
-		req  *protocol.Request
-		// unvalidated is set for a request Validate refuses, which only a direct caller of the
-		// format can give it.
+		name        string
+		opts        responses.Options
+		req         *protocol.Request
 		unvalidated bool
 		want        string
 	}{
@@ -114,8 +101,6 @@ func TestProfileSends(t *testing.T) {
 	}
 }
 
-// TestProfileSendsUnlistedEffort wants every effort RefusedEfforts doesn't list sent by its name,
-// and a request of no effort sent with none, whatever the set.
 func TestProfileSendsUnlistedEffort(t *testing.T) {
 	refused := []protocol.ReasoningEffort{protocol.ReasoningEffortNone, protocol.ReasoningEffortXHigh}
 	opts := responses.Options{RefusedEfforts: refused}
@@ -147,9 +132,6 @@ func TestProfileSendsUnlistedEffort(t *testing.T) {
 	}
 }
 
-// TestProfileRefuses wants each request a profile declares a gap refused with a declared
-// *format.UnsupportedError, ahead of the format's other refusals, and an effort the spec lacks
-// refused as the spec's gap though the profile lists it.
 func TestProfileRefuses(t *testing.T) {
 	every := responses.Options{
 		RefusedEfforts: []protocol.ReasoningEffort{
@@ -204,8 +186,6 @@ func TestProfileRefuses(t *testing.T) {
 	}
 }
 
-// TestNewCopiesRefusedEfforts wants a change to the caller's RefusedEfforts after New to leave
-// the format's profile as it was.
 func TestNewCopiesRefusedEfforts(t *testing.T) {
 	efforts := []protocol.ReasoningEffort{protocol.ReasoningEffortXHigh}
 	f := responses.New(responses.Options{RefusedEfforts: efforts})
@@ -217,7 +197,6 @@ func TestNewCopiesRefusedEfforts(t *testing.T) {
 	}
 }
 
-// strict is the decoding a profile's loader would use: an unknown member is an error.
 var strict = json.RejectUnknownMembers(true)
 
 func TestOptionsDecode(t *testing.T) {
@@ -237,9 +216,6 @@ func TestOptionsDecode(t *testing.T) {
 	}
 }
 
-// TestOptionsDecodeRefuses wants strict decoding to refuse an unknown member, completions'
-// no_tool_choice_required among them, a member spelled as the Go field or in another case, even
-// where the decoder matches names case-insensitively, and an effort the protocol doesn't define.
 func TestOptionsDecodeRefuses(t *testing.T) {
 	cases := []struct {
 		name string
@@ -272,8 +248,6 @@ func TestOptionsDecodeRefuses(t *testing.T) {
 	}
 }
 
-// TestOptionsEncode wants Options encoded under its JSON names, each zero field omitted, so the
-// zero profile encodes as an empty object.
 func TestOptionsEncode(t *testing.T) {
 	cases := []struct {
 		name string

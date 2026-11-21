@@ -9,15 +9,11 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The reasoning of the vLLM replies recorded in testdata/vllm.
 const (
 	vllmCitiesReasoning  = "Need to output three French cities, comma-separated, nothing else."
 	vllmWeatherReasoning = "We need to call function get_weather."
 )
 
-// TestDecodeVLLM decodes the vLLM replies recorded in testdata/vllm. vLLM gives a reasoning
-// item a null status and a null encrypted_content, which decode as empty: the item's status is
-// the server's, and the envelope holds an empty encrypted_content and the reasoning text.
 func TestDecodeVLLM(t *testing.T) {
 	message := func(id string, status protocol.Status, s string) protocol.Message {
 		return protocol.Message{
@@ -100,8 +96,6 @@ func TestDecodeVLLM(t *testing.T) {
 			},
 		},
 		{
-			// Stopped at max_output_tokens, which vLLM reports, unlike llama.cpp's router:
-			// the response and its message incomplete.
 			file: "length.json",
 			want: &protocol.Response{
 				ID:                "resp_94da7688c5813315",
@@ -137,10 +131,6 @@ func TestDecodeVLLM(t *testing.T) {
 	}
 }
 
-// TestStreamVLLM translates the vLLM streams recorded in testdata/vllm, which carry every
-// event's sequence_number, output_index, and content_index, and folds them to the Response
-// DecodeResponse gives for the terminal event's response, its reasoning item, of null status
-// there, completed as its output_item.done gives it.
 func TestStreamVLLM(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -160,7 +150,6 @@ func TestStreamVLLM(t *testing.T) {
 			if r.err != nil {
 				t.Fatalf("stream error: %v", r.err)
 			}
-			// Every event vLLM sent but response.in_progress makes one, nothing filled in.
 			if len(r.events) != tc.events {
 				t.Errorf("%d events, want %d:\n%s", len(r.events), tc.events, trace(r.events))
 			}
@@ -181,8 +170,6 @@ func TestStreamVLLM(t *testing.T) {
 	}
 }
 
-// TestDecodeErrorVLLM decodes vLLM's 404 body for an unknown model, an OpenAI-style error of a
-// numeric code.
 func TestDecodeErrorVLLM(t *testing.T) {
 	message, typ, code := responses.New(responses.Options{}).DecodeError(aitest.ReadTestdata(t, "vllm/not_found.json"))
 	const want = "The model `go-ai/no-such-model` does not exist. Valid aliases: openai/gpt-oss-120b."

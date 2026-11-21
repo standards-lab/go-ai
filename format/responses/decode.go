@@ -44,8 +44,6 @@ func (*Format) DecodeResponse(body []byte) (*protocol.Response, error) {
 	return resp, nil
 }
 
-// decodeResponse is DecodeResponse without the package's prefix on its error, for the stream
-// decoder, which decodes a terminal event's response as DecodeResponse decodes a reply.
 func decodeResponse(body []byte) (*protocol.Response, error) {
 	var wire response
 	if err := json.Unmarshal(body, &wire); err != nil {
@@ -86,8 +84,6 @@ func decodeResponse(body []byte) (*protocol.Response, error) {
 	return resp, nil
 }
 
-// decodeItem returns the output item of w, as DecodeResponse describes, and true, or false for
-// an item of a type the format skips.
 func decodeItem(w outputItem) (protocol.Item, bool, error) {
 	status := protocol.Status(w.Status)
 	switch w.Type {
@@ -103,7 +99,6 @@ func decodeItem(w outputItem) (protocol.Item, bool, error) {
 				if outputPart(p.Type) {
 					return nil, false, fmt.Errorf("message content %d has type %q, which a message doesn't take", i, p.Type)
 				}
-				// A part of a type that isn't an output part is skipped.
 			}
 		}
 		return m, true, nil
@@ -141,21 +136,14 @@ func decodeItem(w outputItem) (protocol.Item, bool, error) {
 	return nil, false, nil
 }
 
-// knownItem reports whether typ is the type of an output item the format decodes, not one it
-// skips.
 func knownItem(typ string) bool {
 	return typ == "message" || typ == "reasoning" || typ == "function_call"
 }
 
-// outputPart reports whether typ is the type of an output content part the format decodes, of a
-// message or a reasoning item: output_text, refusal, or reasoning_text. A message's part of any
-// other type is skipped.
 func outputPart(typ string) bool {
 	return typ == "output_text" || typ == "refusal" || typ == "reasoning_text"
 }
 
-// sealEnvelope returns e in its encrypted_content layout: envelopePrefix, then e as JSON in
-// base64.
 func sealEnvelope(e envelope) (string, error) {
 	b, err := json.Marshal(e)
 	if err != nil {

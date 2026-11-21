@@ -93,7 +93,6 @@ func (f *Format) EncodeStreamRequest(req *protocol.Request, _ http.Header) ([]by
 	return f.encode(req, true)
 }
 
-// encode encodes req, streamed when stream is set, prefixing an error with the format's name.
 func (f *Format) encode(req *protocol.Request, stream bool) ([]byte, error) {
 	b, err := f.encodeRequest(req, stream)
 	if err != nil {
@@ -102,7 +101,6 @@ func (f *Format) encode(req *protocol.Request, stream bool) ([]byte, error) {
 	return b, nil
 }
 
-// encodeRequest encodes req as EncodeRequest describes, streamed when stream is set.
 func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, error) {
 	switch e := req.Reasoning.Effort; {
 	case e == protocol.ReasoningEffortMinimal, e == protocol.ReasoningEffortMax:
@@ -171,9 +169,6 @@ func (f *Format) encodeRequest(req *protocol.Request, stream bool) ([]byte, erro
 // for max_output_tokens. EncodeRequest refuses a request whose bound is below it.
 const MinMaxOutputTokens = 16
 
-// refuseStateful refuses a Native, which the client has validated, that has a
-// previous_response_id or background member, each of which asks the endpoint to keep state, as
-// the package documentation explains.
 func refuseStateful(v jsontext.Value) error {
 	for _, name := range []string{"previous_response_id", "background"} {
 		if native.Has(v, name) {
@@ -184,21 +179,14 @@ func refuseStateful(v jsontext.Value) error {
 	return nil
 }
 
-// refuse returns the format's refusal of a request feature, the spec's: the format has no form
-// for value, of feature, as message says.
 func refuse(feature, value, message string) error {
 	return &format.UnsupportedError{Format: "responses", Feature: feature, Value: value, Message: message}
 }
 
-// declare returns the format's refusal of a request feature the deployment's profile declares a
-// gap: the deployment refuses value, of feature, though Open Responses has a form for it, as
-// message says.
 func declare(feature, value, message string) error {
 	return &format.UnsupportedError{Format: "responses", Feature: feature, Value: value, Declared: true, Message: message}
 }
 
-// narrow returns the tools allowed lets through, in their order in tools, for a deployment that
-// ignores an allowed_tools choice. A tool allowed names that tools doesn't carry adds none.
 func narrow(tools []protocol.FunctionTool, allowed protocol.AllowedToolChoice) []protocol.FunctionTool {
 	var out []protocol.FunctionTool
 	for _, t := range tools {
@@ -209,11 +197,8 @@ func narrow(tools []protocol.FunctionTool, allowed protocol.AllowedToolChoice) [
 	return out
 }
 
-// encodeInput encodes the input items as EncodeRequest describes.
 func (f *Format) encodeInput(items []protocol.Item) ([]any, error) {
 	out := make([]any, 0, len(items))
-	// reasoning is the open run of reasoning items under Options.ResendReasoningText, which goes
-	// out only ahead of an assistant message or a function_call, and is dropped otherwise.
 	var reasoning []any
 	for i, it := range items {
 		var w any
@@ -264,9 +249,6 @@ func (f *Format) encodeInput(items []protocol.Item) ([]any, error) {
 	return out, nil
 }
 
-// encodeReasoning returns the reasoning item r goes out as, in the form the format's Options
-// give, and whether it goes out at all, as EncodeRequest describes; a run that no assistant
-// message or function_call follows is encodeInput's to drop.
 func (f *Format) encodeReasoning(r protocol.Reasoning) (reasoningItem, bool) {
 	e, ok := openEnvelope(r.EncryptedContent)
 	if !ok {
@@ -285,15 +267,11 @@ func (f *Format) encodeReasoning(r protocol.Reasoning) (reasoningItem, bool) {
 	return w, e.encrypted != "" || len(e.content) > 0
 }
 
-// opened is an envelope's members, read.
 type opened struct {
 	encrypted string
 	content   []string
 }
 
-// openEnvelope returns what the envelope sealed in encryptedContent holds, and whether
-// encryptedContent is this format's envelope at all: false for one that is empty, another
-// format's or version's, or malformed, a well-formed envelope having both of its members.
 func openEnvelope(encryptedContent string) (opened, bool) {
 	rest, ok := strings.CutPrefix(encryptedContent, envelopePrefix)
 	if !ok {
@@ -310,7 +288,6 @@ func openEnvelope(encryptedContent string) (opened, bool) {
 	return opened{encrypted: *e.EncryptedContent, content: *e.Content}, true
 }
 
-// encodeToolChoice encodes a tool choice as tool_choice, nil when the request sets none.
 func encodeToolChoice(tc protocol.ToolChoice) (any, error) {
 	switch tc := tc.(type) {
 	case nil:
@@ -330,7 +307,6 @@ func encodeToolChoice(tc protocol.ToolChoice) (any, error) {
 	}
 }
 
-// encodeContent encodes a message's content parts as EncodeRequest describes.
 func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 	out := make([]any, 0, len(parts))
 	for i, p := range parts {
@@ -355,7 +331,6 @@ func encodeContent(parts []protocol.ContentPart) ([]any, error) {
 	return out, nil
 }
 
-// encodeText encodes the text parameter, nil when it sets neither a format nor a verbosity.
 func encodeText(t protocol.TextParam) (*textParam, error) {
 	var w textParam
 	switch f := t.Format.(type) {

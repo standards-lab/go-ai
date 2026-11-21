@@ -15,14 +15,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The tests here drive the format through ai.Client.Generate, for what it makes of the request
-// on the wire and of a non-2xx reply, and drive each recorded gap over a loopback server that
-// answers with the gap's recorded reply: under the zero profile the host's reply reaches the
-// caller, and under the profile that declares the gap the format refuses or narrows the request,
-// a refusal coming before the token source is called or anything is sent.
-
-// newClient returns a Client of the server at base speaking the spec's form of the responses
-// format, with token.
 func newClient(t *testing.T, base string, token ai.TokenSource) *ai.Client {
 	t.Helper()
 	c, err := ai.New(base, http.DefaultClient, responses.New(responses.Options{}), ai.Options{Token: token})
@@ -53,8 +45,6 @@ func TestGeneratePostsToResponsesWithBearer(t *testing.T) {
 		{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}]}`)
 }
 
-// TestGenerateRefusesBeforeTheToken wants a request Validate refuses refused before the token
-// source is called or anything is sent.
 func TestGenerateRefusesBeforeTheToken(t *testing.T) {
 	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "conversation.json")))
 	called := false
@@ -72,8 +62,6 @@ func TestGenerateRefusesBeforeTheToken(t *testing.T) {
 	}
 }
 
-// TestGenerateAPIError covers the OpenAI-shaped error body the spec's endpoints answer with, an
-// *APIError of its message, type, and numeric code.
 func TestGenerateAPIError(t *testing.T) {
 	srv := serve(t, http.StatusBadRequest,
 		`{"error":{"code":400,"message":"model 'no-such-model' not found","type":"invalid_request_error"}}`)
@@ -94,8 +82,6 @@ func TestGenerateAPIError(t *testing.T) {
 	}
 }
 
-// newProfileClient returns a Client of the server at base speaking the responses format under
-// opts, with the token source tokens.
 func newProfileClient(t *testing.T, base string, opts responses.Options, tokens *aitest.TokenCounter) *ai.Client {
 	t.Helper()
 	c, err := ai.New(base, http.DefaultClient, responses.New(opts), ai.Options{Token: tokens.Token})
@@ -105,8 +91,6 @@ func newProfileClient(t *testing.T, base string, opts responses.Options, tokens 
 	return c
 }
 
-// The tools of the recorded allowed_tools request, as record.sh sends them, get_time on the wire
-// as recordedTimeJSON.
 var (
 	recordedWeather = protocol.FunctionTool{
 		Name:        "get_weather",
@@ -123,15 +107,12 @@ var (
 const recordedTimeJSON = `{"type":"function","name":"get_time","description":"Get the current local time in a city.",
 	"parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},"strict":false}`
 
-// recordedEffort is the request of the recorded effort gaps, of effort e.
 func recordedEffort(e protocol.ReasoningEffort) *protocol.Request {
 	return &protocol.Request{Model: "agent",
 		Input:     []protocol.Item{text(protocol.RoleUser, "Name three French cities, comma-separated, nothing else.")},
 		Reasoning: protocol.ReasoningParam{Effort: e}}
 }
 
-// recordedAllowedTools is the request of the recorded allowed_tools gap: both tools, get_time
-// alone allowed, and a call required.
 func recordedAllowedTools() *protocol.Request {
 	return &protocol.Request{Model: "agent",
 		Input:      []protocol.Item{text(protocol.RoleUser, "What is the weather in Paris right now?")},
@@ -140,12 +121,8 @@ func recordedAllowedTools() *protocol.Request {
 		Reasoning:  protocol.ReasoningParam{Effort: protocol.ReasoningEffortLow}}
 }
 
-// recordedRefusedEfforts are the efforts vLLM 0.34.0 refused with a recorded 400.
 var recordedRefusedEfforts = []protocol.ReasoningEffort{protocol.ReasoningEffortNone, protocol.ReasoningEffortXHigh}
 
-// TestGenerateRecordedEffortUnderZeroProfile wants each recorded effort's 400, under the zero
-// profile, to reach the caller as an *ai.APIError of the host's status and message, after the
-// token was fetched and the request sent once.
 func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 	for _, e := range recordedRefusedEfforts {
 		t.Run(string(e), func(t *testing.T) {
@@ -171,8 +148,6 @@ func TestGenerateRecordedEffortUnderZeroProfile(t *testing.T) {
 	}
 }
 
-// TestGenerateRecordedEffortDeclared wants each recorded effort, under the profile that declares
-// it refused, refused as declared before the token source is called or anything is sent.
 func TestGenerateRecordedEffortDeclared(t *testing.T) {
 	for _, e := range recordedRefusedEfforts {
 		t.Run(string(e), func(t *testing.T) {
@@ -199,10 +174,6 @@ func TestGenerateRecordedEffortDeclared(t *testing.T) {
 	}
 }
 
-// TestGenerateAllowedToolsUnderZeroProfile wants the recorded allowed_tools request, under the
-// zero profile, sent whole, its allowed_tools choice as the spec has it, and the recorded reply
-// decoded as recorded: vLLM 0.34.0 ignored the choice and called get_weather, outside the allowed
-// set.
 func TestGenerateAllowedToolsUnderZeroProfile(t *testing.T) {
 	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm-0.34.0/allowed_tools.json")))
 	resp, err := newProfileClient(t, srv.URL(), responses.Options{}, &aitest.TokenCounter{}).Generate(t.Context(), recordedAllowedTools())
@@ -239,9 +210,6 @@ func TestGenerateAllowedToolsUnderZeroProfile(t *testing.T) {
 		"tool_choice":{"type":"allowed_tools","tools":[{"type":"function","name":"get_time"}],"mode":"required"}}`)
 }
 
-// TestGenerateAllowedToolsNarrowed wants the recorded allowed_tools request, under
-// NoAllowedTools, sent narrowed: its allowed tool alone and its mode as a plain tool_choice, so
-// vLLM 0.34.0 has no tool outside the set to call. The recorded reply stands in for the host's.
 func TestGenerateAllowedToolsNarrowed(t *testing.T) {
 	srv := serve(t, http.StatusOK, string(aitest.ReadTestdata(t, "vllm-0.34.0/allowed_tools.json")))
 	tokens := &aitest.TokenCounter{}

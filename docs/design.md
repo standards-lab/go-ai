@@ -949,6 +949,37 @@ unsaid, kept here rather than in comments (`architecture/principles/comments.md`
   for each, vLLM a new signature, and the router's prompt cache another split of the same input,
   so the stream tests take those from the stream.
 
+### The responses format
+
+- **The request's members.** include, `["reasoning.encrypted_content"]`, store false, and stream
+  are always sent, so a Native member of any of those names clashes; parallel_tool_calls is
+  omitted when the request leaves it to the endpoint, so a Native member of that name clashes only
+  when it is set. The input is always an array of items, never the string form. A tool's strict
+  flag is always sent, so false stays false at llama.cpp's router, whose default is true. The audio
+  extension's part type carries the implementor slug, `go-ai:input_audio`, under the spec's
+  extension rule.
+- **The envelope** is the prefix `go-ai:responses/v1:`, then base64 of
+  `{"encrypted_content","content"}`, both members always present. Its members are pointers so an
+  envelope missing one reads as malformed. A change to the layout or the members' meaning is a
+  new version, and a new prefix.
+- **The stream decoder decodes a terminal event's response** as DecodeResponse decodes a reply,
+  through the same function without the package's prefix on its error.
+- **A skipped item holds its output index**, and the items after it are placed as if it weren't
+  there, so the events' output indexes leave no gap. Once an item after it is added, its place
+  can't be taken out, and a skipped item added there is an error. A skipped part holds its content
+  index in the same way.
+- **An event's output_index and content_index** are pointers, nil when the event gives none, as
+  the router's give none; such an event is placed by arrival and by its item_id.
+- **A reasoning item is added with neither encrypted_content nor summary**, though the spec lets
+  an in-progress item carry each, the encrypted_content possibly incomplete; its output_item.done
+  gives the whole of each, its encrypted_content going into the envelope. Foundry adds
+  gpt-5-mini's reasoning item with an encrypted_content of its own, unlike its output_item.done's,
+  which is unlike the terminal response's again, so each envelope holds the encrypted_content of
+  the item it was made from.
+- **An error frame's param** that isn't a string, such as null, leaves the payload's param empty;
+  the rest is still the error. An event that isn't JSON is reported with its JSON error
+  formatted, not wrapped, as the other formats' are.
+
 ## Rejected alternatives
 
 What the review rules out, one line each with its reason, cited as the sections above cite theirs;
