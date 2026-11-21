@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-// maxErrorText bounds how much of an error body without a message Error prints. It bounds the
-// text of the error, not what is read: Body holds the whole reply.
 const maxErrorText = 512
 
 // APIError is a non-2xx reply from the endpoint. Requests return it wrapped, so callers reach it

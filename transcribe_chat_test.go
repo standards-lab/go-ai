@@ -25,14 +25,9 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// audioReply is vLLM 0.33.0's Chat Completions reply to Gemma 4 E4B given tone.wav as an
-// input_audio part, as format/completions recorded it.
-//
 //go:embed format/completions/testdata/vllm/input_audio.json
 var audioReply string
 
-// tone reads the clip audioReply answers, one second of a 440 Hz sine as WAV, failing t when it
-// can't.
 func tone(t *testing.T) []byte {
 	t.Helper()
 	b, err := os.ReadFile("format/completions/testdata/vllm/tone.wav")
@@ -42,13 +37,11 @@ func tone(t *testing.T) []byte {
 	return b
 }
 
-// opens counts the calls of an Open and the closes of what it returned.
 type opens struct {
 	opened atomic.Int32
 	closed atomic.Int32
 }
 
-// counted is a ReadCloser whose Close the opens count.
 type counted struct {
 	io.Reader
 	o *opens
@@ -59,8 +52,6 @@ func (c counted) Close() error {
 	return nil
 }
 
-// reopenCounting returns an Open that gives a new reader of data on every call, each call and
-// each close counted in o.
 func reopenCounting(data []byte, o *opens) func(context.Context) (io.ReadCloser, error) {
 	return func(context.Context) (io.ReadCloser, error) {
 		o.opened.Add(1)
@@ -68,20 +59,16 @@ func reopenCounting(data []byte, o *opens) func(context.Context) (io.ReadCloser,
 	}
 }
 
-// reopen returns an Open that gives a new reader of data on every call.
 func reopen(data []byte) func(context.Context) (io.ReadCloser, error) {
 	return reopenCounting(data, &opens{})
 }
 
-// chatClient returns a Client of base speaking Chat Completions that transcribes in chat mode,
-// adjusted by opts.
 func chatClient(t *testing.T, base string, opts ai.Options) *ai.Client {
 	t.Helper()
 	opts.TranscriptionMode = ai.TranscribeChat
 	return newClient(t, base, opts)
 }
 
-// chatBody is the part of a Chat Completions request body a chat-mode Transcribe sets.
 type chatBody struct {
 	Model    string `json:"model"`
 	Messages []struct {
@@ -117,8 +104,6 @@ func TestNewRefusesTranscriptionMode(t *testing.T) {
 	}
 }
 
-// TestClientTranscriptionMode wants the mode the Client was built with: the route by default,
-// and chat when Options asks for it.
 func TestClientTranscriptionMode(t *testing.T) {
 	for _, want := range []ai.TranscriptionMode{ai.TranscribeRoute, ai.TranscribeChat} {
 		opts := ai.Options{}
@@ -135,8 +120,6 @@ func TestClientTranscriptionMode(t *testing.T) {
 	}
 }
 
-// TestTranscriptionModeText wants each mode's name from String and MarshalText, and the mode
-// back from UnmarshalText.
 func TestTranscriptionModeText(t *testing.T) {
 	for mode, name := range map[ai.TranscriptionMode]string{ai.TranscribeRoute: "route", ai.TranscribeChat: "chat"} {
 		if got := mode.String(); got != name {
@@ -153,9 +136,6 @@ func TestTranscriptionModeText(t *testing.T) {
 	}
 }
 
-// TestTranscriptionModeTextRefusesUnknown wants an unknown mode printed by number and refused
-// by MarshalText, and an unknown name refused by UnmarshalText naming both modes, leaving the
-// mode as it was.
 func TestTranscriptionModeTextRefusesUnknown(t *testing.T) {
 	for _, mode := range []ai.TranscriptionMode{2, 7, -1} {
 		want := fmt.Sprintf("TranscriptionMode(%d)", int(mode))
@@ -179,7 +159,6 @@ func TestTranscriptionModeTextRefusesUnknown(t *testing.T) {
 	}
 }
 
-// TestTranscriptionModeJSON wants a mode in a JSON struct to round-trip by name.
 func TestTranscriptionModeJSON(t *testing.T) {
 	type config struct {
 		Mode ai.TranscriptionMode `json:"mode"`
@@ -203,9 +182,6 @@ func TestTranscriptionModeJSON(t *testing.T) {
 	}
 }
 
-// TestTranscribeChatRequest wants one Chat Completions request to the format's route: the
-// model, and one user message of the clip as an input_audio part, in the format the file name's
-// extension gives, then the instruction, Prompt or else TranscriptionInstruction's of Language.
 func TestTranscribeChatRequest(t *testing.T) {
 	clip := tone(t)
 	cases := []struct {
@@ -269,7 +245,6 @@ func TestTranscribeChatRequest(t *testing.T) {
 	}
 }
 
-// TestTranscribeChatReply wants the reply's output text and usage, from vLLM's recorded reply.
 func TestTranscribeChatReply(t *testing.T) {
 	srv := serveChat(t, http.StatusOK, audioReply)
 	c := chatClient(t, srv.URL(), ai.Options{})
@@ -286,10 +261,6 @@ func TestTranscribeChatReply(t *testing.T) {
 	}
 }
 
-// TestTranscribeChatIncomplete has vLLM's recorded reply answered under each finish_reason, and
-// wants a completed one transcribed and any other refused with an *IncompleteTranscriptError
-// naming the status, the reason, and its cause, no Transcription, and the request sent once
-// under a retry policy.
 func TestTranscribeChatIncomplete(t *testing.T) {
 	cases := []struct {
 		finish string
@@ -339,8 +310,6 @@ func TestTranscribeChatIncomplete(t *testing.T) {
 	}
 }
 
-// TestIncompleteTranscriptErrorText covers the text of the statuses and reasons a reply can carry
-// beyond those TestTranscribeChatIncomplete has Chat Completions decode.
 func TestIncompleteTranscriptErrorText(t *testing.T) {
 	cases := []struct {
 		err  ai.IncompleteTranscriptError
@@ -367,8 +336,6 @@ func TestIncompleteTranscriptErrorText(t *testing.T) {
 	}
 }
 
-// TestTranscribeChatRefusesRequest covers what chat mode refuses, and when: before the clip is
-// opened, the token source is called, or anything is sent.
 func TestTranscribeChatRefusesRequest(t *testing.T) {
 	ok := func() *ai.TranscriptionRequest {
 		return &ai.TranscriptionRequest{Model: "m", FileName: "clip.wav"}
@@ -392,8 +359,6 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 			r.Native = url.Values{"temperature": {"0"}}
 			return r
 		}, "takes no native fields"},
-		// Messages refuses the audio, ahead of the max_tokens the request has none of, which
-		// the caller can't set.
 		{"a format that refuses audio", true, func(r *ai.TranscriptionRequest) *ai.TranscriptionRequest { return r },
 			"messages: input 0: content 0: part protocol.InputAudio has no Messages form"},
 	}
@@ -424,7 +389,6 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 				t.Errorf("Transcribe error = %q, want it to start ai: transcribe: and contain %q", err, tc.want)
 			}
 			if tc.messages {
-				// The format's refusal of the audio is its typed one, through the Client.
 				aitest.AssertUnsupported(t, err, format.UnsupportedError{
 					Format: "messages", Feature: "content part", Value: "protocol.InputAudio",
 				}, "ai: transcribe: "+tc.want)
@@ -442,8 +406,6 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 	}
 }
 
-// TestTranscribeChatEmptyClip wants an empty clip, which protocol.Request.Validate refuses,
-// refused once it is read, the clip closed, and nothing sent.
 func TestTranscribeChatEmptyClip(t *testing.T) {
 	srv := serveChat(t, http.StatusOK, audioReply)
 	c := chatClient(t, srv.URL(), ai.Options{})
@@ -460,7 +422,6 @@ func TestTranscribeChatEmptyClip(t *testing.T) {
 	}
 }
 
-// TestTranscribeChatAPIError wants a non-2xx reply decoded by the Client's format.
 func TestTranscribeChatAPIError(t *testing.T) {
 	reply := `{"error":{"message":"The model does not exist.","type":"NotFoundError","param":"model","code":404}}`
 	srv := serveChat(t, http.StatusNotFound, reply)
@@ -475,9 +436,6 @@ func TestTranscribeChatAPIError(t *testing.T) {
 	}
 }
 
-// TestTranscribeOpensPerAttempt has each mode answered 503, then 2xx, under a policy, and wants
-// the clip opened once per attempt, each closed by the time Transcribe returns, and the same
-// body sent each time.
 func TestTranscribeOpensPerAttempt(t *testing.T) {
 	modes := []struct {
 		name string
@@ -513,8 +471,6 @@ func TestTranscribeOpensPerAttempt(t *testing.T) {
 	}
 }
 
-// TestTranscribeOpenError wants a clip that won't open returned at once under a policy, wrapped,
-// after the token source and before anything is sent.
 func TestTranscribeOpenError(t *testing.T) {
 	for _, mode := range []ai.TranscriptionMode{ai.TranscribeRoute, ai.TranscribeChat} {
 		synctest.Test(t, func(t *testing.T) {

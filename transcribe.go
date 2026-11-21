@@ -19,7 +19,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// transcriptionsRoute is the OpenAI-compatible transcription endpoint, relative to the base URL.
 const transcriptionsRoute = "audio/transcriptions"
 
 // TranscriptionMode is how a Client transcribes: through the endpoint's transcription route, or
@@ -44,7 +43,6 @@ const (
 	TranscribeChat
 )
 
-// transcriptionModeNames are the modes' text forms, indexed by mode.
 var transcriptionModeNames = [...]string{TranscribeRoute: "route", TranscribeChat: "chat"}
 
 // String returns the mode's name, "route" or "chat", or, for an unknown mode, its number in
@@ -218,13 +216,12 @@ func (c *Client) Transcribe(ctx context.Context, req *TranscriptionRequest) (*Tr
 	return t, nil
 }
 
-// transcribeRoute uploads req's clip to the transcription route.
+// See docs/design.md, "Implementation notes".
 func (c *Client) transcribeRoute(ctx context.Context, req *TranscriptionRequest) (*Transcription, error) {
 	fields, err := transcriptionFields(req)
 	if err != nil {
 		return nil, err
 	}
-	// One boundary for the call, so every attempt sends the same form.
 	blank := multipart.NewWriter(io.Discard)
 	boundary, contentType := blank.Boundary(), blank.FormDataContentType()
 	upload := func(ctx context.Context, _ http.Header) (io.Reader, func() error, error) {
@@ -242,22 +239,13 @@ func (c *Client) transcribeRoute(ctx context.Context, req *TranscriptionRequest)
 		uploaded := make(chan struct{})
 		go func() {
 			defer close(uploaded)
-			// The writer's error, or EOF on nil, ends the request body's read.
 			pw.CloseWithError(writeTranscriptionForm(form, fields, req.FileName, clip))
 		}()
 		end := func() error {
-			// An attempt that ended before reading the whole form leaves the goroutine blocked
-			// on the pipe; closing the read side fails its write, and it ends. After a whole
-			// read, this is a no-op.
 			_ = pr.Close()
 			<-uploaded
-			// The clip is read, and a failure to close it changes nothing sent.
 			_ = rc.Close()
 			if clip.err != nil {
-				// The upload failed on its own, reading the clip: that is the cause, whatever the
-				// transport made of the body's failed read. Any other failure of the
-				// goroutine's is a write into the pipe the request closed, which the attempt's
-				// error accounts for.
 				return fmt.Errorf("upload: %w", clip.err)
 			}
 			return nil
@@ -271,15 +259,12 @@ func (c *Client) transcribeRoute(ctx context.Context, req *TranscriptionRequest)
 	return decodeTranscription(reply)
 }
 
-// transcribeChat sends req's clip to the model as a chat request in the Client's format.
+// See docs/design.md, "Implementation notes".
 func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) (*Transcription, error) {
 	audioFormat, err := chatTranscription(req)
 	if err != nil {
 		return nil, err
 	}
-	// The format is asked to encode a request of the same shape, its clip a placeholder, before
-	// the clip is opened or the token source called: a format that refuses audio refuses it
-	// here, and what it refuses doesn't depend on the clip's bytes.
 	probe := chatRequest(req, []byte{0}, audioFormat)
 	if _, err := c.format.EncodeRequest(probe, make(http.Header)); err != nil {
 		return nil, err
@@ -290,7 +275,6 @@ func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) 
 			return nil, nil, fmt.Errorf("open clip: %w", err)
 		}
 		data, err := io.ReadAll(rc)
-		// The clip is read, and a failure to close it changes nothing sent.
 		_ = rc.Close()
 		if err != nil {
 			return nil, nil, fmt.Errorf("read clip: %w", err)
@@ -313,9 +297,6 @@ func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) 
 	if err != nil {
 		return nil, err
 	}
-	// A reply the model didn't finish holds part of a transcript at most, which reads as a whole
-	// one. It is refused after the retry loop, not inside it: sending the same clip again meets
-	// the same bound or filter.
 	if resp.Status != protocol.StatusCompleted {
 		e := &IncompleteTranscriptError{Status: resp.Status}
 		if resp.IncompleteDetails != nil {
@@ -365,7 +346,6 @@ func (e *IncompleteTranscriptError) Error() string {
 	return s + "): " + e.cause()
 }
 
-// cause says what e's status and reason mean, and what the caller can do about them.
 func (e *IncompleteTranscriptError) cause() string {
 	switch {
 	case e.Status == protocol.StatusIncomplete && e.Reason == protocol.ReasonMaxOutputTokens:
@@ -382,15 +362,11 @@ func (e *IncompleteTranscriptError) cause() string {
 	return "the reply isn't completed, so its text can't be taken as the whole transcript"
 }
 
-// audioFormats maps a clip's file name extension, in lower case, to the protocol's encoding of
-// it, for every encoding the protocol takes.
 var audioFormats = map[string]protocol.AudioFormat{
 	".wav": protocol.AudioFormatWAV,
 	".mp3": protocol.AudioFormatMP3,
 }
 
-// chatTranscription validates req for TranscribeChat and returns the clip's encoding, from its
-// file name's extension.
 func chatTranscription(req *TranscriptionRequest) (protocol.AudioFormat, error) {
 	switch {
 	case req.Model == "":
@@ -410,8 +386,6 @@ func chatTranscription(req *TranscriptionRequest) (protocol.AudioFormat, error) 
 	return f, nil
 }
 
-// chatRequest is TranscribeChat's request of req's clip, data, in audioFormat: one user message
-// of the clip and the instruction.
 func chatRequest(req *TranscriptionRequest, data []byte, audioFormat protocol.AudioFormat) *protocol.Request {
 	instruction := req.Prompt
 	if instruction == "" {
@@ -429,9 +403,6 @@ func chatRequest(req *TranscriptionRequest, data []byte, audioFormat protocol.Au
 	}
 }
 
-// transcriptionFields validates req for TranscribeRoute and returns the form fields it sends
-// ahead of the file, in order: the typed fields, then Native's. The file part's name, file, is
-// always set, so a Native key of that name clashes too.
 func transcriptionFields(req *TranscriptionRequest) ([][2]string, error) {
 	switch {
 	case req.Model == "":
@@ -452,7 +423,6 @@ func transcriptionFields(req *TranscriptionRequest) ([][2]string, error) {
 	for _, f := range fields {
 		set[f[0]] = true
 	}
-	// Sorted keys make the form the same for the same request, whatever the map's order.
 	for _, k := range slices.Sorted(maps.Keys(req.Native)) {
 		switch {
 		case k == "":
@@ -467,17 +437,12 @@ func transcriptionFields(req *TranscriptionRequest) ([][2]string, error) {
 	return fields, nil
 }
 
-// writeTranscriptionForm writes fields, then file as the file part named fileName, as the
-// transcription endpoint's multipart form, and closes the form.
 func writeTranscriptionForm(form *multipart.Writer, fields [][2]string, fileName string, file io.Reader) error {
 	for _, f := range fields {
 		if err := form.WriteField(f[0], f[1]); err != nil {
 			return err
 		}
 	}
-	// The part's Content-Type is application/octet-stream: a type guessed from the file name
-	// would depend on the host's MIME tables, and llama.cpp reads the clip's format from its
-	// bytes.
 	part, err := form.CreateFormFile("file", fileName)
 	if err != nil {
 		return err
@@ -488,8 +453,6 @@ func writeTranscriptionForm(form *multipart.Writer, fields [][2]string, fileName
 	return form.Close()
 }
 
-// clipReader is a clip as the upload reads it, keeping the error a Read returned, other than
-// io.EOF, so the attempt can tell the clip's failure from the request's.
 type clipReader struct {
 	r   io.Reader
 	err error
@@ -503,7 +466,6 @@ func (c *clipReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// decodeTranscription decodes the body of a 2xx transcription route reply.
 func decodeTranscription(body []byte) (*Transcription, error) {
 	var wire transcriptionReply
 	if err := json.Unmarshal(body, &wire); err != nil {
@@ -519,9 +481,6 @@ func decodeTranscription(body []byte) (*Transcription, error) {
 	}, nil
 }
 
-// transcriptionReply is the OpenAI-compatible transcription reply body under response_format
-// json. llama.cpp also sends type transcript.text.done, a usage type of tokens, and
-// usage.input_tokens_details.cached_tokens, which the client doesn't keep.
 type transcriptionReply struct {
 	Text  string `json:"text"`
 	Usage struct {

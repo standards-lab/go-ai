@@ -57,8 +57,7 @@ func (c *Client) GenerateStream(ctx context.Context, req *protocol.Request) iter
 	}
 }
 
-// stream sends req and yields its stream's events, returning the error that ends the stream,
-// or nil once the terminal event is yielded or the caller stops the range.
+// See docs/design.md, "Implementation notes".
 func (c *Client) stream(ctx context.Context, req *protocol.Request, yield func(protocol.Event, error) bool) error {
 	if err := req.Validate(); err != nil {
 		return err
@@ -68,9 +67,6 @@ func (c *Client) stream(ctx context.Context, req *protocol.Request, yield func(p
 	if err != nil {
 		return err
 	}
-	// The request runs under a context of its own, below ctx, so the idle bound can end the
-	// request, which unblocks a read waiting on it, without ending ctx. ctx alone is checked for
-	// the caller's cancel below: the request's being done may be the bound's doing.
 	reqCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream := c.format.EventStream()
@@ -84,8 +80,6 @@ func (c *Client) stream(ctx context.Context, req *protocol.Request, yield func(p
 		reply = newIdleReader(resp.Body, c.idle, cancel)
 	}
 	defer func() { _ = reply.Close() }()
-	// emit yields made, reporting whether the stream is over: the caller stopped, or its
-	// terminal event is yielded. Once ctx is done it yields nothing and returns ctx's error.
 	emit := func(made []protocol.Event) (bool, error) {
 		for _, event := range made {
 			if err := ctx.Err(); err != nil {
@@ -127,12 +121,6 @@ func (c *Client) stream(ctx context.Context, req *protocol.Request, yield func(p
 	}
 }
 
-// readError is the error that ends a stream whose body failed to read with err. Once ctx is
-// done the transport has closed the connection, so the read failed because of ctx, and its
-// error is ctx's. Otherwise the stream ended before its terminal event: the error matches
-// io.ErrUnexpectedEOF, which the transport returns for a connection dropped mid-body and the
-// idle bound for a stalled one, and also err, such as a connection reset, which the transport
-// returns for one broken another way.
 func readError(ctx context.Context, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
@@ -143,7 +131,6 @@ func readError(ctx context.Context, err error) error {
 	return fmt.Errorf("read stream: %w: %w", io.ErrUnexpectedEOF, err)
 }
 
-// terminal reports whether e is a terminal event, the last of a stream.
 func terminal(e protocol.Event) bool {
 	switch e.(type) {
 	case protocol.ResponseCompleted, protocol.ResponseIncomplete, protocol.ResponseFailed:

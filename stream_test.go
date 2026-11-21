@@ -21,8 +21,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// streamed is a streamed Chat Completions reply of "Paris", as llama.cpp's router writes it:
-// data events, a usage chunk, and [DONE].
 var streamed = []string{
 	`{"choices":[{"index":0,"delta":{"role":"assistant","content":null},"finish_reason":null}]}`,
 	`{"choices":[{"index":0,"delta":{"content":"Par"},"finish_reason":null}]}`,
@@ -32,8 +30,6 @@ var streamed = []string{
 	`[DONE]`,
 }
 
-// eventStream is a text/event-stream body of chunks, one data event each. The test server
-// labels it application/json, which the client doesn't read.
 func eventStream(chunks ...string) string {
 	var b strings.Builder
 	for _, c := range chunks {
@@ -42,8 +38,6 @@ func eventStream(chunks ...string) string {
 	return b.String()
 }
 
-// collect ranges seq to its end, folding its events with an Accumulator, and returns the
-// events, the Response folded, and the errors it yielded.
 func collect(t *testing.T, seq iter.Seq2[protocol.Event, error]) ([]protocol.Event, *protocol.Response, []error) {
 	t.Helper()
 	var acc protocol.Accumulator
@@ -65,7 +59,6 @@ func collect(t *testing.T, seq iter.Seq2[protocol.Event, error]) ([]protocol.Eve
 	return events, acc.Response(), errs
 }
 
-// completed is the Response streamed folds to.
 var completed = &protocol.Response{
 	Output: []protocol.Item{protocol.Message{
 		Status:  protocol.StatusCompleted,
@@ -101,8 +94,6 @@ func TestGenerateStream(t *testing.T) {
 	}
 }
 
-// TestGenerateStreamSendsHeaderAndToken wants a stream's request to carry the fixed headers and
-// the bearer token, as Generate's does.
 func TestGenerateStreamSendsHeaderAndToken(t *testing.T) {
 	srv := serveChat(t, http.StatusOK, eventStream(streamed...))
 	c := newClient(t, srv.URL(), ai.Options{
@@ -121,9 +112,6 @@ func TestGenerateStreamSendsHeaderAndToken(t *testing.T) {
 	}
 }
 
-// TestGenerateStreamIgnoresEventNames wants a stream whose events are named folded as the same
-// stream unnamed: Chat Completions names no events, so its decoder reads each event's data
-// alone.
 func TestGenerateStreamIgnoresEventNames(t *testing.T) {
 	var b strings.Builder
 	for _, c := range streamed {
@@ -141,8 +129,6 @@ func TestGenerateStreamIgnoresEventNames(t *testing.T) {
 	}
 }
 
-// TestGenerateStreamIsLazy wants nothing validated, encoded, or sent until the sequence is
-// ranged, and a new request each time it is.
 func TestGenerateStreamIsLazy(t *testing.T) {
 	srv := serveChat(t, http.StatusOK, eventStream(streamed...))
 	var tokens atomic.Int32
@@ -163,8 +149,6 @@ func TestGenerateStreamIsLazy(t *testing.T) {
 	}
 }
 
-// TestGenerateStreamRefusal covers the failures before the stream: each is the sequence's only
-// pair, and the refused requests send nothing and call no token source.
 func TestGenerateStreamRefusal(t *testing.T) {
 	noModel := hello()
 	noModel.Model = ""
@@ -228,8 +212,6 @@ func TestGenerateStreamRefusal(t *testing.T) {
 	}
 }
 
-// TestGenerateStreamBreakClosesBody breaks out of the loop at the first event of a stream the
-// server holds open, and wants the connection closed.
 func TestGenerateStreamBreakClosesBody(t *testing.T) {
 	closed := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -257,9 +239,6 @@ func TestGenerateStreamBreakClosesBody(t *testing.T) {
 	}
 }
 
-// TestGenerateStreamEndsEarly wants a stream that ends before its terminal event to end the
-// sequence with io.ErrUnexpectedEOF, after the events it made, which fold to the partial
-// response, under each framing.
 func TestGenerateStreamEndsEarly(t *testing.T) {
 	for _, fr := range framings {
 		t.Run(fr.name, func(t *testing.T) {
@@ -279,12 +258,8 @@ func TestGenerateStreamEndsEarly(t *testing.T) {
 	}
 }
 
-// errorFrame is the event llama.cpp sends when generation fails mid-stream, ahead of ending the
-// stream: format_oai_sse of {"error": format_error_response(...)}.
 const errorFrame = `{"error":{"code":500,"message":"context shift is disabled","type":"server_error"}}`
 
-// partial is the Response a stream of streamed's chunks folds to when it breaks after its
-// message's text: in progress, holding text.
 func partial(text string) *protocol.Response {
 	return &protocol.Response{Status: protocol.StatusInProgress, Output: []protocol.Item{protocol.Message{
 		Status:  protocol.StatusInProgress,
@@ -293,13 +268,8 @@ func partial(text string) *protocol.Response {
 	}}}
 }
 
-// errRequestCanceled is what the transport returns for a read of a body whose request's context
-// is done.
 var errRequestCanceled = errors.New("net/http: request canceled")
 
-// body is a reply body that reads its text and then fails with err, or, when hang is set, waits
-// for ctx and then fails as the transport does once a request's context is done. It records
-// whether it was closed.
 type body struct {
 	text   io.Reader
 	err    error
@@ -328,24 +298,17 @@ func (b *body) Close() error {
 	return nil
 }
 
-// TestGenerateStreamError covers each error that breaks a stream once it has begun, in a bubble
-// whose transport is in memory, so a goroutine left behind would fail the test: the error ends
-// the sequence as its last pair, after the events before it, which fold to the partial Response
-// in progress, and the body is closed. Each holds under each framing.
 func TestGenerateStreamError(t *testing.T) {
 	broken := streamed[:3]
 	cases := []struct {
-		name string
-		// reply is the chunks of the body, read before err; hang waits after it for the
-		// context, which timeout ends; cancel cancels the context at the first output_text delta.
+		name    string
 		reply   []string
 		err     error
 		hang    bool
 		timeout time.Duration
 		cancel  bool
-		// text is the partial Response's text, and check the error's.
-		text  string
-		check func(t *testing.T, err error)
+		text    string
+		check   func(t *testing.T, err error)
 	}{
 		{name: "stream ended before its terminal event", reply: broken, text: "Paris", check: func(t *testing.T, err error) {
 			if !errors.Is(err, io.ErrUnexpectedEOF) {
@@ -426,16 +389,12 @@ func TestGenerateStreamError(t *testing.T) {
 	}
 }
 
-// TestGenerateStreamCancel cancels the context mid-stream, against a server that keeps
-// generating until the client goes, and wants the context's error, the partial Response holding
-// the text so far, and the connection closed, which stops the generation, under each framing.
 func TestGenerateStreamCancel(t *testing.T) {
 	for _, fr := range framings {
 		t.Run(fr.name, func(t *testing.T) { testGenerateStreamCancel(t, fr) })
 	}
 }
 
-// testGenerateStreamCancel is TestGenerateStreamCancel under fr.
 func testGenerateStreamCancel(t *testing.T, fr framing) {
 	wf := fr.format()
 	gone := make(chan struct{})
@@ -490,8 +449,6 @@ func testGenerateStreamCancel(t *testing.T, fr framing) {
 	}
 }
 
-// TestGenerateStreamConnectionDropped has the server drop the connection mid-stream, and wants
-// io.ErrUnexpectedEOF after the events it sent, which fold to the partial Response.
 func TestGenerateStreamConnectionDropped(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -510,17 +467,11 @@ func TestGenerateStreamConnectionDropped(t *testing.T) {
 	}
 }
 
-// TestGenerateStreamErrorFrame has the server send llama.cpp's error frame, mid-stream and as the
-// stream's first event, and wants no error pair: the stream ends as the spec has it, with the
-// error event of the frame's type, code, and message, then response.failed, which folds to the
-// Response failed, holding the frame's error and the output made before it, the message open at
-// it in progress. Nothing of the chunk the server sends after the frame is yielded.
 func TestGenerateStreamErrorFrame(t *testing.T) {
 	payload := protocol.ErrorPayload{Type: "server_error", Code: "500", Message: "context shift is disabled"}
 	cases := []struct {
 		name   string
 		chunks []string
-		// output is the failed Response's.
 		output []protocol.Item
 	}{
 		{"mid-stream", append(streamed[:3:3], errorFrame, streamed[2]), partial("Paris").Output},
@@ -556,8 +507,6 @@ func TestGenerateStreamErrorFrame(t *testing.T) {
 	}
 }
 
-// TestGenerateStreamIgnoresPings interleaves llama.cpp's ping comments, ":" lines, with the
-// stream's events, and wants the same events and the same Response as the stream without them.
 func TestGenerateStreamIgnoresPings(t *testing.T) {
 	var b strings.Builder
 	for _, c := range streamed {

@@ -26,21 +26,16 @@ import (
 	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
-// transcribeReply is llama.cpp's transcription reply, as gb10-2 sends it.
 const transcribeReply = `{"type":"transcript.text.done","text":"The access code is 7429.",` +
 	`"usage":{"type":"tokens","input_tokens":174,"output_tokens":11,"total_tokens":185,` +
 	`"input_tokens_details":{"cached_tokens":169}}}`
 
-// waitLimit bounds a wait on something that should happen at once, so a hang fails the test
-// rather than stalling it. Nothing sleeps for it.
 const waitLimit = 10 * time.Second
 
-// open returns an Open that gives r, once, as the clip, for a request of one attempt.
 func open(r io.Reader) func(context.Context) (io.ReadCloser, error) {
 	return func(context.Context) (io.ReadCloser, error) { return io.NopCloser(r), nil }
 }
 
-// clip returns n bytes of a clip, varied so a reordered or dropped chunk shows.
 func clip(n int) []byte {
 	b := make([]byte, n)
 	for i := range b {
@@ -49,16 +44,12 @@ func clip(n int) []byte {
 	return b
 }
 
-// formPart is one part of a multipart form as the server read it.
 type formPart struct {
 	fileName    string
 	contentType string
 	body        []byte
 }
 
-// readForm parses a recorded request's multipart form, its header and body, into its parts by
-// form name, failing t unless the request is multipart/form-data with a boundary, each name
-// appearing once.
 func readForm(t *testing.T, header http.Header, body []byte) map[string]formPart {
 	t.Helper()
 	mediaType, params, err := mime.ParseMediaType(header.Get("Content-Type"))
@@ -106,7 +97,6 @@ func TestTranscribeWireRequest(t *testing.T) {
 				"prompt": "Transcribe the code as digits."},
 		},
 		{
-			// language and prompt are Native's to send when the typed fields leave them unset.
 			"native fields",
 			&ai.TranscriptionRequest{Model: "m", Open: open(bytes.NewReader(audio)), FileName: "clip.wav",
 				Native: url.Values{"temperature": {"0"}, "language": {"en"}, "prompt": {"Digits."}}},
@@ -163,9 +153,6 @@ func TestTranscribeWireRequest(t *testing.T) {
 	}
 }
 
-// TestTranscribeNativeFieldOrder covers the order the form's fields go in: the typed fields,
-// then Native's keys sorted and each key's values in order, a key of several values sent once
-// per value, then the file.
 func TestTranscribeNativeFieldOrder(t *testing.T) {
 	srv := serveTranscriptions(t, http.StatusOK, transcribeReply)
 	c := newClient(t, srv.URL(), ai.Options{})
@@ -222,9 +209,6 @@ func TestTranscribeDecodesReply(t *testing.T) {
 	}
 }
 
-// TestTranscribeAnyFormat wants a route-mode Transcribe to upload the clip as a multipart form to
-// the OpenAI-compatible transcription route on a Client of a format whose own route is
-// elsewhere, with none of the format's headers, and decode the route's reply.
 func TestTranscribeAnyFormat(t *testing.T) {
 	formats := map[string]format.Format{"messages": messages.New(messages.Options{}), "responses": responses.New(responses.Options{})}
 	for name, wireFormat := range formats {
@@ -272,8 +256,6 @@ func TestTranscribeRefusesReply(t *testing.T) {
 	}
 }
 
-// TestTranscribeRefusesRequest covers what Transcribe refuses, and when: before the token source
-// is called or anything is sent.
 func TestTranscribeRefusesRequest(t *testing.T) {
 	file := strings.NewReader("RIFF")
 	native := func(key string) *ai.TranscriptionRequest {
@@ -320,8 +302,6 @@ func TestTranscribeRefusesRequest(t *testing.T) {
 	}
 }
 
-// TestTranscribeAPIError covers a non-2xx reply: an *APIError with the OpenAI-style error body's
-// details, whatever format the Client speaks.
 func TestTranscribeAPIError(t *testing.T) {
 	reply := `{"error":{"code":400,"message":"Only 'json' response_format is supported for transcription",` +
 		`"type":"invalid_request_error"}}`
@@ -358,9 +338,6 @@ func TestTranscribeTokenErrorSendsNothing(t *testing.T) {
 	}
 }
 
-// drainServer starts a server that reads each request's body to its end or its failure, which
-// it ignores, as the upload's failure is the test's subject, and closes arrived on the first
-// request's arrival, once its header is read and before its body is.
 func drainServer(t *testing.T) (url string, arrived <-chan struct{}) {
 	t.Helper()
 	ch := make(chan struct{})
@@ -375,9 +352,6 @@ func drainServer(t *testing.T) (url string, arrived <-chan struct{}) {
 	return srv.URL, ch
 }
 
-// TestTranscribeReaderError has the clip's read fail part way under a policy, and wants its
-// error returned, the clip opened once: the clip's own failure isn't the endpoint's, so it isn't
-// retried, whatever the transport made of the upload it cut short.
 func TestTranscribeReaderError(t *testing.T) {
 	base, _ := drainServer(t)
 	c := newClient(t, base, ai.Options{Retry: ai.RetryPolicy{MaxAttempts: 3}})
@@ -399,17 +373,12 @@ func TestTranscribeReaderError(t *testing.T) {
 	}
 }
 
-// stallingReader is a clip, such as a slow file, that gives one chunk, then, once the request
-// has reached the server, stalls until ctx ends, and gives another chunk: a clip that never
-// fails, so the upload's failure is the request's alone.
 type stallingReader struct {
 	ctx     context.Context
 	arrived <-chan struct{}
-	// stalled is closed when the reader stalls, the clip partly sent.
 	stalled chan struct{}
-	// ended is set when the stalled Read returns.
-	ended atomic.Bool
-	reads int
+	ended   atomic.Bool
+	reads   int
 }
 
 func (r *stallingReader) Read(p []byte) (int, error) {
@@ -423,12 +392,6 @@ func (r *stallingReader) Read(p []byte) (int, error) {
 	return copy(p, clip(len(p))), nil
 }
 
-// TestTranscribeCancelMidUpload cancels the context while the clip is partly uploaded: the
-// request has reached the server before the clip's second read, which waits for it, so the
-// upload streams rather than buffering the clip, and
-// Transcribe returns ctx's error promptly, only after the upload stopped reading the clip. The
-// clip itself never fails, so the error is the cancellation's, not the upload's write into the
-// pipe the cancelled request closed.
 func TestTranscribeCancelMidUpload(t *testing.T) {
 	base, arrived := drainServer(t)
 	c := newClient(t, base, ai.Options{})
@@ -436,9 +399,8 @@ func TestTranscribeCancelMidUpload(t *testing.T) {
 	defer cancel()
 	file := &stallingReader{ctx: ctx, arrived: arrived, stalled: make(chan struct{})}
 	type result struct {
-		t   *ai.Transcription
-		err error
-		// ended is whether the clip's stalled Read had returned when Transcribe did.
+		t     *ai.Transcription
+		err   error
 		ended bool
 	}
 	done := make(chan result, 1)

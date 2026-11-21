@@ -2,7 +2,8 @@
 
 go-ai's design, reviewed from spike-ai-pipeline-client v0.4.0: what the spike is measured against,
 what go-ai keeps, changes, and drops from it, the surface the library and infer tasks of
-v1.ai.client build to, and the alternatives the review rules out. The judgement calls it settles
+v1.ai.client build to, the reasoning behind the base module's unexported code, and the
+alternatives the review rules out. The judgement calls it settles
 are go-ai's `STANDARDS.md`. The base module is built to it, and where building against the
 endpoints changed the review, the finding or decision states what holds.
 
@@ -735,6 +736,135 @@ depguard rules hold them too, and the check runs golangci-lint a second time und
   is the longer.
 - **nolintlint** requires every suppression to name its linter and give its reason
   (`architecture/principles/comments.md`).
+
+## Implementation notes
+
+The reasoning behind the base module's unexported code that its names and exported docs leave
+unsaid, kept here rather than in comments (`architecture/principles/comments.md`).
+
+### The transport
+
+- **New fixes what every request would send.** It encodes the query once, so a caller changing
+  its `url.Values` after New can't change the requests. It copies the fixed headers under
+  canonical names: names that differ only in case are one header, their values in the order of
+  the names' spellings, so the copy doesn't depend on the map's order. It refuses a name that
+  isn't an RFC 9110 token and a value with a control character other than the horizontal tab,
+  which net/http won't send, and the headers the Client sets itself, Content-Type, Accept, and
+  Authorization.
+- **A route's URL** is the base path and the route joined by exactly one slash, with the query.
+- **A body is made per attempt.** Its function is called once per attempt, after the token
+  source, and may add headers, such as a format's version header. It returns the reader and an
+  end function the attempt calls once it is done with the body: on its failure, or as its 2xx
+  reply's body is closed. End reports the body's own failure, such as a clip whose read failed
+  part way, which is the attempt's cause whatever the transport made of it. A 2xx reply's body
+  closes the request's body with it, and its Close returns the request body's failure alone: the
+  reply's own close failure, after its read, reports nothing the caller acts on.
+- **An attempt is built, then sent.** Building calls the token source first, before the body is
+  made, so a source error opens nothing and sends nothing. The header is the fixed headers, then
+  the body's, replacing any of the same name, then the bearer token, each value slice cloned so a
+  transport that changes the request's header changes neither. A body of unknown length, such as
+  a pipe, goes chunked. Building is apart from sending because its errors are every way an
+  attempt fails before anything is sent: they return at once, never classified for a retry, so a
+  token source that fails on its own network call isn't mistaken for the endpoint's connection
+  failing. Sending reads a non-2xx reply's body whole, a failed read keeping the part read as
+  still the best account of the error there is, decodes it with the format, and reads its
+  Retry-After as the reply arrives, reporting whether it could be read: a Retry-After of 0 waits
+  none, where one that can't be read leaves the wait to the backoff.
+- **There is one retry loop**, which Generate, GenerateStream (whose stream starts only once the
+  loop returns), Embed, Transcribe, and Models all send through. An attempt that fails before
+  anything is sent returns at once whatever its error wraps, as does one whose request body
+  failed on its own, such as a clip's read, which a later attempt doesn't mend. An attempt is made
+  again after a 408, 429, 502, 503, or 504 reply, or a connection failure before any reply while
+  the caller's context is live; a transport error once the context is done is the context's
+  doing. A connection failure is a network operation's error, such as a refused dial or a reset,
+  or the connection closed before the reply's header, which the transport reports as `io.EOF` or
+  `io.ErrUnexpectedEOF`. A host name that doesn't resolve isn't one, unless the resolver calls its
+  failure temporary. Nor is anything else, such as the transport's ResponseHeaderTimeout,
+  net/http's error for a server closing an idle connection, a TLS certificate the transport
+  refuses, or an error of the caller's own RoundTripper: the list is short so that only what a
+  later attempt can mend is retried.
+- **The backoff** caps the wait before attempt n+1, after n attempts, at BaseDelay doubled n-1
+  times, at most MaxDelay; the doubling stops at MaxDelay, so it can't overflow. The wait is full
+  jitter, a random duration from 0 up to the cap, the cap included; `export_test.go` replaces the
+  source so a test can time it. A Retry-After is whole seconds, or an HTTP date whose wait is the
+  time until it, none for a date passed; seconds too many to hold are the longest wait there is,
+  which exceeds any policy's MaxDelay.
+- **An APIError's text** bounds how much of a body without a message it prints, not what is read:
+  Body holds the whole reply.
+
+### Streaming and the idle bound
+
+- **A stream's request runs under a context of its own**, below the caller's, so the idle bound
+  can end the request, which unblocks a read waiting on it, without ending the caller's context.
+  The caller's context alone is checked for its cancel, since the request's being done may be the
+  bound's doing; once it is done, nothing more is yielded and its error ends the stream.
+- **A failed read's error.** Once the caller's context is done the transport has closed the
+  connection, so the read failed because of the context, and the error is the context's.
+  Otherwise the stream ended before its terminal event: the error matches `io.ErrUnexpectedEOF`,
+  which the transport returns for a connection dropped mid-body and the idle bound for a stalled
+  one, and also the read's own error, such as a connection reset.
+- **The idle bound times each read.** Its timer, `time.AfterFunc`'s so the bound starts no
+  goroutine of its own, runs only while a read waits, so the time the caller spends between events
+  isn't counted, and any bytes a read returns, a comment's included, end that read and so reset
+  the bound. When it fires, it cancels the stream's request, which unblocks the transport's read.
+  A read it cut off, or any read after, reports the stall whatever the transport returned: the
+  transport's error is the cancellation's, which the caller must not mistake for its own
+  context's. A read that reached the body's end as the timer fired is the end, since the stream
+  was whole. The stall matches `io.ErrUnexpectedEOF`, as the stream ended before its terminal
+  event, and `os.ErrDeadlineExceeded`, as a read past a `net.Conn`'s deadline does. Closing the
+  body stops the timer and cancels the request first, so a transport whose body resumes after a
+  failed read sees the request is done.
+
+### Embeddings, models, and transcription
+
+- **Embeddings travel as base64**, standard base64 of little-endian float32s: about a quarter of
+  the bytes of the float array, and exact. Each vector is placed by its item's index, and a
+  decoded vector is never nil, even when empty, so a placed index can be told from an open one.
+- **A model list entry is kept whole**, as the endpoint sent it, to become the Model's Native
+  beside the id decoded from it: its other members, such as `owned_by` and llama.cpp's router's
+  `status`, are the endpoint's. Decoding into a `jsontext.Value` copies the entry's bytes, so a
+  Model doesn't alias the reply buffer.
+- **The transcription route's form** has one boundary per call, so every attempt sends the same
+  form. Its fields go ahead of the file in order, the typed fields then Native's in sorted key
+  order, so the form is the same whatever the map's order; the file part's name, `file`, is
+  always set, so a Native key of that name clashes too. The file part's Content-Type is
+  `application/octet-stream`: a type guessed from the file name would depend on the host's MIME
+  tables, and llama.cpp reads the clip's format from its bytes. llama.cpp's reply also carries
+  type `transcript.text.done`, a usage type of `tokens`, and
+  `usage.input_tokens_details.cached_tokens`, which the client doesn't keep.
+- **Each attempt writes the form into a pipe** from a goroutine of its own, whose error, or EOF,
+  ends the request body's read. When the attempt ends, closing the pipe's read side fails a write
+  still blocked on it, so the goroutine ends; after a whole read, that is a no-op. The clip is
+  read, so a failure to close it changes nothing sent. The clip's reader keeps its own read error,
+  other than `io.EOF`: an upload that failed reading the clip has that as its cause, whatever the
+  transport made of the body's failed read. Any other failure of the goroutine's is a write into
+  the pipe the request closed, which the attempt's error accounts for.
+- **Chat mode probes the format first.** It asks the format to encode a request of the same
+  shape, its clip a placeholder, before the clip is opened or the token source called, so a
+  format that refuses audio refuses it there, and what it refuses doesn't depend on the clip's
+  bytes. A reply the model didn't finish holds part of a transcript at most, which reads as a
+  whole one, so it is refused, after the retry loop rather than inside it: sending the same clip
+  again meets the same bound or filter.
+
+### aitest
+
+- **An Endpoint ends with its test.** Its context ends when the test ends, and with it every
+  request's context; its cleanup ends that context before closing the server, which waits on the
+  handlers using it.
+- **A transcription upload** is parsed from the recorded copy of its body, read whole to record
+  it, with up to 32 MiB of the form in memory and the rest in temporary files the request's end
+  removes. Its file name is read from the part's Content-Disposition, since the parsed form's
+  file name keeps a path's base name alone, which would hide a client that sends the path it read
+  the clip from.
+- **What a request asks of its reply's shape** is decoded on the Chat Completions route alone and
+  zero elsewhere, so a ChatReply another route returns is unstreamed. A chat reply's id is made
+  from the request's arrival number, and its model is the request's. Everything a stream wrote is
+  flushed before it is held, so the client has read it.
+- **A Gate** keeps each parked request's channel in the order they parked, closing one to let its
+  request go; a count of the releases no parked request has taken yet, each letting a later
+  request through at once; and a channel closed and replaced when a request parks, which wakes
+  Await. Await's bound fails a test whose requests never arrive, naming the count, rather than
+  leaving it to hang until the test binary's timeout.
 
 ## Rejected alternatives
 

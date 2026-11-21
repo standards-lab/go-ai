@@ -10,7 +10,6 @@ import (
 	"github.com/standards-lab/go-ai/format"
 )
 
-// modelsRoute is the OpenAI-compatible model list endpoint, relative to the base URL.
 const modelsRoute = "models"
 
 // Model is one entry of the endpoint's model list.
@@ -52,10 +51,6 @@ func (c *Client) Models(ctx context.Context) ([]Model, error) {
 	return models, nil
 }
 
-// modelsReply is the OpenAI-compatible model list reply body. Each entry is kept whole, as the
-// endpoint sent it, to become a Model's Native beside the id decoded from it: its other members,
-// such as owned_by, and llama.cpp's router's status, are the endpoint's. Decoding into a
-// jsontext.Value copies the entry's bytes, so a Model doesn't alias the reply buffer.
 type modelsReply struct {
 	Data []jsontext.Value `json:"data"`
 }

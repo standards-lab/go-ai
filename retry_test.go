@@ -22,8 +22,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// step is the scripted transport's answer to one attempt: err, or a reply of status with body
-// and, when set, a Retry-After header.
 type step struct {
 	status     int
 	body       string
@@ -31,23 +29,18 @@ type step struct {
 	err        error
 }
 
-// sent is one request the scripted transport received: its body, its Authorization header, and
-// when it arrived, on the bubble's clock.
 type sent struct {
 	body string
 	auth string
 	at   time.Time
 }
 
-// script is an in-memory transport that answers the nth request with steps[n], repeating the
-// last step once they run out, and records each request.
 type script struct {
 	steps []step
 	sent  []sent
 }
 
 func (s *script) RoundTrip(r *http.Request) (*http.Response, error) {
-	// A GET has no body, which a client's request holds as nil.
 	var b []byte
 	if r.Body != nil {
 		var err error
@@ -67,14 +60,11 @@ func (s *script) RoundTrip(r *http.Request) (*http.Response, error) {
 	return &http.Response{StatusCode: st.status, Header: h, Body: io.NopCloser(strings.NewReader(st.body)), Request: r}, nil
 }
 
-// retrying returns a Client of policy over a script of steps, its token source numbering each
-// call, and its jitter source jitter, or the Client's own when nil.
 func retrying(t *testing.T, policy ai.RetryPolicy, jitter func(time.Duration) time.Duration, steps ...step) (*ai.Client, *script) {
 	t.Helper()
 	return retryingIn(t, ai.TranscribeRoute, policy, jitter, steps...)
 }
 
-// retryingIn is retrying, its Client transcribing in mode.
 func retryingIn(t *testing.T, mode ai.TranscriptionMode, policy ai.RetryPolicy, jitter func(time.Duration) time.Duration,
 	steps ...step) (*ai.Client, *script) {
 	t.Helper()
@@ -94,22 +84,16 @@ func retryingIn(t *testing.T, mode ai.TranscriptionMode, policy ai.RetryPolicy, 
 	return c, s
 }
 
-// whole is a jitter source that waits the backoff's whole cap.
 func whole(d time.Duration) time.Duration { return d }
 
-// policy is a retry policy of 3 attempts, base 1s and most 10s.
 var policy = ai.RetryPolicy{MaxAttempts: 3, BaseDelay: time.Second, MaxDelay: 10 * time.Second}
 
-// operation is one of the retried operations, run on c, reporting its error.
 type operation struct {
-	name string
-	// mode is the transcription mode of the Client it runs on.
-	mode ai.TranscriptionMode
-	// bodyless is set for an operation that sends no body: Models' GET.
+	name     string
+	mode     ai.TranscriptionMode
 	bodyless bool
-	// ok is the 2xx reply that ends it.
-	ok  string
-	run func(ctx context.Context, c *ai.Client) error
+	ok       string
+	run      func(ctx context.Context, c *ai.Client) error
 }
 
 var operations = []operation{
@@ -178,9 +162,6 @@ func TestNewRefusesRetryPolicy(t *testing.T) {
 	}
 }
 
-// TestNewCopiesRetry wants the policy New was given, not a later change to the caller's value:
-// Options is passed by value, so the copy is the language's, and this pins that no pointer
-// crept in.
 func TestNewCopiesRetry(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		opts := ai.Options{Retry: ai.RetryPolicy{MaxAttempts: 2}}
@@ -196,10 +177,6 @@ func TestNewCopiesRetry(t *testing.T) {
 	})
 }
 
-// TestRetryStatuses has each operation answered first by a status the policy retries, and then
-// by its 2xx reply, and wants it to succeed on the second attempt, which called the token source
-// again and sent the same body: for Transcribe, the clip opened again, and in the route's form,
-// the same boundary.
 func TestRetryStatuses(t *testing.T) {
 	statuses := []int{http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusBadGateway,
 		http.StatusServiceUnavailable, http.StatusGatewayTimeout}
@@ -226,8 +203,6 @@ func TestRetryStatuses(t *testing.T) {
 	}
 }
 
-// TestRetryNotRetried wants a status the policy doesn't name returned at once, as the *APIError
-// of the one request sent.
 func TestRetryNotRetried(t *testing.T) {
 	for _, op := range operations {
 		for _, status := range []int{http.StatusInternalServerError, http.StatusBadRequest, http.StatusNotFound, http.StatusNotImplemented} {
@@ -247,8 +222,6 @@ func TestRetryNotRetried(t *testing.T) {
 	}
 }
 
-// TestRetryUnsetRetriesNothing wants a Client of the zero policy, or of one attempt, to send one
-// request for a 503.
 func TestRetryUnsetRetriesNothing(t *testing.T) {
 	for _, p := range []ai.RetryPolicy{{}, {MaxAttempts: 1, BaseDelay: time.Second, MaxDelay: time.Second}} {
 		t.Run(fmt.Sprintf("%d attempts", p.MaxAttempts), func(t *testing.T) {
@@ -265,8 +238,6 @@ func TestRetryUnsetRetriesNothing(t *testing.T) {
 	}
 }
 
-// TestRetryStartedStream has a stream break mid-body under a policy, and wants its one error
-// pair after the events before it, from one request: a started stream is never sent again.
 func TestRetryStartedStream(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c, s := retrying(t, policy, nil, step{status: http.StatusOK, body: eventStream(streamed[:3]...)},
@@ -284,8 +255,6 @@ func TestRetryStartedStream(t *testing.T) {
 	})
 }
 
-// TestRetryConnectionFailure has the first attempt fail in the transport, and wants a connection
-// failure before any reply retried, and any other failure returned at once.
 func TestRetryConnectionFailure(t *testing.T) {
 	refused := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
 	reset := &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}
@@ -301,8 +270,6 @@ func TestRetryConnectionFailure(t *testing.T) {
 		{"temporary DNS failure", &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Name: "router", IsTemporary: true}}, true},
 		{"unknown host", &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Name: "router", IsNotFound: true}}, false},
 		{"another failure", errors.New("certificate refused"), false},
-		// net/http's error for a server closing an idle connection is unexported; its text is
-		// all a client could match.
 		{"idle connection closed", errors.New("http: server closed idle connection"), false},
 		{"context error from the transport", context.Canceled, false},
 	}
@@ -331,14 +298,10 @@ func TestRetryConnectionFailure(t *testing.T) {
 	}
 }
 
-// TestRetryHeaderTimeout has a real server hold its reply past the transport's
-// ResponseHeaderTimeout, and wants the timeout returned from one request: the endpoint may
-// still be running it.
 func TestRetryHeaderTimeout(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
-		// The server notices the client gone only once the body is read.
 		_, _ = io.Copy(io.Discard, r.Body)
 		select {
 		case <-r.Context().Done():
@@ -357,10 +320,6 @@ func TestRetryHeaderTimeout(t *testing.T) {
 	}
 }
 
-// TestRetryTokenSourceError has the token source fail under a policy, wrapping what the
-// policy would retry from the transport, and wants the error returned at once: the source
-// called once, one error, wrapping the source's, and no request sent. Its failure is the
-// source's own, before anything is sent, which a later attempt doesn't mend.
 func TestRetryTokenSourceError(t *testing.T) {
 	causes := []struct {
 		name string
@@ -404,8 +363,6 @@ func TestRetryTokenSourceError(t *testing.T) {
 	}
 }
 
-// TestRetryConnectionClosed has a real server close the first connection before replying, and
-// wants the request sent again and answered.
 func TestRetryConnectionClosed(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -432,12 +389,9 @@ func TestRetryConnectionClosed(t *testing.T) {
 	}
 }
 
-// TestRetryAfter wants a Retry-After, in seconds or as an HTTP date, to replace the backoff, and
-// one that is negative or unreadable ignored, leaving the backoff, here its whole cap of 1s.
 func TestRetryAfter(t *testing.T) {
 	cases := []struct {
-		name string
-		// retryAfter is the header, its date's offset from now formatted in.
+		name       string
 		retryAfter func(now time.Time) string
 		wait       time.Duration
 	}{
@@ -468,9 +422,6 @@ func TestRetryAfter(t *testing.T) {
 	}
 }
 
-// TestRetryReturnsAtOnce wants the last error returned without a wait when the wait is longer
-// than the policy's most delay, or would end past the context's deadline, its RetryAfter the
-// reply's wait for a caller that redelivers.
 func TestRetryReturnsAtOnce(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -515,8 +466,6 @@ func TestRetryReturnsAtOnce(t *testing.T) {
 	}
 }
 
-// TestRetryAfterExhausted wants the last attempt's Retry-After on the error returned once the
-// attempts run out, HTTP date included, measured from the reply's arrival.
 func TestRetryAfterExhausted(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		date := time.Now().Add(2*time.Second + 8*time.Second).UTC().Format(http.TimeFormat)
@@ -537,8 +486,6 @@ func TestRetryAfterExhausted(t *testing.T) {
 	})
 }
 
-// TestRetryCancelWhileWaiting cancels the context during the wait, and wants the context's
-// error, not the attempt's.
 func TestRetryCancelWhileWaiting(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
@@ -566,8 +513,6 @@ func TestRetryCancelWhileWaiting(t *testing.T) {
 	})
 }
 
-// TestRetryExhausted has every attempt answered with a retried status, and wants MaxAttempts
-// requests and the last attempt's *APIError.
 func TestRetryExhausted(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c, s := retrying(t, policy, nil,
@@ -586,9 +531,6 @@ func TestRetryExhausted(t *testing.T) {
 	})
 }
 
-// TestRetryBackoff has every attempt answered 503, with a jitter source that records the cap it
-// is given and waits half of it, and wants the caps to double from the base delay to the most
-// delay, and each wait the jitter's.
 func TestRetryBackoff(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var caps []time.Duration
@@ -616,12 +558,7 @@ func TestRetryBackoff(t *testing.T) {
 	})
 }
 
-// TestFullJitter wants the Client's own jitter to wait from 0 up to the backoff's cap, each
-// wait in that range taken: a policy whose cap is 4ns retries a 503 a thousand times, and every
-// wait from 0 to 4ns is seen. A cap of the longest duration waits too, rather than overflow.
 func TestFullJitter(t *testing.T) {
-	// wait returns how long a Client of the policy, with its own jitter, waited between a 503
-	// and the attempt after it.
 	wait := func(t *testing.T, p ai.RetryPolicy) time.Duration {
 		t.Helper()
 		var d time.Duration

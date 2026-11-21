@@ -18,12 +18,8 @@ import (
 	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
-// ndjsonType is the media type of ndjsonStream, an event stream defined only by these tests.
 const ndjsonType = "application/x-ndjson"
 
-// ndjsonStream is an event stream the client knows nothing of: newline-delimited JSON, each line
-// one event, an object of its type and its data as a string. A blank line makes no event, and a
-// line the body's end cuts off is discarded, as SSE discards an event no blank line ended.
 type ndjsonStream struct{}
 
 func (ndjsonStream) MediaType() string { return ndjsonType }
@@ -32,7 +28,6 @@ func (ndjsonStream) NewReader(body io.Reader) format.WireEventReader {
 	return &ndjsonReader{r: bufio.NewReader(body)}
 }
 
-// ndjsonReader is ndjsonStream's WireEventReader.
 type ndjsonReader struct{ r *bufio.Reader }
 
 func (r *ndjsonReader) Next() (format.WireEvent, error) {
@@ -55,13 +50,10 @@ func (r *ndjsonReader) Next() (format.WireEvent, error) {
 	}
 }
 
-// ndjsonFormat is Chat Completions streamed in ndjsonStream rather than SSE: a test Format
-// wrapping the real one, its event stream the only difference.
 type ndjsonFormat struct{ *completions.Format }
 
 func (ndjsonFormat) EventStream() format.EventStream { return ndjsonStream{} }
 
-// ndjsonEvents is an ndjsonStream body of chunks, one event each, named chunk.
 func ndjsonEvents(chunks ...string) string {
 	var b strings.Builder
 	for _, c := range chunks {
@@ -78,24 +70,17 @@ func ndjsonEvents(chunks ...string) string {
 	return b.String()
 }
 
-// framing is an event stream the stream tests run under: a Format streaming in it, and the
-// encoding of chunks as a body framed so.
 type framing struct {
 	name   string
 	format func() format.Format
 	encode func(chunks ...string) string
 }
 
-// framings are SSE, the formats' own, and ndjsonStream, one the client was never told of.
 var framings = []framing{
 	{"SSE", func() format.Format { return completions.New(completions.Options{}) }, eventStream},
 	{"NDJSON", func() format.Format { return ndjsonFormat{completions.New(completions.Options{})} }, ndjsonEvents},
 }
 
-// TestGenerateStreamDeclaredEventStream streams a reply in ndjsonStream, which only this test
-// defines, through a Format that declares it, and wants the client to ask for its media type and
-// fold the reply to the same Response as the same reply over SSE: the client reads a reply only
-// through its Format's event stream.
 func TestGenerateStreamDeclaredEventStream(t *testing.T) {
 	srv := serveChat(t, http.StatusOK, ndjsonEvents(streamed...))
 	c := newClientFormat(t, srv.URL(), http.DefaultClient, ndjsonFormat{completions.New(completions.Options{})}, ai.Options{})
@@ -116,9 +101,6 @@ func TestGenerateStreamDeclaredEventStream(t *testing.T) {
 	}
 }
 
-// TestGenerateStreamEventStreamReadError wants an error the event stream's reader makes of the
-// body, beside a failed read, to end the stream as a failed read does: matching
-// io.ErrUnexpectedEOF and wrapping the reader's error.
 func TestGenerateStreamEventStreamReadError(t *testing.T) {
 	srv := serveChat(t, http.StatusOK, ndjsonEvents(streamed[:3]...)+"not JSON\n")
 	c := newClientFormat(t, srv.URL(), http.DefaultClient, ndjsonFormat{completions.New(completions.Options{})}, ai.Options{})
