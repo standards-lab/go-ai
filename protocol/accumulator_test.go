@@ -9,8 +9,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// textStream is a whole stream of one assistant message, an output_text part of "Paris" in two
-// deltas and a refusal part of "No.", ending with response.completed.
 func textStream() []protocol.Event {
 	msg := protocol.Message{
 		Status: protocol.StatusCompleted,
@@ -41,7 +39,6 @@ func textStream() []protocol.Event {
 	}
 }
 
-// add folds events, failing t if the Accumulator refuses one.
 func add(t *testing.T, acc *protocol.Accumulator, events []protocol.Event) {
 	t.Helper()
 	for i, e := range events {
@@ -65,9 +62,6 @@ func TestAccumulatorFoldsTerminalResponse(t *testing.T) {
 	}
 }
 
-// TestAccumulatorIDAndModel wants the reply's ID and Model, which the stream's responses bear,
-// on the folded Response: the created Response's while the stream is open, and the terminal
-// Response's after it, or the created Response's where the terminal one leaves them empty.
 func TestAccumulatorIDAndModel(t *testing.T) {
 	cases := []struct {
 		name              string
@@ -109,8 +103,6 @@ func TestAccumulatorIDAndModel(t *testing.T) {
 	}
 }
 
-// TestAccumulatorPartial wants the response folded so far before the terminal event: done
-// parts and items as done, and open ones in progress with their text so far.
 func TestAccumulatorPartial(t *testing.T) {
 	inProgress := func(content ...protocol.ContentPart) *protocol.Response {
 		return &protocol.Response{Status: protocol.StatusInProgress, Output: []protocol.Item{protocol.Message{
@@ -140,9 +132,6 @@ func TestAccumulatorPartial(t *testing.T) {
 	}
 }
 
-// TestAccumulatorRefusesEvent covers the events that don't follow the events before them: each
-// case folds the first n events of textStream, then wants e refused, and the response
-// unchanged.
 func TestAccumulatorRefusesEvent(t *testing.T) {
 	message := protocol.Message{Status: protocol.StatusInProgress, Role: protocol.RoleAssistant}
 	done := textStream()[11].(protocol.OutputItemDone).Item
@@ -211,8 +200,6 @@ func TestAccumulatorRefusesEvent(t *testing.T) {
 	}
 }
 
-// TestAccumulatorFailedWithItemOpen wants response.failed to follow an item still open, unlike
-// response.completed: a stream may fail part way.
 func TestAccumulatorFailedWithItemOpen(t *testing.T) {
 	var acc protocol.Accumulator
 	add(t, &acc, textStream()[:4])
@@ -225,9 +212,6 @@ func TestAccumulatorFailedWithItemOpen(t *testing.T) {
 	}
 }
 
-// TestAccumulatorErrorEvent wants the error event, a failure the server reports, to change
-// nothing of the response, and the response.failed after it, with an item still open, to be the
-// Response folded: failed, holding its error and the output made before the failure.
 func TestAccumulatorErrorEvent(t *testing.T) {
 	var acc protocol.Accumulator
 	add(t, &acc, textStream()[:4])
@@ -252,9 +236,6 @@ func TestAccumulatorErrorEvent(t *testing.T) {
 	}
 }
 
-// TestAccumulatorRefusesTerminalAfterError wants response.completed and response.incomplete
-// refused after an error event, which the spec has response.failed follow, even with every item
-// done.
 func TestAccumulatorRefusesTerminalAfterError(t *testing.T) {
 	events := textStream()
 	completed := events[len(events)-1].(protocol.ResponseCompleted)
@@ -273,11 +254,7 @@ func TestAccumulatorRefusesTerminalAfterError(t *testing.T) {
 	}
 }
 
-// TestAccumulatorItemIDs wants an item added under the id of an item before it refused, and
-// items of no id, from a format with none to give, accepted however many there are.
 func TestAccumulatorItemIDs(t *testing.T) {
-	// items folds a stream of empty assistant messages of ids, each added and done, then adds
-	// one more of id last, and returns Add's error for it.
 	items := func(last string, ids ...string) error {
 		var acc protocol.Accumulator
 		events := []protocol.Event{protocol.ResponseCreated{Response: &protocol.Response{}}}
@@ -301,8 +278,6 @@ func TestAccumulatorItemIDs(t *testing.T) {
 	}
 }
 
-// callStream is a whole stream of one function call, its arguments `{"city":"Paris"}` in two
-// deltas, ending with response.completed.
 func callStream() []protocol.Event {
 	added := protocol.FunctionCall{ID: "r/0", Status: protocol.StatusInProgress, CallID: "c1", Name: "get_weather"}
 	call := protocol.FunctionCall{ID: "r/0", Status: protocol.StatusCompleted, CallID: "c1", Name: "get_weather", Arguments: `{"city":"Paris"}`}
@@ -320,9 +295,6 @@ func callStream() []protocol.Event {
 	}
 }
 
-// TestAccumulatorFunctionCall wants a function call folded: open, in progress with the arguments
-// its deltas have made, and done, the call as done, and after the terminal event that event's
-// response.
 func TestAccumulatorFunctionCall(t *testing.T) {
 	inProgress := func(arguments string) *protocol.Response {
 		return &protocol.Response{Status: protocol.StatusInProgress, Output: []protocol.Item{protocol.FunctionCall{
@@ -349,8 +321,6 @@ func TestAccumulatorFunctionCall(t *testing.T) {
 	}
 }
 
-// twoCallStream is a whole stream of two function calls open at once, added out of output order,
-// call 1 before call 0, their argument deltas interleaved, and done in output order.
 func twoCallStream() []protocol.Event {
 	added := func(n int) protocol.FunctionCall {
 		return protocol.FunctionCall{ID: fmt.Sprintf("r/%d", n), Status: protocol.StatusInProgress, CallID: fmt.Sprintf("c%d", n), Name: "get_weather"}
@@ -376,10 +346,6 @@ func twoCallStream() []protocol.Event {
 	}
 }
 
-// TestAccumulatorItemsOutOfOrder wants items open at once, added out of output order, folded by
-// output index: before the lower index is added the output is the higher alone, then both in
-// output order, each with the arguments its own deltas made, and after the terminal event that
-// event's response.
 func TestAccumulatorItemsOutOfOrder(t *testing.T) {
 	call := func(n int, status protocol.Status, arguments string) protocol.Item {
 		return protocol.FunctionCall{ID: fmt.Sprintf("r/%d", n), Status: status, CallID: fmt.Sprintf("c%d", n), Name: "get_weather", Arguments: arguments}
@@ -407,8 +373,6 @@ func TestAccumulatorItemsOutOfOrder(t *testing.T) {
 	}
 }
 
-// TestAccumulatorRefusesGapAtTheEnd wants response.completed refused while an output index below
-// the highest added wasn't added, every item added being done.
 func TestAccumulatorRefusesGapAtTheEnd(t *testing.T) {
 	tokyo := twoCallStream()[10].(protocol.OutputItemDone).Item
 	var acc protocol.Accumulator
@@ -425,10 +389,6 @@ func TestAccumulatorRefusesGapAtTheEnd(t *testing.T) {
 	}
 }
 
-// TestAccumulatorRefusesArgumentsEvent covers the function call events that don't follow the
-// events before them: arguments events out of order, of another item, and arguments the deltas
-// didn't make. Each case folds the first n events of callStream, then wants e refused, and the
-// response unchanged.
 func TestAccumulatorRefusesArgumentsEvent(t *testing.T) {
 	call := callStream()[5].(protocol.OutputItemDone).Item.(protocol.FunctionCall)
 	with := func(edit func(*protocol.FunctionCall)) protocol.FunctionCall {
@@ -477,8 +437,6 @@ func TestAccumulatorRefusesArgumentsEvent(t *testing.T) {
 	}
 }
 
-// reasoningStream is a whole stream of a reasoning item, a reasoning_text part of "Hm, Paris." in
-// two deltas, then a message of "Paris", ending with response.completed.
 func reasoningStream() []protocol.Event {
 	reasoning := protocol.Reasoning{ID: "r/0", Status: protocol.StatusCompleted, Content: []protocol.ReasoningText{{Text: "Hm, Paris."}}, EncryptedContent: "sealed"}
 	msg := protocol.Message{ID: "r/1", Status: protocol.StatusCompleted, Role: protocol.RoleAssistant, Content: []protocol.ContentPart{protocol.OutputText{Text: "Paris"}}}
@@ -504,10 +462,6 @@ func reasoningStream() []protocol.Event {
 	}
 }
 
-// TestAccumulatorReasoning wants a reasoning item folded: open, in progress, with the reasoning
-// its deltas have made and no encrypted content, which only its done event gives; done, the item
-// as done, its status and encrypted content included; and ahead of the message after it, in
-// output order.
 func TestAccumulatorReasoning(t *testing.T) {
 	inProgress := func(output ...protocol.Item) *protocol.Response {
 		return &protocol.Response{Status: protocol.StatusInProgress, Output: output}
@@ -538,9 +492,6 @@ func TestAccumulatorReasoning(t *testing.T) {
 	}
 }
 
-// TestAccumulatorRefusesReasoningEvent covers the reasoning events that don't follow the events
-// before them: out of order, of another item or part, and text the deltas didn't make. Each case
-// folds the first n events of reasoningStream, then wants e refused, and the response unchanged.
 func TestAccumulatorRefusesReasoningEvent(t *testing.T) {
 	reasoning := reasoningStream()[7].(protocol.OutputItemDone).Item.(protocol.Reasoning)
 	cases := []struct {

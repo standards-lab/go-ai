@@ -85,7 +85,6 @@ const (
 	ReasoningEffortMax ReasoningEffort = "max"
 )
 
-// reasoningEfforts are the protocol's efforts, least first.
 var reasoningEfforts = []ReasoningEffort{
 	ReasoningEffortNone, ReasoningEffortMinimal, ReasoningEffortLow, ReasoningEffortMedium,
 	ReasoningEffortHigh, ReasoningEffortXHigh, ReasoningEffortMax,
@@ -129,7 +128,10 @@ const (
 //   - nil, no model, no input, or a negative MaxOutputTokens
 //   - an item, content part, tool choice, or text format that isn't one of this package's by
 //     value (a *Message is refused)
-//   - a message with an unknown role or no content, or a part its role doesn't take
+//   - a message with an unknown role or no content, or a part its role doesn't take: the spec
+//     gives the user input_text and input_image, the system and developer input_text alone, and
+//     the assistant output_text and refusal, and the audio extension, an input part like
+//     input_image, is the user's alone too
 //   - an image with no URL or an unknown detail, or an audio clip with no data or an unknown
 //     format
 //   - a function_call with no call id or name, or with arguments that aren't JSON
@@ -145,6 +147,9 @@ const (
 //     a JSON object
 //   - a Native that isn't a JSON object with unique member names
 //
+// A reasoning item's fields are all optional, and its Content, which the spec's input item lacks,
+// is ignored on input rather than refused, so a response's Output goes back as it came.
+//
 // It doesn't check whether a Native member clashes with a member the typed fields set: only a
 // format knows its wire names, so a clash is refused when the format encodes the request, which
 // is still before anything is sent.
@@ -155,7 +160,6 @@ func (r *Request) Validate() error {
 	return nil
 }
 
-// validate is Validate without the package's prefix on its error.
 func (r *Request) validate() error {
 	switch {
 	case r == nil:
@@ -201,8 +205,6 @@ func (r *Request) validate() error {
 	return nil
 }
 
-// validateItem refuses an item that isn't one of the package's by value, and one the model
-// doesn't allow.
 func validateItem(it Item) error {
 	switch it := it.(type) {
 	case Message:
@@ -212,18 +214,12 @@ func validateItem(it Item) error {
 	case FunctionCallOutput:
 		return validateFunctionCallOutput(it)
 	case Reasoning:
-		// Every field is optional, and Content, which the spec's input item lacks, is ignored
-		// on input rather than refused, so a response's Output goes back as it came.
 		return nil
 	default:
 		return fmt.Errorf("unsupported item %T", it)
 	}
 }
 
-// validateMessage refuses a message with an unknown role or no content, and a part its role
-// doesn't take. The spec gives each role its parts: the user input_text and input_image, the
-// system and developer input_text alone, and the assistant output_text and refusal. The audio
-// extension, an input part like input_image, is the user's alone too.
 func validateMessage(m Message) error {
 	switch m.Role {
 	case RoleUser, RoleSystem, RoleDeveloper, RoleAssistant:
@@ -241,7 +237,6 @@ func validateMessage(m Message) error {
 	return nil
 }
 
-// validatePart refuses a part role doesn't take, and an image or audio part that is malformed.
 func validatePart(role Role, p ContentPart) error {
 	switch p := p.(type) {
 	case InputText:
@@ -264,7 +259,6 @@ func validatePart(role Role, p ContentPart) error {
 	return fmt.Errorf("unsupported part %T", p)
 }
 
-// validateImage refuses an image with no URL or an unknown detail level.
 func validateImage(p InputImage) error {
 	if p.ImageURL == "" {
 		return errors.New("image has no URL")
@@ -276,7 +270,6 @@ func validateImage(p InputImage) error {
 	return fmt.Errorf("image has unknown detail %q", p.Detail)
 }
 
-// validateAudio refuses a clip with no data or an unknown format.
 func validateAudio(p InputAudio) error {
 	if len(p.Data) == 0 {
 		return errors.New("audio has no data")
@@ -288,8 +281,6 @@ func validateAudio(p InputAudio) error {
 	return fmt.Errorf("audio has unknown format %q", p.Format)
 }
 
-// validateFunctionCall refuses a call with no call id or name, or with arguments that aren't
-// JSON.
 func validateFunctionCall(c FunctionCall) error {
 	switch {
 	case c.CallID == "":
@@ -302,9 +293,6 @@ func validateFunctionCall(c FunctionCall) error {
 	return nil
 }
 
-// validateFunctionCallOutput refuses an output with no call id, with both a string and parts,
-// or with a part the spec doesn't take there. Of the spec's output parts, the stateless subset
-// covers input_text.
 func validateFunctionCallOutput(o FunctionCallOutput) error {
 	switch {
 	case o.CallID == "":
@@ -320,8 +308,6 @@ func validateFunctionCallOutput(o FunctionCallOutput) error {
 	return nil
 }
 
-// validateTool refuses a tool whose name is missing, outside the spec's pattern, or among
-// declared, the names of the tools before it, and parameters that aren't a JSON object.
 func validateTool(t FunctionTool, declared map[string]bool) error {
 	switch {
 	case t.Name == "":
@@ -336,8 +322,6 @@ func validateTool(t FunctionTool, declared map[string]bool) error {
 	return nil
 }
 
-// validateText refuses a format that isn't one of the package's by value, a json_schema format
-// that is malformed, and an unknown verbosity.
 func validateText(t TextParam) error {
 	switch f := t.Format.(type) {
 	case nil, PlainTextFormat:
@@ -355,8 +339,6 @@ func validateText(t TextParam) error {
 	return fmt.Errorf("unknown verbosity %q", t.Verbosity)
 }
 
-// validateJSONSchemaFormat refuses a format whose name is missing or outside the spec's pattern,
-// and a schema that is missing or isn't a JSON object.
 func validateJSONSchemaFormat(f JSONSchemaFormat) error {
 	switch {
 	case f.Name == "":
@@ -371,8 +353,6 @@ func validateJSONSchemaFormat(f JSONSchemaFormat) error {
 	return nil
 }
 
-// validName reports whether name matches the spec's pattern for a function's name and a
-// json_schema format's, ^[a-zA-Z0-9_-]+$, at most 64 characters long.
 func validName(name string) bool {
 	if len(name) > 64 {
 		return false
@@ -387,8 +367,6 @@ func validName(name string) bool {
 	return true
 }
 
-// validateToolChoice refuses a choice that isn't one of the package's by value, an unknown
-// mode, a function declared doesn't name, and an allowed_tools choice with no tools.
 func validateToolChoice(tc ToolChoice, declared map[string]bool) error {
 	switch tc := tc.(type) {
 	case ToolChoiceMode:
@@ -413,7 +391,6 @@ func validateToolChoice(tc ToolChoice, declared map[string]bool) error {
 	}
 }
 
-// validateToolChoiceMode refuses a mode other than auto, none, and required.
 func validateToolChoiceMode(m ToolChoiceMode) error {
 	switch m {
 	case ToolChoiceAuto, ToolChoiceNone, ToolChoiceRequired:
@@ -422,7 +399,6 @@ func validateToolChoiceMode(m ToolChoiceMode) error {
 	return fmt.Errorf("unknown mode %q", m)
 }
 
-// validateFunctionToolChoice refuses a function declared doesn't name.
 func validateFunctionToolChoice(f FunctionToolChoice, declared map[string]bool) error {
 	if !declared[f.Name] {
 		return fmt.Errorf("function %q isn't one of the request's tools", f.Name)
