@@ -9,10 +9,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The tests here cover what the format encodes beyond text and images: function calls and their
-// outputs, reasoning sent back, tools and the tool choice, reasoning effort, the text format, and
-// the native tier.
-
 func call(id, name, args string) protocol.FunctionCall {
 	return protocol.FunctionCall{CallID: id, Name: name, Arguments: args}
 }
@@ -22,7 +18,6 @@ func output(id, s string) protocol.FunctionCallOutput {
 }
 
 func reasoning(encryptedContent string) protocol.Reasoning {
-	// The content is output only, and must never reach the wire.
 	return protocol.Reasoning{Content: []protocol.ReasoningText{{Text: "never sent"}}, EncryptedContent: encryptedContent}
 }
 
@@ -115,11 +110,8 @@ func TestEncodeConversation(t *testing.T) {
 			input: []protocol.Item{
 				q,
 				reasoning(""),
-				// Chat Completions' envelope of {"reasoning_content":"hm"}.
 				reasoning("go-ai:completions/v1:eyJyZWFzb25pbmdfY29udGVudCI6ImhtIn0="),
 				reasoning("go-ai:messages/v2:eyJkYXRhIjoieCJ9"),
-				// This format's envelope under another implementor's slug, as one written before
-				// the slug was go-ai's.
 				reasoning("other:messages/v1:eyJkYXRhIjoieCJ9"),
 				reasoning("go-ai:messages/v1:not base64!"),
 				reasoning(seal(`not JSON`)),
@@ -159,9 +151,6 @@ func TestEncodeConversation(t *testing.T) {
 	}
 }
 
-// TestReasoningRoundTrip decodes the recorded tool_use reply and sends its output back, as a
-// caller continues the conversation, and wants the thinking block and the tool_use block back as
-// they came, in one assistant message, ahead of the call's result.
 func TestReasoningRoundTrip(t *testing.T) {
 	resp, err := decode(string(aitest.ReadTestdata(t, "tool_use.json")))
 	if err != nil {
@@ -179,7 +168,6 @@ func TestReasoningRoundTrip(t *testing.T) {
 			{"type":"tool_result","tool_use_id":"jtjN1bIEUcKA2FZ8Xhn4jIZYGKx2H2Cf","content":"{\"city\":\"Paris\",\"celsius\":17}"}]}]}`)
 }
 
-// TestRedactedRoundTrip decodes a redacted_thinking block and sends it back, its data unchanged.
 func TestRedactedRoundTrip(t *testing.T) {
 	resp, err := decode(`{"id":"msg_1","content":[{"type":"redacted_thinking","data":"EmwKAhgBEgy3va3pzix/LafPsn4a"},
 		{"type":"text","text":"Paris"}],"stop_reason":"end_turn"}`)
@@ -245,9 +233,6 @@ func TestEncodeTools(t *testing.T) {
 	}
 }
 
-// TestEncodeParallelToolCalls covers ParallelToolCalls: false as tool_choice's
-// disable_parallel_tool_use, on the request's tool choice or on auto when it sets none; true and
-// nil sending nothing; and nothing on a tool choice of none, or for a request of no tools.
 func TestEncodeParallelToolCalls(t *testing.T) {
 	const tools = `"tools":[{"name":"f","input_schema":{"type":"object"}}]`
 	cases := []struct {
@@ -293,7 +278,6 @@ func TestEncodeParallelToolCalls(t *testing.T) {
 	}
 }
 
-// TestEncodeOptions covers reasoning effort, the text format, verbosity, and the native tier.
 func TestEncodeOptions(t *testing.T) {
 	schema := jsontext.Value(`{"type":"object","properties":{"capital":{"type":"string"}},"required":["capital"]}`)
 	cases := []struct {
@@ -352,8 +336,6 @@ func TestEncodeOptions(t *testing.T) {
 	}
 }
 
-// TestEncodeBoundOfOne wants any positive MaxOutputTokens sent as max_tokens, Messages having no
-// minimum above zero.
 func TestEncodeBoundOfOne(t *testing.T) {
 	req := ask(text(protocol.RoleUser, "q"))
 	req.MaxOutputTokens = 1

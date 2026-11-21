@@ -11,12 +11,6 @@ import (
 	"github.com/standards-lab/go-ai/tools/infer/integration"
 )
 
-// The baseline command tree as a running binary: main hands the program its
-// arguments and its process streams, and exits with the code the run
-// returns. The commands an application adds take their own cases beside
-// these.
-
-// version prints the main module's version, one line, to stdout.
 func TestCLI_Version(t *testing.T) {
 	res := integration.Run(t, "version")
 
@@ -32,8 +26,6 @@ func TestCLI_Version(t *testing.T) {
 	}
 }
 
-// The root's help, asked for or given by no command at all, exits with the
-// usage code on stdout and lists version.
 func TestCLI_RootHelp(t *testing.T) {
 	for _, args := range [][]string{nil, {"--help"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -52,8 +44,6 @@ func TestCLI_RootHelp(t *testing.T) {
 	}
 }
 
-// An unknown command is a usage error: the usage code, and the error and
-// usage on stderr alone.
 func TestCLI_UnknownCommand(t *testing.T) {
 	res := integration.Run(t, "bogus")
 

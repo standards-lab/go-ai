@@ -13,9 +13,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// folded is a streamed reply folded: the Response its events make, and the text of its
-// output_text, function-call arguments, and reasoning deltas, each joined, with the item ids the
-// output_text and arguments deltas named.
 type folded struct {
 	resp      *protocol.Response
 	text      strings.Builder
@@ -25,8 +22,6 @@ type folded struct {
 	argIDs    map[string]bool
 }
 
-// accumulate ranges a stream of req from c, folds its events, and returns them folded, failing t
-// on a stream error or an event the Accumulator refuses.
 func accumulate(t *testing.T, c *ai.Client, req *protocol.Request) *folded {
 	t.Helper()
 	var acc protocol.Accumulator
@@ -53,7 +48,6 @@ func accumulate(t *testing.T, c *ai.Client, req *protocol.Request) *folded {
 	return f
 }
 
-// streamer returns a generate for answerWithWeather that streams with c and folds the events.
 func streamer(t *testing.T, c *ai.Client) func(*protocol.Request) *protocol.Response {
 	return func(req *protocol.Request) *protocol.Response {
 		t.Helper()
@@ -61,9 +55,6 @@ func streamer(t *testing.T, c *ai.Client) func(*protocol.Request) *protocol.Resp
 	}
 }
 
-// TestStreamText streams a chat reply through each format, folds its events, and wants the
-// Response completed with its usage, its text the deltas joined, and its message an id, the
-// item_id of every delta.
 func TestStreamText(t *testing.T) {
 	eachFormat(t, agent, func(t *testing.T, c *ai.Client, model string) {
 		f := accumulate(t, c, &protocol.Request{
@@ -87,13 +78,8 @@ func TestStreamText(t *testing.T) {
 	})
 }
 
-// visionStreamBound is the MaxOutputTokens of the vision stream's request: the vision model may
-// reason, at its deployment's default effort, ahead of its answer, within the same bound.
 const visionStreamBound = 1024
 
-// TestStreamVisionText streams a chat reply from the vision model through Chat Completions and
-// Open Responses, the formats a cloud deployment of it serves, folds its events, and wants text
-// to arrive and the Response completed, its text the deltas joined.
 func TestStreamVisionText(t *testing.T) {
 	eachFormatOf(t, vision, []testFormat{completionsFormat, openResponses}, func(t *testing.T, c *ai.Client, model string) {
 		f := accumulate(t, c, &protocol.Request{
@@ -111,10 +97,6 @@ func TestStreamVisionText(t *testing.T) {
 	})
 }
 
-// TestStreamFunctionCall streams a reply that must call get_weather through each format, folds
-// its events, and wants the Response completed with one function call: a call id, the function's
-// name, arguments that parse as a JSON object naming the city, the deltas joined, and an id, the
-// item_id of every arguments delta.
 func TestStreamFunctionCall(t *testing.T) {
 	eachFormat(t, agent, func(t *testing.T, c *ai.Client, model string) {
 		f := accumulate(t, c, &protocol.Request{
@@ -140,11 +122,6 @@ func TestStreamFunctionCall(t *testing.T) {
 	})
 }
 
-// TestStreamReasoningRoundTrip streams a reply that must call get_weather through each format,
-// with a reasoning effort, and wants its accumulated output to hold reasoning ahead of the call,
-// completed, its text the reasoning deltas joined. It sends that output back as it came,
-// reasoning included, with the call's output, streams again, and wants the accumulated Response
-// completed with an answer that uses it.
 func TestStreamReasoningRoundTrip(t *testing.T) {
 	eachFormat(t, agent, func(t *testing.T, c *ai.Client, model string) {
 		req := reasoningRequest(model)
@@ -157,10 +134,6 @@ func TestStreamReasoningRoundTrip(t *testing.T) {
 	})
 }
 
-// TestStreamCancel streams a long answer through each format and cancels the context once a few
-// output_text deltas have arrived. It wants no event after the cancel, the context's error as the
-// sequence's one error, and the accumulated Response in progress, its message holding the text
-// the deltas made so far.
 func TestStreamCancel(t *testing.T) {
 	eachFormat(t, agent, func(t *testing.T, c *ai.Client, model string) {
 		const cancelAt = 5

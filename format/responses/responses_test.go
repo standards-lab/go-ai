@@ -14,15 +14,11 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// encode encodes req with the spec's form of the format, as encodeWith does.
 func encode(t *testing.T, req *protocol.Request) []byte {
 	t.Helper()
 	return encodeWith(t, responses.Options{}, req)
 }
 
-// encodeWith encodes req with the format adjusted by opts, failing t if it is invalid or
-// EncodeRequest refuses it, or if EncodeRequest sets a header. The client validates every
-// request before encoding it, so a request the format is given here is a valid one.
 func encodeWith(t *testing.T, opts responses.Options, req *protocol.Request) []byte {
 	t.Helper()
 	if err := req.Validate(); err != nil {
@@ -39,13 +35,10 @@ func encodeWith(t *testing.T, opts responses.Options, req *protocol.Request) []b
 	return body
 }
 
-// decode decodes reply as the body of a 2xx reply.
 func decode(reply string) (*protocol.Response, error) {
 	return responses.New(responses.Options{}).DecodeResponse([]byte(reply))
 }
 
-// seal returns the responses format's envelope of the server's encrypted_content enc and the
-// reasoning texts, as DecodeResponse writes it into a reasoning item's encrypted_content.
 func seal(t *testing.T, enc string, texts ...string) string {
 	t.Helper()
 	if texts == nil {
@@ -65,18 +58,15 @@ func text(role protocol.Role, s string) protocol.Message {
 	return protocol.Message{Role: role, Content: []protocol.ContentPart{protocol.InputText{Text: s}}}
 }
 
-// withNative returns req with native as its Native.
 func withNative(req *protocol.Request, native string) *protocol.Request {
 	req.Native = jsontext.Value(native)
 	return req
 }
 
-// ask is a request to model m of the input items, with no bound.
 func ask(input ...protocol.Item) *protocol.Request {
 	return &protocol.Request{Model: "m", Input: input}
 }
 
-// stateless is the members every request carries, after its own.
 const stateless = `"stream":false,"store":false,"include":["reasoning.encrypted_content"]`
 
 func TestEncode(t *testing.T) {
@@ -140,8 +130,6 @@ func TestEncode(t *testing.T) {
 				{"type":"input_image","image_url":"https://example.com/shapes.png"}]}]}`,
 		},
 		{
-			// The extension's literal, pinned: its type carries the implementor slug, and its
-			// data is the clip in standard base64.
 			name: "input_audio as the client extension",
 			req: ask(protocol.Message{Role: protocol.RoleUser, Content: []protocol.ContentPart{
 				protocol.InputText{Text: "Transcribe."},
@@ -203,7 +191,6 @@ func TestEncode(t *testing.T) {
 	}
 }
 
-// TestEncodeStreamRequest covers a streamed request: EncodeRequest's body with stream true.
 func TestEncodeStreamRequest(t *testing.T) {
 	req := ask(text(protocol.RoleUser, "hi"))
 	header := make(http.Header)
@@ -218,7 +205,6 @@ func TestEncodeStreamRequest(t *testing.T) {
 	}
 }
 
-// TestEncodeRefuses covers the valid requests the format refuses.
 func TestEncodeRefuses(t *testing.T) {
 	user := text(protocol.RoleUser, "hi")
 	cases := []struct {
@@ -270,31 +256,25 @@ func TestEncodeRefuses(t *testing.T) {
 	}
 }
 
-// textReasoning is the reasoning text of the reply recorded in testdata/text.json.
 const textReasoning = `The user asks: "Name three French cities, comma-separated, nothing else." The developer says: "Answer with the names alone." So we should output three French city names, separated by commas, no extra text. So something like "Paris, Lyon, Marseille". Ensure no extra punctuation beyond commas. Probably just that.`
 
-// toolCallReasoning is the reasoning text of the reply recorded in testdata/tool_call.json.
 const toolCallReasoning = "User asks current weather in Paris. Use function get_weather."
 
-// TestDecodeRecorded decodes the router's replies recorded in testdata.
 func TestDecodeRecorded(t *testing.T) {
 	cases := []struct {
 		file string
 		want *protocol.Response
 	}{
 		{
-			// The reasoning item ahead of the message, its summary and encrypted_content empty,
-			// and the item ids the router's.
 			file: "text.json",
 			want: &protocol.Response{
 				ID:    "resp_q5O3zYTjmXMQuu9cwX2U7gz2G9JN4o2R",
 				Model: "ggml-org/gpt-oss-120b-GGUF:MXFP4",
 				Output: []protocol.Item{
 					protocol.Reasoning{
-						ID:      "rs_Pt1rtkP5f8C8yiCOAXqiF7kVKWuw2TVi",
-						Status:  protocol.StatusCompleted,
-						Content: []protocol.ReasoningText{{Text: textReasoning}},
-						// The router's encrypted_content, empty, and the reasoning text, sealed.
+						ID:               "rs_Pt1rtkP5f8C8yiCOAXqiF7kVKWuw2TVi",
+						Status:           protocol.StatusCompleted,
+						Content:          []protocol.ReasoningText{{Text: textReasoning}},
 						EncryptedContent: seal(t, "", textReasoning),
 					},
 					protocol.Message{
@@ -310,8 +290,6 @@ func TestDecodeRecorded(t *testing.T) {
 			},
 		},
 		{
-			// gpt-oss-120b's reasoning ahead of its call, the reasoning's encrypted_content the
-			// format's envelope of the router's, empty, and the reasoning text.
 			file: "tool_call.json",
 			want: &protocol.Response{
 				ID:    "resp_3USexSUkVmyApnlmy8IkSxXfQjo0qkDD",
@@ -321,8 +299,6 @@ func TestDecodeRecorded(t *testing.T) {
 						ID:      "rs_H4pfaCFvrGf1ljLr7M56OB81gR3sEvYK",
 						Status:  protocol.StatusCompleted,
 						Content: []protocol.ReasoningText{{Text: toolCallReasoning}},
-						// The envelope's literal, pinned: base64 of
-						// {"encrypted_content":"","content":["User asks current weather in Paris. Use function get_weather."]}.
 						EncryptedContent: "go-ai:responses/v1:" +
 							"eyJlbmNyeXB0ZWRfY29udGVudCI6IiIsImNvbnRlbnQiOlsiVXNlciBhc2tzIGN1cnJlbnQgd2VhdGhlciBpbiBQYXJpcy4gVXNlIGZ1bmN0aW9uIGdldF93ZWF0aGVyLiJdfQ==",
 					},
@@ -340,7 +316,6 @@ func TestDecodeRecorded(t *testing.T) {
 			},
 		},
 		{
-			// Stopped at max_output_tokens, and completed as the router reports it.
 			file: "length.json",
 			want: &protocol.Response{
 				ID:    "resp_ENy4dMjOdbHrRyBNhZwOgkE8OB595AeI",
@@ -386,7 +361,6 @@ func TestDecodeRecorded(t *testing.T) {
 	}
 }
 
-// TestDecode decodes replies of the spec's shapes, beyond what the router sends.
 func TestDecode(t *testing.T) {
 	cases := []struct {
 		name  string

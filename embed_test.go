@@ -15,26 +15,20 @@ import (
 	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
-// Hand-built embeddings: standard base64 of little-endian float32s.
 const (
-	// vecA is 1, -2.5, 0.15625: 0x3f800000, 0xc0200000, 0x3e200000.
 	vecA = "AACAPwAAIMAAACA+"
-	// vecB is 0 and the largest float32, 0x7f7fffff.
 	vecB = "AAAAAP//f38="
 )
 
-// The vectors vecA and vecB encode.
 var (
 	wantA = []float32{1, -2.5, 0.15625}
 	wantB = []float32{0, math.MaxFloat32}
 )
 
-// embedReply is an embeddings reply of vecA at index 0 and vecB at index 1, in that order.
 const embedReply = `{"object":"list","model":"m","usage":{"prompt_tokens":6,"total_tokens":6},"data":[` +
 	`{"object":"embedding","index":0,"embedding":"` + vecA + `"},` +
 	`{"object":"embedding","index":1,"embedding":"` + vecB + `"}]}`
 
-// two is a valid request of two inputs.
 func two() *ai.EmbeddingRequest {
 	return &ai.EmbeddingRequest{Model: "m", Input: []string{"a", "b"}}
 }
@@ -63,7 +57,6 @@ func TestEmbedWireRequest(t *testing.T) {
 			t.Errorf("%s = %q, want %q", k, v, want)
 		}
 	}
-	// The empty input goes out as it is: llama.cpp embeds it.
 	if want := `{"model":"m","input":["a",""],"encoding_format":"base64"}`; string(got.Body) != want {
 		t.Errorf("body = %s\nwant   %s", got.Body, want)
 	}
@@ -97,8 +90,6 @@ func TestEmbedDecodesVectors(t *testing.T) {
 	}
 }
 
-// TestEmbedOrdersByIndex covers a reply whose items arrive out of input order: each vector goes
-// where its index places it.
 func TestEmbedOrdersByIndex(t *testing.T) {
 	reply := `{"data":[{"index":1,"embedding":"` + vecB + `"},{"index":0,"embedding":"` + vecA + `"}]}`
 	srv := serveEmbeddings(t, http.StatusOK, reply)
@@ -146,8 +137,6 @@ func TestEmbedRefusesReply(t *testing.T) {
 	}
 }
 
-// TestEmbedRefusesRequest covers what Embed refuses, and when: before the token source is called
-// or anything is sent.
 func TestEmbedRefusesRequest(t *testing.T) {
 	cases := []struct {
 		name string
@@ -188,8 +177,6 @@ func TestEmbedRefusesRequest(t *testing.T) {
 	}
 }
 
-// TestEmbedAPIError covers a non-2xx reply: an *APIError with the OpenAI-style error body's
-// details, whatever format the Client speaks. What the body's shapes give is format's test.
 func TestEmbedAPIError(t *testing.T) {
 	reply := `{"error":{"code":400,"message":"\"input\" must not be empty","type":"invalid_request_error"}}`
 	srv := serveEmbeddings(t, http.StatusBadRequest, reply)
@@ -231,8 +218,6 @@ func TestEmbedWrapsCancelledContext(t *testing.T) {
 	}
 }
 
-// TestEmbedAnyFormat wants Embed to go to the OpenAI-compatible embeddings route on a Client of
-// a format whose own route is elsewhere, with none of the format's headers.
 func TestEmbedAnyFormat(t *testing.T) {
 	srv := serveEmbeddings(t, http.StatusOK, embedReply)
 	c, err := ai.New(srv.URL(), http.DefaultClient, messages.New(messages.Options{}), ai.Options{})

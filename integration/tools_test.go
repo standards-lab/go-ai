@@ -11,7 +11,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// getWeather is a function tool the weather question calls.
 var getWeather = protocol.FunctionTool{
 	Name:        "get_weather",
 	Description: "Get the current temperature in a city, in degrees Celsius.",
@@ -20,20 +19,16 @@ var getWeather = protocol.FunctionTool{
 		"required":["city"]}`),
 }
 
-// getTime is a second function tool, for a named choice to pass over.
 var getTime = protocol.FunctionTool{
 	Name:        "get_time",
 	Description: "Get the current local time in a city.",
 	Parameters:  jsontext.Value(`{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}`),
 }
 
-// weatherQuestion is the user message that asks for the weather in Paris.
 var weatherQuestion = userText("What is the weather in Paris right now?")
 
-// weatherOutput is get_weather's answer for Paris, which an answer that uses it carries as 17.
 const weatherOutput = `{"city":"Paris","celsius":17}`
 
-// functionCalls returns resp's function calls, in output order.
 func functionCalls(resp *protocol.Response) []protocol.FunctionCall {
 	var calls []protocol.FunctionCall
 	for _, it := range resp.Output {
@@ -44,8 +39,6 @@ func functionCalls(resp *protocol.Response) []protocol.FunctionCall {
 	return calls
 }
 
-// weatherCall returns the one function_call to get_weather in resp, failing t unless resp is
-// completed and holds one, completed, with a call id and arguments that are a JSON object.
 func weatherCall(t *testing.T, resp *protocol.Response) protocol.FunctionCall {
 	t.Helper()
 	if resp.Status != protocol.StatusCompleted {
@@ -65,9 +58,6 @@ func weatherCall(t *testing.T, resp *protocol.Response) protocol.FunctionCall {
 	return c
 }
 
-// answerWithWeather sends req again with resp's output, as it came, and the weather call's
-// output, under the auto choice, and wants a completed answer that uses the tool's temperature.
-// generate is how the scenario sends a request, unstreamed or streamed and folded.
 func answerWithWeather(t *testing.T, req *protocol.Request, resp *protocol.Response, call protocol.FunctionCall,
 	generate func(*protocol.Request) *protocol.Response) {
 	t.Helper()
@@ -80,8 +70,6 @@ func answerWithWeather(t *testing.T, req *protocol.Request, resp *protocol.Respo
 	}
 }
 
-// generator returns a generate for answerWithWeather that sends unstreamed with c, failing t on
-// an error.
 func generator(t *testing.T, c *ai.Client) func(*protocol.Request) *protocol.Response {
 	return func(req *protocol.Request) *protocol.Response {
 		t.Helper()
@@ -93,9 +81,6 @@ func generator(t *testing.T, c *ai.Client) func(*protocol.Request) *protocol.Res
 	}
 }
 
-// TestFunctionCallRoundTrip asks the weather question under the required choice, wants one call
-// of get_weather, sends its output back after the response's own output items, and wants an
-// answer that uses it.
 func TestFunctionCallRoundTrip(t *testing.T) {
 	eachFormat(t, agent, func(t *testing.T, c *ai.Client, model string) {
 		generate := generator(t, c)
@@ -111,21 +96,12 @@ func TestFunctionCallRoundTrip(t *testing.T) {
 	})
 }
 
-// TestToolChoice asks a question that needs no tool, with get_time and get_weather declared, and
-// wants each choice honored: a named function, and an allowed_tools of get_weather alone under
-// the required mode, each make one call of get_weather though the answer needs none, and none
-// makes no call, the answer a message.
-//
-// The allowed_tools choice runs on Messages alone, whose format sends it as the one tool it
-// allows under tool_choice any. Chat Completions and Open Responses send their own allowed_tools
-// forms, as the unit tier proves, and vLLM 0.33.0 honors neither: it refuses Chat Completions'
-// with a 400 and answers Open Responses' as auto, with no call.
+// See docs/design.md, "Implementation notes".
 func TestToolChoice(t *testing.T) {
 	cases := []struct {
-		name   string
-		choice protocol.ToolChoice
-		call   bool
-		// formats are the formats the case runs through; nil runs it through every format.
+		name    string
+		choice  protocol.ToolChoice
+		call    bool
 		formats []testFormat
 	}{
 		{name: "named function", choice: protocol.FunctionToolChoice{Name: getWeather.Name}, call: true},

@@ -16,12 +16,6 @@ import (
 	"github.com/standards-lab/go-ai/aitest"
 )
 
-// The retry policy is infer's default, three attempts, a 500ms base delay,
-// and a 30s most delay, when unset; each field is its variable's when set,
-// and its root flag's when given, wherever on the command line. Given
-// empty, a flag or variable is unset, so its field is the default. The
-// default base delay is capped at a most delay given below it, but not at
-// a negative one, which ai.New refuses.
 func TestRetryPolicy_FlagOverVariable(t *testing.T) {
 	vars := map[string]string{"INFER_RETRIES": "4", "INFER_RETRY_BASE_DELAY": "100ms", "INFER_RETRY_MAX_DELAY": "2s"}
 	fromVars := ai.RetryPolicy{MaxAttempts: 4, BaseDelay: 100 * time.Millisecond, MaxDelay: 2 * time.Second}
@@ -68,23 +62,18 @@ func TestRetryPolicy_FlagOverVariable(t *testing.T) {
 	}
 }
 
-// retryEndpoint is an endpoint that records when each request arrived.
 type retryEndpoint struct {
 	*aitest.Endpoint
 	mu       sync.Mutex
 	arrivals []time.Time
 }
 
-// times returns when each request e received arrived, in order.
 func (e *retryEndpoint) times() []time.Time {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return append([]time.Time(nil), e.arrivals...)
 }
 
-// serveRetry serves a [retryEndpoint] whose GET /v1/models answers 503
-// with Retry-After retryAfter to the first failures requests, then lists
-// agent.
 func serveRetry(t *testing.T, failures int, retryAfter string) *retryEndpoint {
 	t.Helper()
 	e := &retryEndpoint{}
@@ -101,10 +90,6 @@ func serveRetry(t *testing.T, failures int, retryAfter string) *retryEndpoint {
 	return e
 }
 
-// With retries set, a 503 with Retry-After, then a 200, succeeds after the
-// wait: the second attempt arrives no sooner than the Retry-After's second
-// after the first, which a retry that ignored it, under the default base
-// delay of 500ms, would send sooner.
 func TestRetries_WaitForRetryAfter(t *testing.T) {
 	e := serveRetry(t, 1, "1")
 
@@ -123,11 +108,6 @@ func TestRetries_WaitForRetryAfter(t *testing.T) {
 	}
 }
 
-// With nothing set, infer retries under its default policy: a 503 then a
-// 200 succeeds after two requests, and three 503s are the run's failure,
-// exit 1, after three requests, the default's attempts. Each 503's
-// Retry-After of 0 replaces the default backoff, so the test waits for
-// nothing.
 func TestRetries_Default(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -157,9 +137,6 @@ func TestRetries_Default(t *testing.T) {
 	}
 }
 
-// An attempt count given wins over the default: --retries 1, or 0, sends
-// once, and one 503 is the run's failure, exit 1; INFER_RETRIES 2 sends
-// twice against three 503s.
 func TestRetries_GivenOverDefault(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -189,8 +166,6 @@ func TestRetries_GivenOverDefault(t *testing.T) {
 	}
 }
 
-// The retry policy reaches the chat client too: an unstreamed chat whose
-// first attempt is answered 503 is sent again.
 func TestRetries_Chat(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(_ context.Context, req aitest.ChatRequest) aitest.Reply {
 		if req.Arrival == 1 {
@@ -210,16 +185,12 @@ func TestRetries_Chat(t *testing.T) {
 	}
 }
 
-// Each refused retry or idle setting exits 2 before any request, its
-// error reported once on stderr, naming the flag and its variable: one
-// that doesn't parse, by the node that reads it, and a negative or
-// inverted policy, by go-ai's refusal in the client node of the command.
 func TestRetryRefusals(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		env  map[string]string
 		args []string
-		want string // the error, after the command's label
+		want string
 	}{
 		{
 			name: "unparsable retries variable",
@@ -322,10 +293,6 @@ func TestRetryRefusals(t *testing.T) {
 	}
 }
 
-// stallingStream serves a streamed completions endpoint that sends the
-// role chunk and a "Paris" delta, then holds the stream on hold, sending
-// nothing, until the test lets it go or the request ends, then the rest of
-// a completed reply.
 func stallingStream(t *testing.T, hold *aitest.Gate) *aitest.Endpoint {
 	t.Helper()
 	reply := chatReply("", "stop", "Paris")
@@ -333,12 +300,6 @@ func stallingStream(t *testing.T, hold *aitest.Gate) *aitest.Endpoint {
 	return chatEndpoint(t, nil, completionsRoute, reply)
 }
 
-// The idle timeout is INFER_IDLE_TIMEOUT's when set, and chat's
-// --idle-timeout's when given, even given empty, which sets no bound. A
-// bound ends a stream held until the client gives up on it, exit 1, the
-// text already written kept and the error naming the idle bound. None, or
-// a longer one, lets a stream held for stall, counted from the hold and
-// longer than the 50ms bound a case would wrongly apply, finish.
 func TestChat_IdleTimeout(t *testing.T) {
 	const stall = 500 * time.Millisecond
 	for _, tc := range []struct {
@@ -388,9 +349,6 @@ func TestChat_IdleTimeout(t *testing.T) {
 	}
 }
 
-// Each command's own setting is read by that command alone: a variable
-// that would refuse its command, an unknown transcription mode or an
-// unparsable idle timeout, fails no other command.
 func TestCommandSettings_ReadByTheirCommandAlone(t *testing.T) {
 	routes := aitest.Routes{
 		Models:          listing("agent"),

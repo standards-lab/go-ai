@@ -56,24 +56,18 @@ type Options struct {
 // Client makes requests of one endpoint in one wire format. It is safe for concurrent use when
 // its TokenSource and format are, and sets no limit of its own.
 type Client struct {
-	base   url.URL
-	query  string
-	token  TokenSource
-	header http.Header
-	http   *http.Client
-	format format.Format
-	// retry is the Options' policy, its zero value retrying nothing.
-	retry RetryPolicy
-	// idle is the Options' StreamIdleTimeout, 0 for none.
-	idle time.Duration
-	// transcription is the Options' TranscriptionMode.
+	base          url.URL
+	query         string
+	token         TokenSource
+	header        http.Header
+	http          *http.Client
+	format        format.Format
+	retry         RetryPolicy
+	idle          time.Duration
 	transcription TranscriptionMode
-	// jitter is the backoff's jitter source, fullJitter outside the tests.
-	jitter func(time.Duration) time.Duration
+	jitter        func(time.Duration) time.Duration
 }
 
-// clientHeaders are the headers the Client sets on every request, which Options.Header may not
-// name.
 var clientHeaders = []string{"Content-Type", "Accept", "Authorization"}
 
 // New returns a Client of the endpoint at baseURL, sending its requests with httpClient in
@@ -128,8 +122,6 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
 	if opts.TranscriptionMode != TranscribeRoute && opts.TranscriptionMode != TranscribeChat {
 		return nil, fmt.Errorf("ai: unknown transcription mode %d", opts.TranscriptionMode)
 	}
-	// The query is encoded once, here, so a caller changing its url.Values after New can't
-	// change the requests.
 	return &Client{
 		base:          *u,
 		query:         opts.Query.Encode(),
@@ -151,9 +143,6 @@ func (c *Client) TranscriptionMode() TranscriptionMode {
 	return c.transcription
 }
 
-// fixedHeader returns a copy of h under canonical names, refusing one the Client sets itself.
-// Names that differ only in case are one header, their values in the order of the names'
-// spellings, so the copy doesn't depend on the map's order.
 func fixedHeader(h http.Header) (http.Header, error) {
 	out := make(http.Header, len(h))
 	for _, name := range slices.Sorted(maps.Keys(h)) {
@@ -174,8 +163,6 @@ func fixedHeader(h http.Header) (http.Header, error) {
 	return out, nil
 }
 
-// validHeaderName reports whether name is a header field name, a token of RFC 9110, as net/http
-// requires of a header it sends.
 func validHeaderName(name string) bool {
 	if name == "" {
 		return false
@@ -190,8 +177,6 @@ func validHeaderName(name string) bool {
 	return true
 }
 
-// validHeaderValue reports whether v is a header field value net/http sends: no control
-// character but the horizontal tab.
 func validHeaderValue(v string) bool {
 	for _, c := range []byte(v) {
 		if (c < ' ' && c != '\t') || c == 0x7f {
@@ -227,23 +212,15 @@ func (c *Client) Generate(ctx context.Context, req *protocol.Request) (*protocol
 	return resp, nil
 }
 
-// endpoint is the URL of route: the base path and route joined by exactly one slash, with the
-// Options' query.
 func (c *Client) endpoint(route string) string {
 	u := c.base.JoinPath(route)
 	u.RawQuery = c.query
 	return u.String()
 }
 
-// body makes one attempt's request body. It is called once per attempt, after the token
-// source, and may add headers to header, such as a format's version header. It returns the
-// body, and end, which the attempt calls once it is done with the body: on its failure, or as
-// its 2xx reply's body is closed. end reports the body's own failure, such as a clip whose read
-// failed part way, which is the attempt's cause whatever the transport made of it; a nil end
-// has nothing to report. An error from body itself is a failure before anything is sent.
+// See docs/design.md, "Implementation notes".
 type body func(ctx context.Context, header http.Header) (r io.Reader, end func() error, err error)
 
-// fixedBody is a body of b, the same for every attempt, with the format's header.
 func fixedBody(header http.Header, b []byte) body {
 	return func(_ context.Context, h http.Header) (io.Reader, func() error, error) {
 		maps.Copy(h, header)
@@ -251,9 +228,6 @@ func fixedBody(header http.Header, b []byte) body {
 	}
 }
 
-// fetch sends a request of method to route, with the body makeBody makes for each attempt, of
-// contentType, or none when makeBody is nil, and returns the reply's body, as send describes:
-// retried as the Client's policy has it.
 func (c *Client) fetch(ctx context.Context, method, route string, makeBody body, contentType string,
 	decodeError func(body []byte) (message, typ, code string)) ([]byte, error) {
 	resp, err := c.send(ctx, method, route, makeBody, contentType, "application/json", decodeError)
@@ -263,8 +237,6 @@ func (c *Client) fetch(ctx context.Context, method, route string, makeBody body,
 	return readReply(resp)
 }
 
-// readReply reads and closes the body of a 2xx reply. The close ends the request's body, and
-// its failure, such as a clip's read, is returned in place of the reply.
 func readReply(resp *http.Response) ([]byte, error) {
 	reply, err := io.ReadAll(resp.Body)
 	if cerr := resp.Body.Close(); cerr != nil {
@@ -276,9 +248,6 @@ func readReply(resp *http.Response) ([]byte, error) {
 	return reply, nil
 }
 
-// endedBody is a 2xx reply's body whose Close also ends the request's body. Close returns the
-// request body's failure alone: the reply's own close failure, after its read, reports nothing
-// the caller acts on.
 type endedBody struct {
 	io.ReadCloser
 	end func() error
@@ -289,16 +258,7 @@ func (b *endedBody) Close() error {
 	return b.end()
 }
 
-// request builds one attempt's request of method to route, accepting accept, with the body
-// makeBody makes, of contentType, or none when makeBody is nil. Its header is the Options'
-// fixed headers, then the body's, such as the format's, replacing any of the same name, then
-// the bearer token. The token source is called first, before the body is made, so a source
-// error opens nothing and sends nothing. A body of unknown length, such as a pipe, goes
-// chunked. It returns the request and the body's end, never nil, which the caller calls once
-// the attempt is done with the body. Its errors are every way an attempt fails before anything
-// is sent, which is why it is apart from do: send returns them at once, never classifying them
-// for a retry, so a token source that fails on its own network call isn't mistaken for the
-// endpoint's connection failing.
+// See docs/design.md, "Implementation notes".
 func (c *Client) request(ctx context.Context, method, route string, makeBody body, contentType, accept string) (*http.Request, func() error, error) {
 	token := ""
 	if c.token != nil {
@@ -326,9 +286,6 @@ func (c *Client) request(ctx context.Context, method, route string, makeBody bod
 		_ = end()
 		return nil, nil, err
 	}
-	// Both are copied by canonical name, the fixed headers by New and the body's by
-	// header.Set, so the body's replace the fixed ones by key. Each value slice is cloned, so a
-	// transport that changes the request's header changes neither.
 	for k, v := range c.header {
 		req.Header[k] = slices.Clone(v)
 	}
@@ -345,12 +302,6 @@ func (c *Client) request(ctx context.Context, method, route string, makeBody bod
 	return req, end, nil
 }
 
-// do sends req and returns a 2xx reply, its body unread, for the caller to read and close. A
-// non-2xx reply is an *APIError, its body read and closed, its details decoded by decodeError,
-// the Client's format's, and its Retry-After read as the reply arrives. The Retry-After is also
-// returned beside the error, reporting whether the reply had one that could be read, for send's
-// wait: a Retry-After of 0 waits none, where one that can't be read leaves the wait to the
-// backoff.
 func (c *Client) do(req *http.Request, decodeError func(body []byte) (message, typ, code string)) (*http.Response, time.Duration, bool, error) {
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -359,8 +310,6 @@ func (c *Client) do(req *http.Request, decodeError func(body []byte) (message, t
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		defer func() { _ = resp.Body.Close() }()
 		wait, ok := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
-		// A failed read leaves the part of the body that was read, which is still the best
-		// account of the error there is.
 		reply, _ := io.ReadAll(resp.Body)
 		e := &APIError{Status: resp.StatusCode, Body: reply, RetryAfter: wait}
 		e.Message, e.Type, e.Code = decodeError(reply)

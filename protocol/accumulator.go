@@ -23,13 +23,13 @@ import (
 // Add refuses an event that doesn't follow the events before it: anything before
 // response.created or after a terminal event, a sequence number that doesn't increase, an item
 // added at a negative output index or at one already added, an item added under the id of one
-// added before it, an event about an item or part that wasn't added or
-// is already done, an item_id that isn't the id of the item at the event's output_index, a part
-// added before the one ahead of it is done, an item done before its parts, or a function call's
-// arguments, are done, a done event whose text, arguments, or content isn't what the deltas made,
-// and a terminal response.completed or response.incomplete while an item is open, while an output
-// index below the highest added wasn't added, or after an error event. A refused event changes
-// nothing.
+// added before it (an empty id, from a format with none to give, is never a repeat), an event
+// about an item or part that wasn't added or is already done, an item_id that isn't the id of the
+// item at the event's output_index, a part added before the one ahead of it is done, an item done
+// before its parts, or a function call's arguments, are done, a done event whose text, arguments,
+// or content isn't what the deltas made, and a terminal response.completed or response.incomplete
+// while an item is open, while an output index below the highest added wasn't added, or after an
+// error event. A refused event changes nothing.
 //
 // An error event, the server's report that the response failed, changes nothing of the response:
 // the response.failed that follows it carries the failure, in its Response's Error, and that
@@ -42,37 +42,24 @@ import (
 // gives them. Its zero value is ready to use; it isn't safe for concurrent use.
 type Accumulator struct {
 	created, ended bool
-	// errored is set once an error event is added, after which the terminal event must be
-	// response.failed.
-	errored bool
-	// seq is the sequence number of the last event added.
-	seq int
-	// resp is the created response, and then the terminal one.
-	resp Response
-	// items are the output items added, in output order, which may skip an index not yet added.
-	items []*foldItem
+	errored        bool
+	seq            int
+	resp           Response
+	items          []*foldItem
 }
 
-// foldItem is an output item being folded.
 type foldItem struct {
-	// output is the item's output index.
-	output int
-	// item is the item as added, and then as done.
-	item Item
-	done bool
-	// parts are a message's or a reasoning item's content parts, in order.
-	parts []*foldPart
-	// args is a function call's arguments so far, and argsDone is set at their done event.
+	output   int
+	item     Item
+	done     bool
+	parts    []*foldPart
 	args     strings.Builder
 	argsDone bool
 }
 
-// foldPart is a content part being folded: an OutputText, a Refusal, or a ReasoningText, as
-// added, and its text so far.
 type foldPart struct {
-	part ContentPart
-	text strings.Builder
-	// textDone is set at the part's text's done event, and done at the part's.
+	part           ContentPart
+	text           strings.Builder
 	textDone, done bool
 }
 
@@ -85,7 +72,6 @@ func (a *Accumulator) Add(e Event) error {
 	return nil
 }
 
-// add is Add without the package's prefix on its error.
 func (a *Accumulator) add(e Event) error {
 	name, seq, ok := describe(e)
 	switch {
@@ -107,7 +93,6 @@ func (a *Accumulator) add(e Event) error {
 	return nil
 }
 
-// fold folds e, whose place in the stream add has checked, into the response.
 func (a *Accumulator) fold(e Event) error {
 	switch e := e.(type) {
 	case ResponseCreated:
@@ -176,15 +161,11 @@ func (a *Accumulator) fold(e Event) error {
 	return nil
 }
 
-// end folds a terminal event's response r. A completed or incomplete response, closed, follows
-// only once every item is done, and holds them all, and never after an error event; a failed one
-// may follow at any point.
 func (a *Accumulator) end(r *Response, closed bool) error {
 	if r == nil {
 		return errors.New("no response")
 	}
 	if closed {
-		// The spec has every error in a stream followed by response.failed.
 		if a.errored {
 			return errors.New("the stream reported an error, want response.failed")
 		}
@@ -200,8 +181,6 @@ func (a *Accumulator) end(r *Response, closed bool) error {
 			return fmt.Errorf("the response has %d output items, want the %d streamed", len(r.Output), len(a.items))
 		}
 	}
-	// A terminal response that doesn't report the reply's id or model keeps the created
-	// response's, so a stream that names them once still folds into a Response that has them.
 	id, model := a.resp.ID, a.resp.Model
 	a.resp, a.ended = *r, true
 	a.resp.Output = slices.Clone(r.Output)
@@ -214,9 +193,6 @@ func (a *Accumulator) end(r *Response, closed bool) error {
 	return nil
 }
 
-// addItem folds an output_item.added: an item at an output index not yet added, a message with
-// no content, a reasoning item with no content or encrypted content, or a function call with no
-// arguments.
 func (a *Accumulator) addItem(e OutputItemAdded) error {
 	at, found := a.find(e.OutputIndex)
 	switch {
@@ -245,8 +221,6 @@ func (a *Accumulator) addItem(e OutputItemAdded) error {
 	default:
 		return fmt.Errorf("unsupported item %T", e.Item)
 	}
-	// Items are found by output index, which every event about one carries, and their ids
-	// checked against it; an empty id, from a format with none to give, is never a repeat.
 	if id != "" {
 		for _, it := range a.items {
 			if itemID(it.item) == id {
@@ -258,17 +232,12 @@ func (a *Accumulator) addItem(e OutputItemAdded) error {
 	return nil
 }
 
-// find returns the place in a.items of the item at output, and whether it was added; when it
-// wasn't, the place is where it goes.
 func (a *Accumulator) find(output int) (int, bool) {
 	return slices.BinarySearchFunc(a.items, output, func(it *foldItem, output int) int {
 		return it.output - output
 	})
 }
 
-// doneItem folds an output_item.done: the whole item, the one added there, a message's or a
-// reasoning item's parts done and its content what they made, or a function call's arguments
-// done and what their deltas made.
 func (a *Accumulator) doneItem(e OutputItemDone) error {
 	it, err := a.item(e.OutputIndex)
 	if err != nil {
@@ -318,8 +287,6 @@ func (a *Accumulator) doneItem(e OutputItemDone) error {
 	return nil
 }
 
-// doneParts checks content, a done item's, against the parts it streamed: each done, and each
-// the part its events made.
 func (it *foldItem) doneParts(content []ContentPart) error {
 	if len(content) != len(it.parts) {
 		return fmt.Errorf("the item has %d content parts, want the %d streamed", len(content), len(it.parts))
@@ -335,8 +302,6 @@ func (it *foldItem) doneParts(content []ContentPart) error {
 	return nil
 }
 
-// addPart folds a content_part.added: the item's next part, once the one ahead of it is done, an
-// OutputText or a Refusal of a message, or a ReasoningText of a reasoning item.
 func (a *Accumulator) addPart(e ContentPartAdded) error {
 	it, err := a.contentItem(e.ItemID, e.OutputIndex)
 	if err != nil {
@@ -373,8 +338,6 @@ func (a *Accumulator) addPart(e ContentPartAdded) error {
 	return nil
 }
 
-// deltaText folds an output_text.delta, a refusal.delta, or a reasoning.delta, of the part of
-// kind's type: delta appended to the part's text.
 func (a *Accumulator) deltaText(itemID string, output, content int, kind ContentPart, delta string) error {
 	p, err := a.textPart(itemID, output, content, kind)
 	if err != nil {
@@ -384,8 +347,6 @@ func (a *Accumulator) deltaText(itemID string, output, content int, kind Content
 	return nil
 }
 
-// doneText folds an output_text.done, a refusal.done, or a reasoning.done, of the part of kind's
-// type: the part's whole text, which its deltas made.
 func (a *Accumulator) doneText(itemID string, output, content int, kind ContentPart, text string) error {
 	p, err := a.textPart(itemID, output, content, kind)
 	if err != nil {
@@ -398,7 +359,6 @@ func (a *Accumulator) doneText(itemID string, output, content int, kind ContentP
 	return nil
 }
 
-// item returns the output item at output, added and not done.
 func (a *Accumulator) item(output int) (*foldItem, error) {
 	i, found := a.find(output)
 	switch {
@@ -410,8 +370,6 @@ func (a *Accumulator) item(output int) (*foldItem, error) {
 	return a.items[i], nil
 }
 
-// contentItem returns the output item at output, added, not done, and a message or a reasoning
-// item, an item of content parts, whose id is id.
 func (a *Accumulator) contentItem(id string, output int) (*foldItem, error) {
 	it, err := a.item(output)
 	if err != nil {
@@ -428,8 +386,6 @@ func (a *Accumulator) contentItem(id string, output int) (*foldItem, error) {
 	return it, nil
 }
 
-// functionCall returns the output item at output, added, not done, and a function call whose id
-// is itemID, with its arguments still open.
 func (a *Accumulator) functionCall(itemID string, output int) (*foldItem, error) {
 	it, err := a.item(output)
 	if err != nil {
@@ -447,8 +403,6 @@ func (a *Accumulator) functionCall(itemID string, output int) (*foldItem, error)
 	return it, nil
 }
 
-// part returns the content part at content of the message or reasoning item at output, added and
-// not done.
 func (a *Accumulator) part(itemID string, output, content int) (*foldPart, error) {
 	it, err := a.contentItem(itemID, output)
 	if err != nil {
@@ -463,8 +417,6 @@ func (a *Accumulator) part(itemID string, output, content int) (*foldPart, error
 	return it.parts[content], nil
 }
 
-// textPart returns the part at content of the message or reasoning item at output, whose text is
-// still open, and whose type is kind's.
 func (a *Accumulator) textPart(itemID string, output, content int, kind ContentPart) (*foldPart, error) {
 	p, err := a.part(itemID, output, content)
 	if err != nil {
@@ -479,7 +431,6 @@ func (a *Accumulator) textPart(itemID string, output, content int, kind ContentP
 	return p, nil
 }
 
-// itemID returns the id of it, an output item, empty for an item the accumulator doesn't fold.
 func itemID(it Item) string {
 	switch it := it.(type) {
 	case Message:
@@ -492,7 +443,6 @@ func itemID(it Item) string {
 	return ""
 }
 
-// folded is the part its events have made so far.
 func (p *foldPart) folded() ContentPart {
 	switch p.part.(type) {
 	case Refusal:
@@ -503,8 +453,6 @@ func (p *foldPart) folded() ContentPart {
 	return OutputText{Text: p.text.String()}
 }
 
-// samePart reports whether got is want, an OutputText, a Refusal, or a ReasoningText. It compares
-// only those, so a part of another type, which may not be comparable, is never compared.
 func samePart(got, want ContentPart) bool {
 	switch got.(type) {
 	case OutputText, Refusal, ReasoningText:
@@ -513,8 +461,6 @@ func samePart(got, want ContentPart) bool {
 	return false
 }
 
-// sameKind reports whether p and kind are parts of one type, an OutputText, a Refusal, or a
-// ReasoningText.
 func sameKind(p, kind ContentPart) bool {
 	switch p.(type) {
 	case OutputText:
@@ -573,8 +519,6 @@ func (a *Accumulator) Response() *Response {
 	return &r
 }
 
-// describe returns e's type as the spec names it, and its sequence number, or false when e
-// isn't one of the package's events by value.
 func describe(e Event) (name string, seq int, ok bool) {
 	switch e := e.(type) {
 	case ResponseCreated:

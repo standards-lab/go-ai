@@ -6,7 +6,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// assistant is an assistant message of the given parts.
 func assistant(parts ...protocol.ContentPart) protocol.Message {
 	return protocol.Message{Role: protocol.RoleAssistant, Content: parts}
 }

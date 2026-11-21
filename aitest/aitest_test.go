@@ -27,7 +27,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// newClient returns a Client of e speaking wf, failing t if New refuses it.
 func newClient(t *testing.T, e *aitest.Endpoint, wf format.Format) *ai.Client {
 	t.Helper()
 	c, err := ai.New(e.URL(), http.DefaultClient, wf, ai.Options{})
@@ -37,8 +36,6 @@ func newClient(t *testing.T, e *aitest.Endpoint, wf format.Format) *ai.Client {
 	return c
 }
 
-// send sends a request of method to e's path, below its root, with body, and returns the reply's
-// status and body.
 func send(t *testing.T, e *aitest.Endpoint, method, path, body string) (int, string) {
 	t.Helper()
 	req, err := http.NewRequestWithContext(t.Context(), method, e.URL()+path, strings.NewReader(body))
@@ -57,13 +54,10 @@ func send(t *testing.T, e *aitest.Endpoint, method, path, body string) (int, str
 	return resp.StatusCode, string(b)
 }
 
-// rawOK is a raw route function answering every request with an empty JSON object.
 func rawOK(context.Context, aitest.RawRequest) aitest.Reply {
 	return aitest.RawReply{Body: []byte(`{}`)}
 }
 
-// userText is a request of model for one user message of text, with an output bound, which
-// Messages requires.
 func userText(model, text string) *protocol.Request {
 	return &protocol.Request{
 		Model: model,
@@ -75,8 +69,6 @@ func userText(model, text string) *protocol.Request {
 	}
 }
 
-// TestServeRecordsRequests wants every request recorded as it arrived, in order, with its
-// method, path, query, header, and body, a request no route answers included.
 func TestServeRecordsRequests(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{Raw: map[string]func(context.Context, aitest.RawRequest) aitest.Reply{
 		"messages": rawOK,
@@ -110,8 +102,6 @@ func TestServeRecordsRequests(t *testing.T) {
 	}
 }
 
-// TestServeRecordsConcurrentRequests wants every one of many concurrent requests recorded once,
-// and the route's arrival numbers to be 1 to n, each once. Run it under -race.
 func TestServeRecordsConcurrentRequests(t *testing.T) {
 	const n = 50
 	var mu sync.Mutex
@@ -138,7 +128,6 @@ func TestServeRecordsConcurrentRequests(t *testing.T) {
 				return
 			}
 			_ = resp.Body.Close()
-			// Reading the record while others are written is what -race watches.
 			_ = e.Requests()
 		})
 	}
@@ -164,8 +153,6 @@ func TestServeRecordsConcurrentRequests(t *testing.T) {
 	}
 }
 
-// TestServeClosesWhenTestEnds wants the endpoint closed when the test that served it ends, and a
-// request's context, still open in its route function, ended first.
 func TestServeClosesWhenTestEnds(t *testing.T) {
 	var base string
 	ended := make(chan error, 1)
@@ -179,7 +166,6 @@ func TestServeClosesWhenTestEnds(t *testing.T) {
 		}})
 		base = e.URL()
 		go func() {
-			// The request fails when the endpoint closes; its error is beside the point.
 			resp, err := http.Get(base + "/models")
 			if err == nil {
 				_ = resp.Body.Close()
@@ -201,8 +187,6 @@ func TestServeClosesWhenTestEnds(t *testing.T) {
 	}
 }
 
-// TestUnscriptedRouteAnswers404 wants a route without a function, and a path no route names, to
-// answer 404 with an OpenAI-style error body, which a Client sees as an *APIError of status 404.
 func TestUnscriptedRouteAnswers404(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{})
 	c := newClient(t, e, messages.New(messages.Options{}))
@@ -245,15 +229,12 @@ func TestUnscriptedRouteAnswers404(t *testing.T) {
 			}
 		})
 	}
-	// The Messages client decodes Anthropic-style errors; the body is OpenAI's, read directly.
 	status, body := send(t, e, http.MethodPost, "/no/such/route", "")
 	if status != http.StatusNotFound || !strings.HasPrefix(body, `{"error":{"message":"`) || !strings.Contains(body, `"type":"invalid_request_error"`) {
 		t.Errorf("POST /v1/no/such/route = %d %s, want 404 with an OpenAI-style error body", status, body)
 	}
 }
 
-// TestEmbeddings wants the route function to get the request's model and inputs, and its typed
-// reply to reach Client.Embed as each vector at its index, with the usage.
 func TestEmbeddings(t *testing.T) {
 	var got aitest.EmbeddingRequest
 	e := aitest.Serve(t, aitest.Routes{Embeddings: func(_ context.Context, req aitest.EmbeddingRequest) aitest.Reply {
@@ -281,9 +262,6 @@ func TestEmbeddings(t *testing.T) {
 	}
 }
 
-// TestTranscription wants the route function to get the upload's model, prompt, language, file
-// name, file bytes, and other form fields, and its typed reply to reach Client.Transcribe in
-// route mode as the text and usage.
 func TestTranscription(t *testing.T) {
 	var got aitest.TranscriptionRequest
 	e := aitest.Serve(t, aitest.Routes{Transcriptions: func(_ context.Context, req aitest.TranscriptionRequest) aitest.Reply {
@@ -326,9 +304,6 @@ func TestTranscription(t *testing.T) {
 	}
 }
 
-// TestTranscriptionFileNameAsSent wants FileName to be the file part's filename as the client
-// sent it, a path's directories included, so a test can prove a client sends a clip's base name
-// alone rather than the path it read the clip from.
 func TestTranscriptionFileNameAsSent(t *testing.T) {
 	var got string
 	e := aitest.Serve(t, aitest.Routes{Transcriptions: func(_ context.Context, req aitest.TranscriptionRequest) aitest.Reply {
@@ -351,8 +326,6 @@ func TestTranscriptionFileNameAsSent(t *testing.T) {
 	}
 }
 
-// TestModels wants the typed reply's entries written as given, so Client.Models returns each
-// entry's id with the entry whole as its Native.
 func TestModels(t *testing.T) {
 	entries := []string{
 		`{"id":"gemma","object":"model","owned_by":"llamacpp","status":{"value":"loaded"}}`,
@@ -375,8 +348,6 @@ func TestModels(t *testing.T) {
 	}
 }
 
-// TestArrivalNumbers wants a route's requests numbered from 1 in arrival order, apart from
-// another route's.
 func TestArrivalNumbers(t *testing.T) {
 	var models, raw []int
 	e := aitest.Serve(t, aitest.Routes{
@@ -403,8 +374,6 @@ func TestArrivalNumbers(t *testing.T) {
 	}
 }
 
-// TestRawReplyStream wants a raw reply's frames to reach a Messages client as its stream, each
-// frame an event in order.
 func TestRawReplyStream(t *testing.T) {
 	frames := []aitest.Frame{
 		{Event: "message_start", Data: `{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"m","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":0}}}`},
@@ -442,7 +411,6 @@ func TestRawReplyStream(t *testing.T) {
 	}
 }
 
-// TestRawReplyBody wants a raw reply's JSON body to reach a Responses client as its response.
 func TestRawReplyBody(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{Raw: map[string]func(context.Context, aitest.RawRequest) aitest.Reply{
 		"responses": func(context.Context, aitest.RawRequest) aitest.Reply {
@@ -461,8 +429,6 @@ func TestRawReplyBody(t *testing.T) {
 	}
 }
 
-// TestRawReplyOnTypedRoute wants a raw reply on a typed route written as given, its status and
-// headers too: an error reply with Retry-After reaches Client.Embed as an *APIError.
 func TestRawReplyOnTypedRoute(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{Embeddings: func(context.Context, aitest.EmbeddingRequest) aitest.Reply {
 		return aitest.RawReply{
@@ -483,8 +449,6 @@ func TestRawReplyOnTypedRoute(t *testing.T) {
 	}
 }
 
-// TestRawReplyFlushesEachFrame wants each frame of a raw reply flushed on its own: read off the
-// wire, each HTTP chunk of the reply's body is one whole frame, in order.
 func TestRawReplyFlushesEachFrame(t *testing.T) {
 	frames := []aitest.Frame{{Event: "one", Data: `{"n":1}`}, {Data: "two\nlines"}, {Data: "[DONE]"}}
 	e := aitest.Serve(t, aitest.Routes{Raw: map[string]func(context.Context, aitest.RawRequest) aitest.Reply{
@@ -515,7 +479,6 @@ func TestRawReplyFlushesEachFrame(t *testing.T) {
 	if !slices.Equal(resp.TransferEncoding, []string{"chunked"}) {
 		t.Fatalf("TransferEncoding = %v, want chunked", resp.TransferEncoding)
 	}
-	// ReadResponse would decode the chunks; the body is read raw from r, the chunks' framing kept.
 	var chunks []string
 	for {
 		line, err := r.ReadString('\n')
@@ -526,7 +489,7 @@ func TestRawReplyFlushesEachFrame(t *testing.T) {
 		if err != nil {
 			t.Fatalf("chunk size %q: %v", line, err)
 		}
-		chunk := make([]byte, size+2) // the chunk and its CRLF
+		chunk := make([]byte, size+int64(len("\r\n")))
 		if _, err := io.ReadFull(r, chunk); err != nil {
 			t.Fatalf("read chunk: %v", err)
 		}

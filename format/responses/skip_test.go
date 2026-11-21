@@ -10,16 +10,12 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The items and the part of a type the format skips: a hosted tool's call, which the spec
-// defines and the protocol has no form for, and an extension's content part.
 const (
 	searchAdded = `{"type":"web_search_call","id":"ws_1","status":"in_progress"}`
 	searchDone  = `{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"Paris weather"}}`
 	sticker     = `{"type":"acme:sticker","name":"wave"}`
 )
 
-// TestDecodeSkips wants an output item of a type the format skips, and a message's part of a
-// type that isn't an output part, skipped, the reply decoding as it would without them.
 func TestDecodeSkips(t *testing.T) {
 	msgWith := `{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[` + sticker +
 		`,{"type":"output_text","text":"Checking."}]}`
@@ -36,14 +32,7 @@ func TestDecodeSkips(t *testing.T) {
 	aitest.AssertResponse(t, with, want)
 }
 
-// skipStream is a reply of reasoning, a message of text, and a call, every event present; with
-// skipped set, a web_search_call item after the reasoning item, with a content part and deltas
-// of its own, and a part of the extension's sticker type ahead of the message's text, with a
-// delta of its own, each on the wire as the server sends it, the indexes after them counting
-// them. Indexed, every event gives its output_index and content_index, as the spec has it;
-// otherwise none does, as the router sends them, each naming its item by item_id.
 func skipStream(indexed, skipped bool) []string {
-	// at renders an event's indexes, when the stream gives them.
 	at := func(output, content int) string {
 		switch {
 		case !indexed:
@@ -105,11 +94,6 @@ func skipStream(indexed, skipped bool) []string {
 		terminal("response.completed", "completed", usageJSON, output...))
 }
 
-// TestStreamSkips wants an item of a type the format skips, and a message's part of a type that
-// isn't an output part, skipped in a stream, with the events about them: the stream makes the
-// events it makes without them, the indexes after them closing up, and folds through the
-// Accumulator to the Response DecodeResponse gives for the reply without them, which is the
-// terminal response's, skipping them too.
 func TestStreamSkips(t *testing.T) {
 	for _, indexed := range []bool{true, false} {
 		t.Run(fmt.Sprintf("indexed=%t", indexed), func(t *testing.T) {
@@ -129,8 +113,6 @@ func TestStreamSkips(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeResponse: %v", err)
 			}
-			// The reasoning item, of no status in the reply, is completed, as its
-			// output_item.done gives it.
 			rs := want.Output[0].(protocol.Reasoning)
 			rs.Status = protocol.StatusCompleted
 			want.Output[0] = rs
@@ -141,12 +123,8 @@ func TestStreamSkips(t *testing.T) {
 	}
 }
 
-// TestStreamSkipsInErrorFrame wants a skipped item and part left out of the output of the
-// response.failed an error frame closes the stream with, the items open with what they made.
 func TestStreamSkipsInErrorFrame(t *testing.T) {
 	events := skipStream(true, true)
-	// Up to the message's text delta: the reasoning item and the search done, the message and
-	// the call open.
 	cut := 0
 	for i, e := range events {
 		if strings.Contains(e, `"delta":"Checking."`) {
@@ -172,10 +150,6 @@ func TestStreamSkipsInErrorFrame(t *testing.T) {
 	aitest.AssertResponse(t, aitest.Fold(t, r.events), failed.Response)
 }
 
-// TestStreamIDModelAndCachedTokens wants a recorded stream's response.created to bear the id and
-// model its response gives, and the stream to fold to the terminal response's id, model, and
-// cached input tokens, which a router's response.created, of no model, leaves to the terminal
-// event.
 func TestStreamIDModelAndCachedTokens(t *testing.T) {
 	cases := []struct {
 		file             string

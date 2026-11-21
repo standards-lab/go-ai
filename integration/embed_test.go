@@ -9,17 +9,7 @@ import (
 	"github.com/standards-lab/go-ai"
 )
 
-// TestEmbed asks the embedding model for three inputs' embeddings, two alike and one unrelated,
-// then for the third's alone, and checks the decoding and the order:
-//
-//   - the vectors have one dimension count, at least 64, and each component is finite;
-//   - the two alike inputs are closer to each other than either is to the unrelated one, which
-//     a vector decoded with the wrong byte order or width fails, its components noise. Their
-//     lengths are not asserted: vLLM 0.33.0 gives granite-embedding-english-r2's vectors
-//     unnormalized, where llama.cpp normalizes them;
-//   - the third input embedded alone matches the batch's third vector, and not its first,
-//     which fails if the vectors came back in arrival order rather than input order, or
-//     swapped.
+// See docs/design.md, "Implementation notes".
 func TestEmbed(t *testing.T) {
 	c, model := endpoint(t, embedding, completionsFormat, ai.Options{})
 	inputs := []string{
@@ -69,17 +59,14 @@ func TestEmbed(t *testing.T) {
 	}
 }
 
-// norm is v's Euclidean length.
 func norm(v []float32) float64 {
 	return math.Sqrt(dot(v, v))
 }
 
-// cosine is the cosine similarity of a and b, which have the same length.
 func cosine(a, b []float32) float64 {
 	return dot(a, b) / (norm(a) * norm(b))
 }
 
-// dot is the dot product of a and b, which have the same length.
 func dot(a, b []float32) float64 {
 	var s float64
 	for i := range a {

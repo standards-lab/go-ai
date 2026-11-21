@@ -13,16 +13,12 @@ import (
 	"github.com/standards-lab/go-ai/internal/aitest"
 )
 
-// The entries of modelsReply, a model list as llama.cpp's router sends it, each with members
-// beyond the id.
 const (
 	gemmaEntry     = `{"id":"gemma-4-26b","object":"model","owned_by":"llamacpp","status":{"value":"loaded"}}`
 	embeddingEntry = `{"id":"qwen3-embedding","object":"model","owned_by":"llamacpp","status":{"value":"unloaded"}}`
 	modelsReply    = `{"object":"list","data":[` + gemmaEntry + `,` + embeddingEntry + `]}`
 )
 
-// assertModels fails t unless got holds the models of want's ids, in order, each with its entry
-// as Native, compared as JSON.
 func assertModels(t *testing.T, got []ai.Model, want [][2]string) {
 	t.Helper()
 	if len(got) != len(want) {
@@ -36,8 +32,6 @@ func assertModels(t *testing.T, got []ai.Model, want [][2]string) {
 	}
 }
 
-// TestModelsWireRequest wants a GET of the models route, with no body or Content-Type, and the
-// Client's query, token, and fixed headers.
 func TestModelsWireRequest(t *testing.T) {
 	srv := serveModels(t, http.StatusOK, modelsReply)
 	c := newClient(t, srv.URL()+"/", ai.Options{
@@ -77,8 +71,6 @@ func TestModelsDecodesList(t *testing.T) {
 	assertModels(t, got, [][2]string{{"gemma-4-26b", gemmaEntry}, {"qwen3-embedding", embeddingEntry}})
 }
 
-// TestModelsNative wants each Model's Native to be its entry as sent, members the client knows
-// nothing of included, and an entry of only an id to decode, its Native that object.
 func TestModelsNative(t *testing.T) {
 	vllm := `{"id":"openai/gpt-oss-120b","object":"model","created":1763424000,"owned_by":"vllm",` +
 		`"root":"/models/gpt-oss-120b","parent":null,"max_model_len":131072,` +
@@ -93,8 +85,6 @@ func TestModelsNative(t *testing.T) {
 	assertModels(t, got, [][2]string{{"openai/gpt-oss-120b", vllm}, {"bare", idOnly}})
 }
 
-// TestModelsAnyFormat wants Models to GET the OpenAI-compatible route on a Client of a format
-// whose own route is elsewhere.
 func TestModelsAnyFormat(t *testing.T) {
 	srv := serveModels(t, http.StatusOK, modelsReply)
 	c, err := ai.New(srv.URL(), http.DefaultClient, messages.New(messages.Options{}), ai.Options{})
@@ -118,8 +108,6 @@ func TestModelsRefusesReply(t *testing.T) {
 	}
 }
 
-// TestModelsAPIError covers a non-2xx reply: an *APIError with the OpenAI-style error body's
-// details.
 func TestModelsAPIError(t *testing.T) {
 	reply := `{"error":{"code":401,"message":"Invalid API Key","type":"authentication_error"}}`
 	srv := serveModels(t, http.StatusUnauthorized, reply)

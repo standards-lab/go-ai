@@ -10,33 +10,24 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The tests here cover how a reasoning item goes back, in the spec's form and with
-// ResendReasoningText.
-
-// call is a function_call answering reasoning, on the wire as callJSON.
 var call = protocol.FunctionCall{CallID: "call_1", Name: "get_weather", Arguments: `{"city":"Paris"}`}
 
 const callJSON = `{"type":"function_call","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}`
 
-// answer is an assistant message, on the wire as answerJSON.
 var answer = protocol.Message{Role: protocol.RoleAssistant, Content: []protocol.ContentPart{protocol.OutputText{Text: "17"}}}
 
 const answerJSON = `{"type":"message","role":"assistant","content":[{"type":"output_text","text":"17"}]}`
 
-// callOutput is the function_call_output answering call, on the wire as callOutputJSON.
 var callOutput = protocol.FunctionCallOutput{CallID: "call_1", Output: "17"}
 
 const callOutputJSON = `{"type":"function_call_output","call_id":"call_1","output":"17"}`
 
-// reasoningCase is a request's input and the input array it goes out as.
 type reasoningCase struct {
 	name  string
 	input []protocol.Item
 	want  string
 }
 
-// runReasoning runs each case with the format adjusted by opts, wanting the request of the case's
-// input, its input array the case's want.
 func runReasoning(t *testing.T, opts responses.Options, cases []reasoningCase) {
 	t.Helper()
 	for _, tc := range cases {
@@ -46,9 +37,6 @@ func runReasoning(t *testing.T, opts responses.Options, cases []reasoningCase) {
 	}
 }
 
-// TestEncodeReasoningSpecForm covers the spec's form: a reasoning item goes back with its id, its
-// summary, and the server's encrypted_content, never content, wherever it stands, and is dropped
-// when that encrypted_content is missing or empty.
 func TestEncodeReasoningSpecForm(t *testing.T) {
 	user := text(protocol.RoleUser, "hi")
 	cases := []reasoningCase{
@@ -66,7 +54,6 @@ func TestEncodeReasoningSpecForm(t *testing.T) {
 					"encrypted_content":"enc"},` + callJSON + `]`,
 		},
 		{
-			// The envelope's literal, pinned: base64 of {"encrypted_content":"enc","content":["hm"]}.
 			name: "no id and no summary, its summary an empty array",
 			input: []protocol.Item{user, protocol.Reasoning{
 				EncryptedContent: "go-ai:responses/v1:eyJlbmNyeXB0ZWRfY29udGVudCI6ImVuYyIsImNvbnRlbnQiOlsiaG0iXX0=",
@@ -95,14 +82,10 @@ func TestEncodeReasoningSpecForm(t *testing.T) {
 	runReasoning(t, responses.Options{}, cases)
 }
 
-// TestEncodeReasoningResendText covers ResendReasoningText: a reasoning item goes back with its
-// envelope's texts as content too, and a run of reasoning goes back only ahead of an assistant
-// message or a function_call.
 func TestEncodeReasoningResendText(t *testing.T) {
 	user := text(protocol.RoleUser, "hi")
 	cases := []reasoningCase{
 		{
-			// The router's reasoning: no encrypted_content to send back, the text as content.
 			name:  "the router's reasoning ahead of a call: content, no encrypted_content",
 			input: []protocol.Item{user, protocol.Reasoning{ID: "rs_1", EncryptedContent: seal(t, "", "User asks.")}, call},
 			want: `[` + userHi + `,{"type":"reasoning","id":"rs_1","summary":[],
@@ -166,22 +149,16 @@ func TestEncodeReasoningResendText(t *testing.T) {
 	runReasoning(t, responses.Options{ResendReasoningText: true}, cases)
 }
 
-// dropCases are the reasoning items both forms drop whatever follows them: those whose
-// encrypted_content isn't the format's envelope.
 func dropCases(t *testing.T, user protocol.Message) []reasoningCase {
 	t.Helper()
 	cases := []struct{ name, encrypted string }{
 		{"no envelope dropped", ""},
 		{"another format's envelope dropped", "go-ai:messages/v1:eyJkYXRhIjoieCJ9"},
 		{"another version's envelope dropped", "go-ai:responses/v0:" + seal(t, "enc", "hm")[len("go-ai:responses/v1:"):]},
-		// The format's envelope under another implementor's slug, as one written before the
-		// slug was go-ai's.
 		{"another implementor's envelope dropped", "other:responses/v1:" + seal(t, "enc", "hm")[len("go-ai:responses/v1:"):]},
 		{"an opaque server value dropped", "gAAAAABopaque"},
 		{"an envelope not base64 dropped", "go-ai:responses/v1:not base64!"},
-		// base64 of {"encrypted_content":"enc"}, no content member.
 		{"an envelope of a member missing dropped", "go-ai:responses/v1:eyJlbmNyeXB0ZWRfY29udGVudCI6ImVuYyJ9"},
-		// base64 of [1].
 		{"an envelope not an object dropped", "go-ai:responses/v1:WzFd"},
 	}
 	out := make([]reasoningCase, 0, len(cases))
@@ -195,26 +172,13 @@ func dropCases(t *testing.T, user protocol.Message) []reasoningCase {
 	return out
 }
 
-// TestReasoningRoundTripRecorded drives two turns through ai.Client.Generate over a loopback
-// server answering with a recorded reasoning reply, and wants the reply's reasoning sent back on
-// the next turn as the deployment takes it. With ResendReasoningText, the profile of a deployment
-// that gives no encrypted_content, the reasoning's text goes back as content ahead of the item
-// that answered it, its id the server's, and no encrypted_content: llama.cpp's router's
-// reasoning ahead of its call, and vLLM 0.34.0's, whose reasoning item carries reasoning_text
-// content and a null encrypted_content, ahead of its message. The spec's form drops the
-// reasoning, there being no encrypted_content to send.
 func TestReasoningRoundTripRecorded(t *testing.T) {
 	cases := []struct {
-		name  string
-		reply string
-		// question is the user's text of the first turn, and follow the item the next turn adds
-		// after the reply's output.
-		question string
-		follow   protocol.Item
-		// reasoning is the reply's reasoning text, decoded as the reasoning item's content.
-		reasoning string
-		// reasoningJSON is the reply's reasoning item resent with its text, and answerJSON the
-		// item after it, as each goes back; followJSON is follow on the wire.
+		name                                  string
+		reply                                 string
+		question                              string
+		follow                                protocol.Item
+		reasoning                             string
 		reasoningJSON, answerJSON, followJSON string
 	}{
 		{

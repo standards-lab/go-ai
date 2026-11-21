@@ -29,17 +29,11 @@ type Event struct {
 // longest line is the most it buffers. The caller bounds a stream it doesn't trust with its
 // context or transport, as it bounds the rest of a reply.
 type Decoder struct {
-	r *bufio.Reader
-	// first is true until the first line is read, whose leading BOM is stripped.
-	first bool
-	// afterCR is true when the last line ended in CR, so an LF that starts the next read
-	// completes that line ending rather than ending an empty line. It is carried between reads
-	// rather than settled by peeking past the CR, which would wait for a byte the server may
-	// not send until its next event.
-	afterCR bool
-	line    []byte
+	r          *bufio.Reader
+	bomPending bool
+	afterCR    bool
+	line       []byte
 
-	// The buffers the standard names: the event being built, and the last event ID.
 	typ    string
 	data   strings.Builder
 	lastID string
@@ -47,7 +41,7 @@ type Decoder struct {
 
 // NewDecoder returns a Decoder reading the stream r.
 func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{r: bufio.NewReader(r), first: true}
+	return &Decoder{r: bufio.NewReader(r), bomPending: true}
 }
 
 // Next reads the stream until it dispatches an event, at a blank line ending a block that holds
@@ -70,9 +64,6 @@ func (d *Decoder) Next() (Event, error) {
 	}
 }
 
-// readLine returns the stream's next line without its ending: CRLF, LF, or CR. A line cut off by
-// the stream's end is discarded, as the standard discards the event it belongs to, and io.EOF
-// returned. The slice is valid until the next call.
 func (d *Decoder) readLine() ([]byte, error) {
 	d.line = d.line[:0]
 	for {
@@ -97,30 +88,16 @@ func (d *Decoder) readLine() ([]byte, error) {
 	}
 }
 
-// bom is the UTF-8 byte order mark, which the standard strips from a stream's start.
 var bom = []byte("\uFEFF")
 
-// stripBOM removes one leading BOM from the stream's first line. A BOM holds no CR or LF, so a
-// stream's leading BOM is always the first line's.
 func (d *Decoder) stripBOM(line []byte) []byte {
-	if d.first {
-		d.first = false
+	if d.bomPending {
+		d.bomPending = false
 		return bytes.TrimPrefix(line, bom)
 	}
 	return line
 }
 
-// decodeUTF8 returns line decoded as UTF-8 with replacement, by the Encoding Standard's UTF-8
-// decoder: each maximal subpart of an invalid sequence, the longest prefix of a well-formed
-// sequence, becomes one U+FFFD, and the byte that ended it is decoded afresh. A sequence cut off
-// by the line's end is one U+FFFD. Decoding a line at a time decodes the stream: a line ends at
-// CR or LF, and an ASCII byte ends any pending sequence in the whole-stream decoder too, so a
-// character split across reads is whole by the time its line is decoded. A valid line, the usual
-// one, is returned as it is.
-//
-// This is not utf8.DecodeRune's replacement, which steps one byte per invalid byte, so a
-// truncated sequence gives a U+FFFD per byte; nor bytes.ToValidUTF8's, which collapses a run of
-// invalid bytes into one.
 func decodeUTF8(line []byte) []byte {
 	if utf8.Valid(line) {
 		return line
@@ -141,7 +118,6 @@ func decodeUTF8(line []byte) []byte {
 			case 0xC2 <= b && b <= 0xDF:
 				needed, cp = 1, rune(b&0x1F)
 			case 0xE0 <= b && b <= 0xEF:
-				// E0 bars overlong forms; ED bars the surrogates.
 				switch b {
 				case 0xE0:
 					lower = 0xA0
@@ -150,7 +126,6 @@ func decodeUTF8(line []byte) []byte {
 				}
 				needed, cp = 2, rune(b&0x0F)
 			case 0xF0 <= b && b <= 0xF4:
-				// F0 bars overlong forms; F4 bars code points past U+10FFFF.
 				switch b {
 				case 0xF0:
 					lower = 0x90
@@ -164,7 +139,6 @@ func decodeUTF8(line []byte) []byte {
 			continue
 		}
 		if b < lower || b > upper {
-			// The maximal subpart ends here; b is not consumed, and starts afresh.
 			out = utf8.AppendRune(out, utf8.RuneError)
 			cp, needed, seen, lower, upper = 0, 0, 0, 0x80, 0xBF
 			continue
@@ -183,9 +157,6 @@ func decodeUTF8(line []byte) []byte {
 	return out
 }
 
-// field processes one line that isn't blank: a comment, which starts with a colon, or a field,
-// split at its first colon into name and value with one leading space removed from the value. A
-// line without a colon is a field with an empty value.
 func (d *Decoder) field(line []byte) {
 	if line[0] == ':' {
 		return
@@ -205,9 +176,6 @@ func (d *Decoder) field(line []byte) {
 	}
 }
 
-// dispatch ends the block a blank line closes. It returns the block's event if its data buffer
-// holds anything, with the trailing newline the data fields appended removed, and resets the
-// type and data buffers either way. The last event ID persists across blocks.
 func (d *Decoder) dispatch() (Event, bool) {
 	data, typ := d.data.String(), d.typ
 	d.data.Reset()

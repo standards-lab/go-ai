@@ -26,6 +26,8 @@ requests once and picks a format by changing one constructor.
 3. [Features](docs/features.md): every feature, package by package, in the detail needed to use
    it without reading the source.
 4. [Glossary](docs/glossary.md): the vocabulary the library uses.
+5. [Design](docs/design.md): the design review from the spike, its findings, the surface and
+   module decisions, the reasoning behind the unexported code, and the alternatives it rules out.
 
 The package documentation, `go doc github.com/standards-lab/go-ai/...`, is the reference for
 each exported name. [`infer`'s README](tools/infer/README.md) covers the CLI.
@@ -120,7 +122,7 @@ The repository is a Go workspace of two modules, the base module and `tools/infe
 through [mise](https://mise.jdx.dev):
 
 ```sh
-mise run check        # build, vet, format, fix, tidy, test, and lint every module; writes nothing
+mise run check        # build, vet, format, fix, tidy, test, and lint every module, then lint-context and lint-references; writes nothing
 mise run currency     # report requirements, Go, tools, and action pins behind their latest
 mise run upgrade      # upgrade every module's go directive and requirements, and the tools, to their latest
 mise run integration  # run every module's integration tier against the AI_*_BASE_URL endpoints

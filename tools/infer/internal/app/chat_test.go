@@ -25,14 +25,8 @@ import (
 	"github.com/standards-lab/go-ai/tools/infer/internal/apptest"
 )
 
-// completionsRoute is the route a chat request goes to under the default
-// format, completions.
 const completionsRoute = "chat/completions"
 
-// chatEndpoint serves an endpoint that lists ids as its models and answers
-// every chat request to route with reply: the Chat Completions route's
-// function for completionsRoute, and a raw route's for any other, such as
-// messages or responses.
 func chatEndpoint(t *testing.T, ids []string, route string, reply aitest.Reply) *aitest.Endpoint {
 	t.Helper()
 	routes := aitest.Routes{Models: listing(ids...)}
@@ -44,9 +38,6 @@ func chatEndpoint(t *testing.T, ids []string, route string, reply aitest.Reply) 
 	return aitest.Serve(t, routes)
 }
 
-// chatBodies returns the body of each chat request to route e received,
-// decoded as a JSON object, and fails t on any request but those and GET
-// /v1/models.
 func chatBodies(t *testing.T, e *aitest.Endpoint, route string) []map[string]any {
 	t.Helper()
 	var bodies []map[string]any
@@ -66,8 +57,6 @@ func chatBodies(t *testing.T, e *aitest.Endpoint, route string) []map[string]any
 	return bodies
 }
 
-// oneBody returns the one chat request to route e received, failing t
-// unless there is exactly one.
 func oneBody(t *testing.T, e *aitest.Endpoint, route string) map[string]any {
 	t.Helper()
 	bodies := chatBodies(t, e, route)
@@ -77,8 +66,6 @@ func oneBody(t *testing.T, e *aitest.Endpoint, route string) map[string]any {
 	return bodies[0]
 }
 
-// userContent returns the content of the user message in a completions
-// request body: a string for a prompt alone, an array of parts with images.
 func userContent(t *testing.T, body map[string]any) any {
 	t.Helper()
 	messages, _ := body["messages"].([]any)
@@ -91,11 +78,6 @@ func userContent(t *testing.T, body map[string]any) any {
 	return nil
 }
 
-// chatReply is a completions reply of text, in pieces, each a chunk when
-// streamed, with reasoning when it isn't empty, ending with finish, its
-// usage 78 prompt tokens, 25 completion tokens, 12 of them reasoning, and
-// 103 total, so a test tells each apart. It is streamed when the request
-// asks to stream, and unstreamed otherwise.
 func chatReply(reasoning, finish string, text ...string) aitest.ChatReply {
 	return aitest.ChatReply{
 		Chunks:           text,
@@ -108,8 +90,6 @@ func chatReply(reasoning, finish string, text ...string) aitest.ChatReply {
 	}
 }
 
-// frames are the server-sent events of a raw stream, one per data, each
-// the event's data alone.
 func frames(data ...string) []aitest.Frame {
 	fs := make([]aitest.Frame, len(data))
 	for i, d := range data {
@@ -118,20 +98,15 @@ func frames(data ...string) []aitest.Frame {
 	return fs
 }
 
-// completedStream is a streamed completions endpoint that lists ids and
-// answers "Paris, Lyon" in three deltas, completed.
 func completedStream(t *testing.T, ids ...string) *aitest.Endpoint {
 	t.Helper()
 	return chatEndpoint(t, ids, completionsRoute, chatReply("", "stop", "Paris", ",", " Lyon"))
 }
 
-// agent is the environment of a run against e with the model agent set.
 func agent(e *aitest.Endpoint) map[string]string {
 	return map[string]string{"INFER_BASE_URL": e.URL(), "INFER_MODEL": "agent"}
 }
 
-// The prompt is the positional arguments joined by spaces, stdin then
-// unread; with none it is stdin, less one final line ending.
 func TestChat_Prompt(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -158,8 +133,6 @@ func TestChat_Prompt(t *testing.T) {
 	}
 }
 
-// No prompt at all, neither an argument nor stdin, is a usage error, exit
-// 2, before any request, the model listing included.
 func TestChat_NoPrompt(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -184,8 +157,6 @@ func TestChat_NoPrompt(t *testing.T) {
 	}
 }
 
-// Each typed flag sets its member of the completions body, and --native's
-// members are merged into its top level.
 func TestChat_FlagsReachTheBody(t *testing.T) {
 	e := completedStream(t)
 
@@ -214,7 +185,6 @@ func TestChat_FlagsReachTheBody(t *testing.T) {
 	}
 }
 
-// With no typed flag given, the body carries none of their members.
 func TestChat_UnsetFlagsSendNothing(t *testing.T) {
 	e := completedStream(t)
 
@@ -232,13 +202,8 @@ func TestChat_UnsetFlagsSendNothing(t *testing.T) {
 	}
 }
 
-// pngHeader is the start of every PNG file, which content sniffing reads as
-// image/png.
 var pngHeader = []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR")
 
-// Each --image is a part after the prompt, in the order given: a file read
-// and inlined as a data URL, its type from its extension or else sniffed
-// from its content, and an http(s) URL as given.
 func TestChat_Images(t *testing.T) {
 	dir := t.TempDir()
 	jpeg := filepath.Join(dir, "photo.jpg")
@@ -280,8 +245,6 @@ func TestChat_Images(t *testing.T) {
 	}
 }
 
-// A file that isn't an image, by its extension or its content, is a usage
-// error, and a file that can't be read an error, exit 1; neither sends.
 func TestChat_ImageRefusals(t *testing.T) {
 	dir := t.TempDir()
 	notes := filepath.Join(dir, "notes.txt")
@@ -311,12 +274,6 @@ func TestChat_ImageRefusals(t *testing.T) {
 	}
 }
 
-// A request go-ai refuses is a usage error, exit 2, before any request,
-// the model listing included: go-ai's reason, by its Validate or by the
-// format's encoding, after the flag whose field the reason is about, when
-// two are refused as when one is. A format's refusal names the flag of its
-// Feature, so a native member clashing with --reasoning's names --native;
-// a spec's refusal carries no profile suffix.
 func TestChat_RefusedRequests(t *testing.T) {
 	const (
 		nativeObject = "protocol: request's native field isn't a JSON object with unique member names"
@@ -324,9 +281,9 @@ func TestChat_RefusedRequests(t *testing.T) {
 	)
 	for _, tc := range []struct {
 		name   string
-		format string // the format setting; completions when empty
+		format string
 		args   []string
-		want   string // the error's line, after "infer chat: "
+		want   string
 	}{
 		{"responses max tokens 1", "responses", []string{"--max-tokens", "1"}, "--max-tokens: responses: request's max output tokens 1 is below the minimum, 16"},
 		{"responses max tokens 15", "responses", []string{"--max-tokens", "15"}, "--max-tokens: responses: request's max output tokens 15 is below the minimum, 16"},
@@ -368,25 +325,18 @@ func TestChat_RefusedRequests(t *testing.T) {
 	}
 }
 
-// refusesNone is a profile whose responses member refuses the effort none.
 const refusesNone = `{"responses":{"refused_efforts":["none"]}}`
 
-// declaredSuffix ends a refusal the deployment's profile declares, naming
-// the setting that declared it after the format's reason.
 const declaredSuffix = "; declared by --profile (INFER_PROFILE)"
 
-// An effort the profile refuses is a usage error, exit 2, before any
-// request: the format's reason after --reasoning, the flag to change, and
-// then the setting that declared the refusal, through each format and
-// from the flag or the variable alike.
 func TestChat_DeclaredRefusals(t *testing.T) {
 	const declares = "is refused by the deployment, as its profile declares"
 	for _, tc := range []struct {
 		name    string
-		format  string // the format setting; completions when empty
-		profile string // INFER_PROFILE; unset when empty
+		format  string
+		profile string
 		args    []string
-		want    string // the error's line, after "infer chat: "
+		want    string
 	}{
 		{"responses, from the flag", "responses", "", []string{"--profile", refusesNone, "--reasoning", "none"}, "--reasoning: responses: reasoning effort none " + declares},
 		{"responses, from the variable", "responses", refusesNone, []string{"--reasoning", "none"}, "--reasoning: responses: reasoning effort none " + declares},
@@ -418,8 +368,6 @@ func TestChat_DeclaredRefusals(t *testing.T) {
 	}
 }
 
-// Each effort go-ai defines is accepted through completions, which sends
-// all seven, and so is a cap of 16.
 func TestChat_AcceptedValues(t *testing.T) {
 	for _, effort := range []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"} {
 		t.Run(effort, func(t *testing.T) {
@@ -436,8 +384,6 @@ func TestChat_AcceptedValues(t *testing.T) {
 	}
 }
 
-// A cap of 1 to 15, which only responses refuses, reaches the wire through
-// completions as max_completion_tokens and through messages as max_tokens.
 func TestChat_SmallMaxTokens(t *testing.T) {
 	messagesStream := aitest.RawReply{Frames: frames(
 		`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"usage":{"input_tokens":3,"output_tokens":0}}}`,
@@ -449,7 +395,7 @@ func TestChat_SmallMaxTokens(t *testing.T) {
 	for _, tc := range []struct {
 		format string
 		route  string
-		member string // the body member the cap is sent as
+		member string
 		reply  aitest.Reply
 	}{
 		{"completions", completionsRoute, "max_completion_tokens", chatReply("Hi", "stop", "Hi")},
@@ -472,9 +418,6 @@ func TestChat_SmallMaxTokens(t *testing.T) {
 	}
 }
 
-// Streamed, the default, the request asks for a stream and each text
-// delta is written in order, the text ended with a newline; the summary
-// goes to stderr.
 func TestChat_Streamed(t *testing.T) {
 	e := chatEndpoint(t, nil, completionsRoute,
 		chatReply("Three cities.", "stop", "Paris", ",", " Lyon", ", Marseille"))
@@ -494,13 +437,10 @@ func TestChat_Streamed(t *testing.T) {
 	}
 }
 
-// liveOut is a stdout that reports each write as it happens, for a test
-// that watches the text arrive while the stream is open. It is safe for
-// concurrent use.
 type liveOut struct {
 	mu    sync.Mutex
 	buf   bytes.Buffer
-	wrote chan string // each write's text, as it is written
+	wrote chan string
 }
 
 func (o *liveOut) Write(p []byte) (int, error) {
@@ -511,11 +451,6 @@ func (o *liveOut) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Each delta reaches stdout while the stream is still open: the endpoint
-// holds the stream after each delta in turn, one run per delta, and
-// stdout has every delta sent so far while the stream is held. stdout is a
-// buffering writer over liveOut, as a terminal's may be, so a delta that
-// isn't flushed never reaches liveOut while the stream is held.
 func TestChat_StreamWritesAsItArrives(t *testing.T) {
 	deltas := []string{"one", " two", " three"}
 	for held := 1; held <= len(deltas); held++ {
@@ -556,8 +491,6 @@ func TestChat_StreamWritesAsItArrives(t *testing.T) {
 	}
 }
 
-// --stream=false sends a request that doesn't ask for a stream and writes
-// the reply's text, ended with a newline, and the same summary.
 func TestChat_Unstreamed(t *testing.T) {
 	e := chatEndpoint(t, nil, completionsRoute,
 		chatReply("Three cities.", "stop", "Paris, Lyon, Marseille"))
@@ -581,8 +514,6 @@ func TestChat_Unstreamed(t *testing.T) {
 	}
 }
 
-// A reply with no reasoning counts no reasoning items, whatever reasoning
-// tokens the endpoint reports, so the count alone proves no reasoning.
 func TestChat_NoReasoningItems(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -605,8 +536,6 @@ func TestChat_NoReasoningItems(t *testing.T) {
 	}
 }
 
-// A text that ends with a newline is ended by it; an empty one is an empty
-// line.
 func TestChat_EndsTheTextWithOneNewline(t *testing.T) {
 	for _, tc := range []struct {
 		name, text, want string
@@ -627,8 +556,6 @@ func TestChat_EndsTheTextWithOneNewline(t *testing.T) {
 	}
 }
 
-// A reply cut off at the token bound keeps the text written, ended with a
-// newline, writes its summary, and exits 1 naming its status and reason.
 func TestChat_Incomplete(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -656,8 +583,6 @@ func TestChat_Incomplete(t *testing.T) {
 	}
 }
 
-// A stream the endpoint fails part way keeps the text written and exits 1
-// with the endpoint's error.
 func TestChat_Failed(t *testing.T) {
 	e := chatEndpoint(t, nil, completionsRoute, aitest.RawReply{Frames: frames(
 		`{"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
@@ -675,7 +600,6 @@ func TestChat_Failed(t *testing.T) {
 	}
 }
 
-// An endpoint's refusal exits 1 with its error, and nothing on stdout.
 func TestChat_EndpointRefuses(t *testing.T) {
 	e := chatEndpoint(t, nil, completionsRoute, aitest.ErrorReply{Status: http.StatusBadRequest, Message: "bad prompt"})
 
@@ -690,8 +614,6 @@ func TestChat_EndpointRefuses(t *testing.T) {
 	}
 }
 
-// With no model set, chat lists the endpoint's models first and sends to
-// the one listed.
 func TestChat_FallsBackToTheOneModel(t *testing.T) {
 	e := completedStream(t, "agent")
 
@@ -707,7 +629,6 @@ func TestChat_FallsBackToTheOneModel(t *testing.T) {
 	}
 }
 
-// Several models listed leave the model open: exit 1, no chat sent.
 func TestChat_FallbackRefusal(t *testing.T) {
 	e := completedStream(t, "agent", "vision")
 
@@ -722,9 +643,6 @@ func TestChat_FallbackRefusal(t *testing.T) {
 	}
 }
 
-// chat's help names each of its flags, --idle-timeout as the duration its
-// node parses it as, and says what --native carries, and builds and sends
-// nothing.
 func TestChat_Help(t *testing.T) {
 	e := completedStream(t, "agent")
 
@@ -741,10 +659,6 @@ func TestChat_Help(t *testing.T) {
 	wantNoRequest(t, e)
 }
 
-// Through messages, --max-tokens and --reasoning reach the wire as
-// max_tokens and thinking with output_config.effort, and the stream's text
-// deltas are written in order. The reply reports no thinking tokens and
-// holds no thinking block, so the summary shows no reasoning count.
 func TestChat_Messages(t *testing.T) {
 	stream := aitest.RawReply{Frames: frames(
 		`{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"usage":{"input_tokens":31,"output_tokens":0}}}`,
@@ -775,10 +689,6 @@ func TestChat_Messages(t *testing.T) {
 	}
 }
 
-// The summary reads the reply alone, in every format: reasoning tokens
-// reported are shown; none reported, with a reasoning item in the output,
-// are "not reported", as the model reasoned; none, with no reasoning item,
-// show no count at all.
 func TestChat_ReasoningSummary(t *testing.T) {
 	completions := func(reasoning string, tokens int) aitest.Reply {
 		reply := chatReply(reasoning, "stop", "Paris")
@@ -811,7 +721,7 @@ func TestChat_ReasoningSummary(t *testing.T) {
 		format string
 		route  string
 		reply  aitest.Reply
-		want   string // the summary, after its status line
+		want   string
 	}{
 		{"completions reported", "completions", completionsRoute, completions("Think.", 12), reported},
 		{"completions zero with a reasoning item", "completions", completionsRoute, completions("Think.", 0), notReported},
@@ -838,9 +748,6 @@ func TestChat_ReasoningSummary(t *testing.T) {
 	}
 }
 
-// Through responses, --max-tokens and --reasoning reach the wire as
-// max_output_tokens and reasoning.effort, and an unstreamed reply's
-// reasoning item and reasoning tokens are counted in the summary.
 func TestChat_Responses(t *testing.T) {
 	reply := `{"id":"resp_1","object":"response","status":"completed","output":[` +
 		`{"id":"rs_1","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"Think."}],"encrypted_content":"","status":"completed"},` +
@@ -866,8 +773,6 @@ func TestChat_Responses(t *testing.T) {
 	}
 }
 
-// A stream that breaks before its terminal event keeps the text written,
-// its line ended, and exits 1 with the break, writing no summary.
 func TestChat_StreamBreaks(t *testing.T) {
 	breaks := chatReply("", "stop", "Par")
 	breaks.BreakAfter = 1

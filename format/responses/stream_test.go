@@ -18,16 +18,11 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// streamResult is what a stream's decoder made: its events, and the error that ended it, nil
-// when it ended with its terminal event.
 type streamResult struct {
 	events []protocol.Event
 	err    error
 }
 
-// decodeStream feeds body, a text/event-stream reply, to a new stream decoder, event by event as
-// the client does, the data alone, and returns the events it made, telling it the stream ended
-// at the body's end. It stops at the first error.
 func decodeStream(t *testing.T, body string) streamResult {
 	t.Helper()
 	wf := responses.New(responses.Options{})
@@ -54,8 +49,6 @@ func decodeStream(t *testing.T, body string) streamResult {
 	}
 }
 
-// stream is an event stream of the events' data, each named for its type, with a comment, a
-// keep-alive, after the first.
 func stream(events ...string) string {
 	var b strings.Builder
 	for i, data := range events {
@@ -71,10 +64,6 @@ func stream(events ...string) string {
 	return b.String()
 }
 
-// terminalResponse returns what DecodeResponse gives for the response of body's terminal event,
-// the last response.completed, response.incomplete, or response.failed it holds, each output
-// item of no status in StatusCompleted, as the router gives a reasoning item none, and as the
-// item's output_item.done gives it when the server gives none.
 func terminalResponse(t *testing.T, body string) *protocol.Response {
 	t.Helper()
 	var response jsontext.Value
@@ -115,11 +104,6 @@ func terminalResponse(t *testing.T, body string) *protocol.Response {
 	return resp
 }
 
-// trace renders events one per line, each its spec type and the members it carries: a part
-// event's output index, content index, and item id, then its part or text, and an arguments
-// event's output index and item id, then its arguments text. A run of reasoning deltas, which a
-// recorded stream makes by the dozen, is one line of its first and last sequence numbers and its
-// count; the reasoning.done after it gives their text joined, which the Accumulator checks.
 func trace(events []protocol.Event) string {
 	var b strings.Builder
 	for i := 0; i < len(events); i++ {
@@ -178,8 +162,6 @@ func trace(events []protocol.Event) string {
 	return b.String()
 }
 
-// assertTrace fails t unless events render as want, a trace with its lines' leading tabs
-// trimmed.
 func assertTrace(t *testing.T, events []protocol.Event, want string) {
 	t.Helper()
 	var lines []string
@@ -191,7 +173,6 @@ func assertTrace(t *testing.T, events []protocol.Event, want string) {
 	}
 }
 
-// event is the data of an event of typ, its other members the JSON object members members.
 func event(typ, members string) string {
 	if members == "" {
 		return `{"type":"` + typ + `"}`
@@ -199,8 +180,6 @@ func event(typ, members string) string {
 	return `{"type":"` + typ + `",` + members + `}`
 }
 
-// The events and items of a stream of response resp_1, of model m-1, in the router's shape: no
-// sequence_number, output_index, or content_index.
 const (
 	created    = `{"type":"response.created","response":{"id":"resp_1","object":"response","model":"m-1","status":"in_progress"}}`
 	inProgress = `{"type":"response.in_progress","response":{"id":"resp_1","object":"response","status":"in_progress"}}`
@@ -215,30 +194,22 @@ const (
 	usageJSON = `"usage":{"input_tokens":7,"output_tokens":5,"total_tokens":12,"input_tokens_details":{"cached_tokens":3},"output_tokens_details":{"reasoning_tokens":2}}`
 )
 
-// added is output_item.added of item, and itemDone output_item.done of item.
 func added(item string) string    { return event("response.output_item.added", `"item":`+item) }
 func itemDone(item string) string { return event("response.output_item.done", `"item":`+item) }
 
-// delta is a delta event of typ of the item of id, of delta.
 func delta(typ, id, delta string) string {
 	return event(typ, fmt.Sprintf(`"item_id":%q,"delta":%s`, id, quote(delta)))
 }
 
-// quote returns s as a JSON string.
 func quote(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
 
-// terminal is a terminal event of typ, its response resp_1's, of model m-1, of status and the
-// output items, with extra response members after them.
 func terminal(typ, status, extra string, output ...string) string {
 	return event(typ, fmt.Sprintf(`"response":{"id":"resp_1","object":"response","model":"m-1","status":%q,"output":[%s],%s}`, status, strings.Join(output, ","), extra))
 }
 
-// routerOpen is a reply of reasoning, text, and a call, each added and given deltas, as the
-// router sends them, every item open; routerClose closes them as the router does, every item at
-// the end, then response.completed.
 var (
 	routerOpen = []string{
 		created,
@@ -263,9 +234,6 @@ var (
 	}
 )
 
-// TestStreamRecorded translates the recorded router streams to events under the spec's names,
-// filling what the router leaves out, and folds them to the Response DecodeResponse gives for
-// the terminal event's response.
 func TestStreamRecorded(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -326,8 +294,6 @@ func TestStreamRecorded(t *testing.T) {
 	}
 }
 
-// assertDoneItems fails t unless each output_item.done of events carries the item resp, the
-// terminal response, holds in its place, a reasoning item's envelope among it.
 func assertDoneItems(t *testing.T, events []protocol.Event, resp *protocol.Response) {
 	t.Helper()
 	for _, e := range events {
@@ -346,10 +312,6 @@ func assertDoneItems(t *testing.T, events []protocol.Event, resp *protocol.Respo
 	}
 }
 
-// specStream is a reply of reasoning, a message of text and a refusal, and a call, as an endpoint
-// that follows the spec sends it: every event present, each with its sequence_number, which
-// starts at 3 and skips, and its output_index and content_index, the call added at output 2
-// ahead of the message at output 1.
 var specStream = []string{
 	`{"type":"response.created","sequence_number":3,"response":{"id":"resp_1","object":"response","status":"in_progress","output":[]}}`,
 	`{"type":"response.in_progress","sequence_number":4,"response":{"id":"resp_1","object":"response","status":"in_progress","output":[]}}`,
@@ -381,7 +343,6 @@ var specStream = []string{
 		{"type":"function_call","id":"fc_1","status":"completed","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}],` + usageJSON + `}}`),
 }
 
-// compact returns s, JSON, compacted to one line, as an event's data is.
 func compact(s string) string {
 	v := jsontext.Value(s)
 	if err := v.Compact(); err != nil {
@@ -390,17 +351,12 @@ func compact(s string) string {
 	return string(v)
 }
 
-// TestStreamSpec covers a stream that follows the spec: each event the server sent becomes one
-// event, never repeated and nothing filled, numbered afresh from 0, each item at the
-// output_index it was added at, and the stream folds to what DecodeResponse gives for the
-// terminal event's response.
 func TestStreamSpec(t *testing.T) {
 	body := stream(specStream...)
 	r := decodeStream(t, body)
 	if r.err != nil {
 		t.Fatalf("stream error: %v", r.err)
 	}
-	// response.in_progress makes nothing; every other event sent makes one.
 	if got, want := len(r.events), len(specStream)-1; got != want {
 		t.Errorf("%d events, want the %d sent, response.in_progress aside", got, want)
 	}
@@ -433,11 +389,6 @@ func TestStreamSpec(t *testing.T) {
 	assertDoneItems(t, r.events, want)
 }
 
-// TestStreamFills covers what the decoder makes of a stream in the router's shape, of no
-// indexes, the items open at once and closed at the end: a reasoning item's content_part.added
-// ahead of its first delta, and at its output_item.done its reasoning.done and
-// content_part.done; a call's function_call_arguments.done at its output_item.done; and the
-// message's done events, which the router sends, passed through, not repeated.
 func TestStreamFills(t *testing.T) {
 	body := stream(slices.Concat(routerOpen, routerClose)...)
 	r := decodeStream(t, body)
@@ -468,8 +419,6 @@ func TestStreamFills(t *testing.T) {
 	aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
 	assertDoneItems(t, r.events, want)
 
-	// A message whose done events the server leaves out has them made at its
-	// output_item.done, as a reasoning item's are.
 	bare := slices.Concat(routerOpen, []string{itemDone(rsDone), itemDone(msgDone), itemDone(fcDone), routerClose[len(routerClose)-1]})
 	got := decodeStream(t, stream(bare...))
 	if got.err != nil {
@@ -480,8 +429,6 @@ func TestStreamFills(t *testing.T) {
 	}
 }
 
-// TestStreamUsage wants the terminal Response's usage the terminal event's response's, as
-// DecodeResponse reads it.
 func TestStreamUsage(t *testing.T) {
 	r := decodeStream(t, stream(created, terminal("response.completed", "completed", usageJSON)))
 	if r.err != nil {
@@ -499,8 +446,6 @@ func TestStreamUsage(t *testing.T) {
 	}
 }
 
-// TestStreamTerminal covers each terminal event: its Response DecodeResponse's for its
-// response, a failed one following an item still open.
 func TestStreamTerminal(t *testing.T) {
 	text := []string{
 		created,
@@ -537,8 +482,6 @@ func TestStreamTerminal(t *testing.T) {
 	}
 }
 
-// TestStreamIgnores wants the events that change nothing, ignored wherever they come: the
-// progress events, the summary's and annotations' events, and an event of an unknown type.
 func TestStreamIgnores(t *testing.T) {
 	events := slices.Concat(routerOpen, routerClose)
 	want := decodeStream(t, stream(events...))
@@ -561,8 +504,6 @@ func TestStreamIgnores(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// The extra event goes ahead of response.created, among the deltas, and among
-			// the done events.
 			withExtra := slices.Concat([]string{tc.extra}, routerOpen[:4], []string{tc.extra}, routerOpen[4:], routerClose[:2], []string{tc.extra}, routerClose[2:])
 			got := decodeStream(t, stream(withExtra...))
 			if got.err != nil {
@@ -575,9 +516,6 @@ func TestStreamIgnores(t *testing.T) {
 	}
 }
 
-// TestStreamErrorFrame covers an error frame in each shape, recognized from its data alone:
-// the error event, then response.failed, holding the output made before it, and an event
-// after it refused.
 func TestStreamErrorFrame(t *testing.T) {
 	const (
 		spec  = `{"type":"error","sequence_number":9,"error":{"type":"invalid_request_error","code":"model_not_found","message":"no such model","param":"model"}}`
@@ -587,13 +525,11 @@ func TestStreamErrorFrame(t *testing.T) {
 	notFound := protocol.ErrorPayload{Type: "invalid_request_error", Code: "model_not_found", Message: "no such model", Param: "model"}
 	overloaded := protocol.ErrorPayload{Type: "server_error", Message: "Overloaded"}
 	contextShift := protocol.ErrorPayload{Type: "server_error", Code: "500", Message: "context shift is disabled"}
-	// openOutput is routerOpen's output: every item open, with what its deltas made.
 	openOutput := []protocol.Item{
 		protocol.Reasoning{ID: "rs_1", Status: protocol.StatusInProgress, Content: []protocol.ReasoningText{{Text: "Need the tool."}}},
 		protocol.Message{ID: "msg_1", Status: protocol.StatusInProgress, Role: protocol.RoleAssistant, Content: []protocol.ContentPart{protocol.OutputText{Text: "Checking."}}},
 		protocol.FunctionCall{ID: "fc_1", Status: protocol.StatusInProgress, CallID: "call_1", Name: "get_weather", Arguments: `{"city":"Paris"}`},
 	}
-	// closedOutput is the output once the reasoning item is done, the others open.
 	closedOutput := slices.Clone(openOutput)
 	closedOutput[0] = protocol.Reasoning{ID: "rs_1", Status: protocol.StatusCompleted, Content: []protocol.ReasoningText{{Text: "Need the tool."}}, EncryptedContent: seal(t, "", "Need the tool.")}
 	cases := []struct {
@@ -642,13 +578,11 @@ func TestStreamErrorFrame(t *testing.T) {
 				Status: protocol.StatusFailed,
 				Error:  &protocol.ResponseError{Code: tc.payload.Code, Message: tc.payload.Message},
 			}
-			// response.failed bears the id and model response.created gave, when it came.
 			if tc.events[0] == created {
 				want.ID, want.Model = "resp_1", "m-1"
 			}
 			aitest.AssertResponse(t, failed.Response, want)
 			aitest.AssertResponse(t, aitest.Fold(t, r.events), want)
-			// The failed response's output is what the Accumulator held just before the frame.
 			if before := aitest.Fold(t, r.events[:n-2]); !reflect.DeepEqual(before.Output, tc.output) {
 				t.Errorf("output before the frame = %#v\nwant the failed response's %#v", before.Output, tc.output)
 			}
@@ -670,8 +604,6 @@ func TestStreamErrorFrame(t *testing.T) {
 	}
 }
 
-// TestStreamNotAnErrorFrame wants a body of an event's type, or whose error member isn't an
-// object, read as no error frame.
 func TestStreamNotAnErrorFrame(t *testing.T) {
 	r := decodeStream(t, stream(created,
 		event("response.flourish", `"error":{"message":"not a frame"}`),
@@ -685,8 +617,6 @@ func TestStreamNotAnErrorFrame(t *testing.T) {
 	}
 }
 
-// TestStreamEnd covers how a stream ends: at its terminal event, and io.ErrUnexpectedEOF at an
-// end before it, and End makes nothing once the terminal event is made.
 func TestStreamEnd(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -727,9 +657,6 @@ func TestStreamEnd(t *testing.T) {
 	}
 }
 
-// TestStreamReasoningAddedEncrypted covers a reasoning item added with encrypted_content, which
-// the spec allows to be incomplete while the item is in progress: the item is added with no
-// encrypted content, and the envelope holds the encrypted_content of its output_item.done.
 func TestStreamReasoningAddedEncrypted(t *testing.T) {
 	rsWhole := `{"type":"reasoning","id":"rs_1","summary":[],"content":[],"encrypted_content":"whole"}`
 	body := stream(created,
@@ -760,9 +687,6 @@ func TestStreamReasoningAddedEncrypted(t *testing.T) {
 	assertDoneItems(t, r.events, want)
 }
 
-// TestStreamReasoningAddedSummary covers a reasoning item added with a summary, an in-progress
-// item echoed with as much detail as is available: the item is added with no summary, and its
-// output_item.done gives the summary.
 func TestStreamReasoningAddedSummary(t *testing.T) {
 	rsSummed := `{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"Tool."}],"content":[]}`
 	body := stream(created, added(rsSummed), itemDone(rsSummed),
@@ -867,9 +791,6 @@ func TestStreamRefusesEvent(t *testing.T) {
 	}
 }
 
-// TestStreamDecodeErrorIsNoEndOfStream wants an event cut short, whose JSON error wraps
-// io.ErrUnexpectedEOF, reported as an event the format can't decode, not as a stream that ended
-// early.
 func TestStreamDecodeErrorIsNoEndOfStream(t *testing.T) {
 	_, err := responses.New(responses.Options{}).NewStreamDecoder().Decode(format.WireEvent{Data: []byte(`{"type":`)})
 	if err == nil || !strings.Contains(err.Error(), "decode event") || errors.Is(err, io.ErrUnexpectedEOF) {

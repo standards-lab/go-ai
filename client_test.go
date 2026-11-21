@@ -20,10 +20,8 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// okReply is a Chat Completions reply that decodes to a completed response.
 const okReply = `{"choices":[{"message":{"role":"assistant","content":"Paris"},"finish_reason":"stop"}]}`
 
-// hello is a minimal valid request.
 func hello() *protocol.Request {
 	return &protocol.Request{
 		Model: "m",
@@ -34,21 +32,16 @@ func hello() *protocol.Request {
 	}
 }
 
-// newClient returns a Client of base speaking Chat Completions through http.DefaultClient,
-// failing t if New refuses it.
 func newClient(t *testing.T, base string, opts ai.Options) *ai.Client {
 	t.Helper()
 	return newClientWith(t, base, http.DefaultClient, opts)
 }
 
-// newClientWith returns a Client of base speaking Chat Completions through hc, failing t if New
-// refuses it.
 func newClientWith(t *testing.T, base string, hc *http.Client, opts ai.Options) *ai.Client {
 	t.Helper()
 	return newClientFormat(t, base, hc, completions.New(completions.Options{}), opts)
 }
 
-// newClientFormat returns a Client of base speaking wf through hc, failing t if New refuses it.
 func newClientFormat(t *testing.T, base string, hc *http.Client, wf format.Format, opts ai.Options) *ai.Client {
 	t.Helper()
 	c, err := ai.New(base, hc, wf, opts)
@@ -58,7 +51,6 @@ func newClientFormat(t *testing.T, base string, hc *http.Client, wf format.Forma
 	return c
 }
 
-// TestNewPanicsOnWiringDefect wants a nil HTTP client or format to panic, naming the input.
 func TestNewPanicsOnWiringDefect(t *testing.T) {
 	cases := []struct {
 		name string
@@ -115,7 +107,6 @@ func TestNewRefusesBaseURL(t *testing.T) {
 	}
 }
 
-// TestNewRefusesHeader wants a fixed header naming one the Client sets refused, in any case.
 func TestNewRefusesHeader(t *testing.T) {
 	for _, name := range []string{"Content-Type", "accept", "AUTHORIZATION"} {
 		t.Run(name, func(t *testing.T) {
@@ -132,8 +123,6 @@ func TestNewRefusesHeader(t *testing.T) {
 	}
 }
 
-// TestNewRefusesUnsendableHeader wants a fixed header net/http can't send refused by New, not
-// by every request: a name that isn't a token, and a value with a control character.
 func TestNewRefusesUnsendableHeader(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -156,8 +145,6 @@ func TestNewRefusesUnsendableHeader(t *testing.T) {
 	}
 }
 
-// TestNewTakesSendableHeader wants a fixed header of a token name and a value of a tab and
-// non-ASCII bytes sent as it is.
 func TestNewTakesSendableHeader(t *testing.T) {
 	srv := serveChat(t, http.StatusOK, okReply)
 	c := newClient(t, srv.URL(), ai.Options{Header: http.Header{"X-Key_1!": {"a\tb é"}}})
@@ -183,8 +170,6 @@ func TestNewMakesNoRequest(t *testing.T) {
 	}
 }
 
-// TestZeroOptions wants a Client of the zero Options to send no query, no Authorization, and
-// no header beyond the Client's and the transport's, and to send one request for a 503.
 func TestZeroOptions(t *testing.T) {
 	srv := serveChat(t, http.StatusServiceUnavailable, "")
 	c := newClient(t, srv.URL(), ai.Options{})
@@ -196,17 +181,12 @@ func TestZeroOptions(t *testing.T) {
 		t.Errorf("query = %q, want none", r.Query.Encode())
 	}
 	got := slices.Sorted(maps.Keys(r.Header))
-	// Accept-Encoding, Content-Length, and User-Agent are the transport's.
 	want := []string{"Accept", "Accept-Encoding", "Content-Length", "Content-Type", "User-Agent"}
 	if !slices.Equal(got, want) {
 		t.Errorf("headers = %q, want %q", got, want)
 	}
 }
 
-// TestGenerateJoinsRouteWithOneSlash wants the route joined to the base URL's path with one
-// slash, whether the path is empty or not and whether it ends in a slash or not. The endpoint
-// answers below /v1 alone, so a base of the server's root, of an empty path or of /, is answered
-// 404, as an endpoint without the route answers.
 func TestGenerateJoinsRouteWithOneSlash(t *testing.T) {
 	for base, want := range map[string]string{
 		"":     "/chat/completions",
@@ -262,8 +242,6 @@ func TestGenerateSendsJSONHeaders(t *testing.T) {
 	}
 }
 
-// TestGenerateSendsFixedHeaders wants Options.Header on every request under its canonical
-// name, names differing in case joined, copied at New, so a change after it sends nothing new.
 func TestGenerateSendsFixedHeaders(t *testing.T) {
 	srv := serveChat(t, http.StatusOK, okReply)
 	key := []string{"k1"}
@@ -289,8 +267,6 @@ func TestGenerateSendsFixedHeaders(t *testing.T) {
 	}
 }
 
-// TestGenerateFormatHeaderReplacesFixed wants a header the format sets, the messages format's
-// anthropic-version, to replace a fixed one of the same name, whatever its case.
 func TestGenerateFormatHeaderReplacesFixed(t *testing.T) {
 	srv := serveRaw(t, "messages", http.StatusOK, `{"type":"message","role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`)
 	c, err := ai.New(srv.URL(), http.DefaultClient, messages.New(messages.Options{}), ai.Options{
@@ -378,10 +354,6 @@ func TestGenerateTokenErrorSendsNothing(t *testing.T) {
 	}
 }
 
-// TestGenerateAPIError covers what the Client makes of a non-2xx reply: an *APIError with the
-// status and the whole body, its text built from the details the format decoded or, without a
-// message, from the start of the body, and its Retry-After. What the OpenAI-style body gives is
-// format's test.
 func TestGenerateAPIError(t *testing.T) {
 	long := strings.Repeat("x", 600)
 	cases := []struct {
@@ -464,7 +436,6 @@ func TestGenerateAPIError(t *testing.T) {
 	}
 }
 
-// roundTripper is an http.RoundTripper made of a function.
 type roundTripper func(*http.Request) (*http.Response, error)
 
 func (f roundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
@@ -494,9 +465,6 @@ func TestGenerateWrapsCancelledContext(t *testing.T) {
 	}
 }
 
-// TestGenerateRefusesInvalidRequest covers when Generate refuses a request, whether Validate
-// refuses it or the format can't encode it: before the token source is called or anything is
-// sent. Which requests Validate refuses is protocol's test, and which the format refuses its.
 func TestGenerateRefusesInvalidRequest(t *testing.T) {
 	noModel := hello()
 	noModel.Model = ""
@@ -542,9 +510,6 @@ func TestGenerateRefusesInvalidRequest(t *testing.T) {
 	}
 }
 
-// TestGenerateReturnsUnsupportedError wants a request each format refuses refused through the
-// Client with the format's *format.UnsupportedError, its message the format's under the
-// Client's prefix, before the token source is called or anything is sent.
 func TestGenerateReturnsUnsupportedError(t *testing.T) {
 	modeNone := hello()
 	modeNone.Tools = []protocol.FunctionTool{{Name: "get_time"}}
@@ -564,7 +529,6 @@ func TestGenerateReturnsUnsupportedError(t *testing.T) {
 		{"completions", completions.New(completions.Options{}), modeNone,
 			format.UnsupportedError{Format: "completions", Feature: "allowed_tools mode", Value: "none"},
 			"ai: generate: completions: tool choice: allowed_tools of mode none has no Chat Completions form"},
-		// hello sets no MaxOutputTokens, which Messages requires.
 		{"messages", messages.New(messages.Options{}), hello(),
 			format.UnsupportedError{Format: "messages", Feature: "max output tokens"},
 			"ai: generate: messages: request has no max output tokens, which Messages requires as max_tokens"},

@@ -11,9 +11,6 @@ import (
 	"github.com/standards-lab/go-ai/aitest"
 )
 
-// models writes each model ID the endpoint lists, one per line, in the
-// endpoint's order, from one GET of the models route; an id-only entry is
-// its ID alone.
 func TestModels_WritesEachID(t *testing.T) {
 	e := serveModels(t, "agent", "vision", "embedding")
 
@@ -35,9 +32,6 @@ func TestModels_WritesEachID(t *testing.T) {
 	}
 }
 
-// An entry with a non-empty string root, as vLLM lists a served alias, is
-// written as its ID, a tab, and its root; an id-only entry beside it is
-// written as its ID alone.
 func TestModels_WritesEachRoot(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{Models: listingOf(
 		`{"id":"agent","object":"model","owned_by":"vllm","root":"openai/gpt-oss-120b","parent":null,"max_model_len":131072}`,
@@ -55,8 +49,6 @@ func TestModels_WritesEachRoot(t *testing.T) {
 	}
 }
 
-// A root that is null, empty, or not a string is no root: the entry is
-// written as its ID alone, and the run succeeds.
 func TestModels_NoStringRoot(t *testing.T) {
 	for _, tc := range []struct{ name, root string }{
 		{"null", `null`},
@@ -77,7 +69,6 @@ func TestModels_NoStringRoot(t *testing.T) {
 	}
 }
 
-// An endpoint that lists no model writes nothing and succeeds.
 func TestModels_NoneListed(t *testing.T) {
 	e := serveModels(t)
 
@@ -89,8 +80,6 @@ func TestModels_NoneListed(t *testing.T) {
 	}
 }
 
-// models builds the client and what it reads, not the model setting, which
-// it never names.
 func TestModels_BuildsTheClient(t *testing.T) {
 	e := serveModels(t, "agent")
 
@@ -107,8 +96,6 @@ func TestModels_BuildsTheClient(t *testing.T) {
 	}
 }
 
-// INFER_TOKEN is sent as the bearer token; an empty or unset one sends no
-// Authorization header at all.
 func TestModels_Token(t *testing.T) {
 	for _, tc := range []struct {
 		name, token, want string
@@ -137,8 +124,6 @@ func TestModels_Token(t *testing.T) {
 	}
 }
 
-// No flag takes the token: --token is an unknown flag, a usage error that
-// sends nothing.
 func TestModels_NoTokenFlag(t *testing.T) {
 	e := serveModels(t, "agent")
 
@@ -148,8 +133,6 @@ func TestModels_NoTokenFlag(t *testing.T) {
 	wantNoRequest(t, e)
 }
 
-// An endpoint's error reply fails the run with exit 1, reported once on
-// stderr with the command's label, and nothing on stdout.
 func TestModels_EndpointError(t *testing.T) {
 	e := aitest.Serve(t, aitest.Routes{Models: always[aitest.ModelsRequest](aitest.ErrorReply{Status: http.StatusInternalServerError, Message: "engine down"})})
 

@@ -15,7 +15,6 @@ import (
 	"github.com/standards-lab/go-ai/internal/native"
 )
 
-// embeddingsRoute is the OpenAI-compatible embeddings endpoint, relative to the base URL.
 const embeddingsRoute = "embeddings"
 
 // EmbeddingRequest asks an embedding model for one vector per input. Embeddings sit outside the
@@ -83,7 +82,6 @@ func (c *Client) Embed(ctx context.Context, req *EmbeddingRequest) (*Embeddings,
 	return e, nil
 }
 
-// encodeEmbeddingRequest validates req and encodes it as the embeddings request body.
 func encodeEmbeddingRequest(req *EmbeddingRequest) ([]byte, error) {
 	switch {
 	case req.Model == "":
@@ -101,8 +99,6 @@ func encodeEmbeddingRequest(req *EmbeddingRequest) ([]byte, error) {
 	})
 }
 
-// decodeEmbeddings decodes the body of a 2xx embeddings reply to a request of n inputs, placing
-// each vector by its item's index.
 func decodeEmbeddings(body []byte, n int) (*Embeddings, error) {
 	var wire embeddingReply
 	if err := json.Unmarshal(body, &wire); err != nil {
@@ -131,9 +127,6 @@ func decodeEmbeddings(body []byte, n int) (*Embeddings, error) {
 	}, nil
 }
 
-// decodeVector decodes an embedding sent as standard base64 of little-endian float32s. The
-// vector is never nil, even when empty, so decodeEmbeddings can tell a placed index from an open
-// one.
 func decodeVector(s string) ([]float32, error) {
 	b, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
@@ -149,19 +142,13 @@ func decodeVector(s string) ([]float32, error) {
 	return v, nil
 }
 
-// embeddingRequest is the OpenAI-compatible embeddings request body.
 type embeddingRequest struct {
-	Model string   `json:"model"`
-	Input []string `json:"input"`
-	// EncodingFormat is always "base64": about a quarter of the bytes of the float array, and exact.
-	EncodingFormat string `json:"encoding_format"`
-	// Native is the request's native tier, its members merged into the top level. A member
-	// named like one the fields above set is a duplicate name, which encoding refuses.
-	Native jsontext.Value `json:",embed"`
+	Model          string         `json:"model"`
+	Input          []string       `json:"input"`
+	EncodingFormat string         `json:"encoding_format"`
+	Native         jsontext.Value `json:",embed"`
 }
 
-// embeddingReply is the OpenAI-compatible embeddings reply body, as encoding_format base64
-// shapes it: each item's embedding a base64 string.
 type embeddingReply struct {
 	Data []struct {
 		Index     int    `json:"index"`

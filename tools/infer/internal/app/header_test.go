@@ -12,9 +12,6 @@ import (
 	"github.com/standards-lab/go-ai/aitest"
 )
 
-// wantHeaders fails t unless e received at least one request and every
-// request carried each of want's headers with exactly its values, in
-// order.
 func wantHeaders(t *testing.T, e *aitest.Endpoint, want http.Header) {
 	t.Helper()
 	reqs := e.Requests()
@@ -30,9 +27,6 @@ func wantHeaders(t *testing.T, e *aitest.Endpoint, want http.Header) {
 	}
 }
 
-// INFER_HEADER's lines each reach the request: one line or several, each
-// trimmed of surrounding space, a blank line skipped, a value kept whole
-// after its first colon, and a name given twice sending both values.
 func TestHeader_ReachesTheRequest(t *testing.T) {
 	for _, tc := range []struct {
 		name, header string
@@ -62,8 +56,6 @@ func TestHeader_ReachesTheRequest(t *testing.T) {
 	}
 }
 
-// An INFER_HEADER of blank lines alone sends no header of its own: the
-// request carries only what it would without one.
 func TestHeader_BlankSendsNone(t *testing.T) {
 	without := serveModels(t, "agent")
 	blank := serveModels(t, "agent")
@@ -77,18 +69,12 @@ func TestHeader_BlankSendsNone(t *testing.T) {
 	}
 }
 
-// secretValue is the value each refused INFER_HEADER carries, which no
-// refusal may echo.
 const secretValue = "s3cret-value"
 
-// Each refused INFER_HEADER exits 2 before any request, its error reported
-// once on stderr naming INFER_HEADER and never the value: a line with no
-// colon, a line with no name, a name the client sets in any case, and a
-// name or a value net/http can't send.
 func TestHeader_Refusals(t *testing.T) {
 	for _, tc := range []struct {
 		name, header string
-		want         string // after "infer models: client: "
+		want         string
 	}{
 		{"no colon", "api-key: ok\n" + secretValue, `INFER_HEADER line 2 has no colon: each line is "Name: value"`},
 		{"no name", "  : " + secretValue, `INFER_HEADER line 1 has no name before its colon`},
@@ -118,8 +104,6 @@ func TestHeader_Refusals(t *testing.T) {
 	}
 }
 
-// INFER_TOKEN and INFER_HEADER together each reach the request: the token
-// as the bearer token, the header beside it.
 func TestHeader_WithToken(t *testing.T) {
 	e := serveModels(t, "agent")
 
@@ -129,9 +113,6 @@ func TestHeader_WithToken(t *testing.T) {
 	wantHeaders(t, e, http.Header{"Authorization": {"Bearer tok"}, "Api-Key": {"key"}})
 }
 
-// INFER_HEADER reaches every client: the client node, through models and
-// embed, the model listing of embed's fallback included; the chat client,
-// through chat; and the transcriber, through transcribe in both modes.
 func TestHeader_EveryClient(t *testing.T) {
 	want := http.Header{"Api-Key": {"key"}}
 	header := map[string]string{"INFER_HEADER": "api-key: key"}

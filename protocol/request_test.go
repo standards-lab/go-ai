@@ -8,7 +8,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// hello is a minimal valid request.
 func hello() *protocol.Request {
 	return &protocol.Request{
 		Model: "m",
@@ -92,8 +91,6 @@ func TestValidateAccepts(t *testing.T) {
 		{"tool name of 64 characters", with(func(r *protocol.Request) {
 			r.Tools = []protocol.FunctionTool{{Name: strings.Repeat("a", 64)}}
 		})},
-		// Content, which the spec's input reasoning item lacks, and Status are accepted on input
-		// and never sent, so a response's Output goes back as it came.
 		{"reasoning items, content and status on input included", with(func(r *protocol.Request) {
 			r.Input = append(r.Input,
 				protocol.Reasoning{
@@ -117,7 +114,6 @@ func TestValidateAccepts(t *testing.T) {
 		{"reasoning summary auto", with(func(r *protocol.Request) { r.Reasoning.Summary = protocol.ReasoningSummaryAuto })},
 		{"reasoning summary concise", with(func(r *protocol.Request) { r.Reasoning.Summary = protocol.ReasoningSummaryConcise })},
 		{"reasoning summary detailed", with(func(r *protocol.Request) { r.Reasoning.Summary = protocol.ReasoningSummaryDetailed })},
-		// The least positive bound is each format's, so the protocol takes any.
 		{"max output tokens 1", with(func(r *protocol.Request) { r.MaxOutputTokens = 1 })},
 		{"max output tokens 15", with(func(r *protocol.Request) { r.MaxOutputTokens = 15 })},
 		{"max output tokens 16", with(func(r *protocol.Request) { r.MaxOutputTokens = 16 })},
@@ -396,7 +392,6 @@ func TestReasoningEffortUnmarshalAccepts(t *testing.T) {
 			if err := json.Unmarshal([]byte("["+quoted+"]"), &list); err != nil || len(list) != 1 || list[0] != want {
 				t.Fatalf("Unmarshal([%s]) = %q, %v; want [%q]", quoted, list, err, want)
 			}
-			// Encoding is untouched: an effort still goes out as its plain string.
 			if out, err := json.Marshal(want); err != nil || string(out) != quoted {
 				t.Fatalf("Marshal(%q) = %s, %v; want %s", want, out, err, quoted)
 			}

@@ -2,17 +2,16 @@
 
 go-ai's design, reviewed from spike-ai-pipeline-client v0.4.0: what the spike is measured against,
 what go-ai keeps, changes, and drops from it, the surface the library and infer tasks of
-v1.ai.client build to, the alternatives the review rules out, and the change list each task works
-from. The judgement calls it settles are go-ai's `STANDARDS.md`. The base module is built to it,
-and where building against the endpoints changed the review, the finding or decision states what
-holds.
+v1.ai.client build to, the reasoning behind both modules' unexported code and tests, and the
+alternatives the review rules out. The judgement calls it settles are go-ai's `STANDARDS.md`. The
+base module is built to it, and where building against the endpoints changed the review, the
+finding or decision states what holds.
 
 ## Evaluation
 
 Fable 5.2's evaluation of the spike at tag v0.4.0, one finding per issue or simplification. Each
 names the spike's package or file, what it is measured against, and a verdict with its reason:
-**kept** as the spike has it, **changed** in go-ai, or **dropped**. Where a finding changes a
-signature, the surface section states the signature.
+**kept** as the spike has it, **changed** in go-ai, or **dropped**.
 
 The measures are cited in short. A bare page name, such as `dependencies.md`, is a Go Elemental
 principle under the architecture repository's `standards/go-elemental/principles/`;
@@ -21,8 +20,8 @@ docproc's `context/layers.md`, which states the processing layer's boundaries, i
 surface" listing the names that layer calls. "data-intelligence" is standards-lab's
 `context/data-intelligence.md`, which states what go-ai's first long-running service consumer asks
 of it; cited bare, it is the section "What it asks of the goals beneath it". "ai-strategy" is
-standards-lab's `context/ai-strategy.md`, whose "The client and processing layers" maps each name
-of layers' surface to go-ai's.
+standards-lab's `context/ai-strategy.md` and its detail page, `docs/ai-strategy.md`, whose "go-ai's
+name map and requests" maps each name of layers' surface to go-ai's.
 
 ### Layout and names
 
@@ -424,10 +423,11 @@ of layers' surface to go-ai's.
 
 ## Surface
 
-go-ai's base module as signatures, from the spike at v0.4.0 with the evaluation's changes
-applied. The module path is `github.com/standards-lab/go-ai`; its packages are the root,
-`protocol`, `format`, and the three formats below `format`. Each block lists declarations only; an
-unexported field or helper the spike has stays as it is unless a finding changes it.
+go-ai's base module, from the spike at v0.4.0 with the evaluation's changes applied. The module
+path is `github.com/standards-lab/go-ai`; its packages are the root, `protocol`, `format`, and the
+three formats below `format`. `protocol` is Open Responses, spec 2026-04-24, in its stateless
+subset, under the spec's names (finding 25). A client extension's wire type carries go-ai's slug,
+`go-ai` (finding 4). Each package's `doc.go` and godoc state its declarations.
 
 ### What this section settles
 
@@ -499,375 +499,6 @@ The nine items the evaluation left open, each decided with its reason:
    would cost a request per call and hide a misconfigured endpoint, and pinning Chat Completions
    in the root package would make the transport name a format.
 
-### The root package
-
-```go
-// Package ai is go-ai's model client: one transport over the protocol, in the wire format its
-// constructor is given, with embeddings, transcription, and the model listing beside it.
-package ai // import "github.com/standards-lab/go-ai"
-
-// TokenSource returns the bearer token for one attempt. An empty token sends none.
-type TokenSource func(ctx context.Context) (string, error)
-
-// Options are New's optional inputs. The zero value selects every default: no query, no token,
-// no header, no retry, no idle bound, and transcription through the route. New copies Query,
-// Header, and Retry.
-type Options struct {
-    Query             url.Values        // added to every request's URL
-    Token             TokenSource       // nil sends no Authorization header
-    Header            http.Header       // fixed headers on every request, such as x-api-key
-    Retry             RetryPolicy       // the zero value retries nothing
-    StreamIdleTimeout time.Duration     // bounds each read of a started stream; 0 sets none
-    TranscriptionMode TranscriptionMode // TranscribeRoute, the zero value, or TranscribeChat
-}
-
-// RetryPolicy resends a request on a 408, 429, 502, 503, or 504 reply, or a connection failure
-// before any reply, never a started stream. It waits a full-jitter exponential backoff, which a
-// Retry-After replaces; a wait past MaxDelay or ctx's deadline returns the last error at once.
-type RetryPolicy struct {
-    MaxAttempts int           // the most requests for a call, the first included; 0 sends one
-    BaseDelay   time.Duration // the cap on the first wait, doubled for each after it
-    MaxDelay    time.Duration // the cap on any wait, and the longest Retry-After honored
-}
-
-// Client makes requests of one endpoint in one wire format. It is safe for concurrent use when
-// its TokenSource and format are, and sets no limit of its own.
-type Client struct{ /* unexported */ }
-
-// New returns a Client and makes no request. A nil httpClient or wireFormat panics by name.
-// A baseURL that isn't an absolute http or https URL without query or fragment, a negative
-// attempt count or delay, a BaseDelay above MaxDelay, a Header name that isn't a header name or
-// that names Content-Type, Accept, or Authorization, a Header value with a control character, or
-// an unknown TranscriptionMode is an error.
-func New(baseURL string, httpClient *http.Client, wireFormat format.Format,
-    opts Options) (*Client, error)
-
-// APIError is a non-2xx reply, returned wrapped and reached with errors.As.
-type APIError struct {
-    Status     int           // the HTTP status code
-    Message    string        // the endpoint's error message, when the body gave one
-    Type       string        // the endpoint's error type, such as "invalid_request_error"
-    Code       string        // the endpoint's error code; a numeric one as its decimal text
-    Body       []byte        // the reply's body
-    RetryAfter time.Duration // the reply's Retry-After, as a wait from its arrival; 0 for none
-}
-func (e *APIError) Error() string
-
-// Generate validates and encodes req, then sends it through the retry loop.
-func (c *Client) Generate(ctx context.Context, req *protocol.Request) (*protocol.Response, error)
-
-// GenerateStream is lazy: each range sends the request. Each pair is an event or an error; the
-// events run from ResponseCreated to one terminal event (completed, incomplete, failed).
-func (c *Client) GenerateStream(ctx context.Context,
-    req *protocol.Request) iter.Seq2[protocol.Event, error]
-
-// EmbeddingRequest goes to the OpenAI-compatible embeddings route whatever the format.
-type EmbeddingRequest struct {
-    Model  string
-    Input  []string       // the batch, sent as one request; its size is the caller's
-    Native jsontext.Value // members merged into the body's top level
-}
-type Embeddings struct {
-    Vectors [][]float32 // Vectors[i] is Input[i]'s
-    Usage   EmbeddingUsage
-}
-type EmbeddingUsage struct{ PromptTokens, TotalTokens int }
-func (c *Client) Embed(ctx context.Context, req *EmbeddingRequest) (*Embeddings, error)
-
-// TranscriptionMode is how Transcribe transcribes (decision 9).
-type TranscriptionMode int
-const (
-    TranscribeRoute TranscriptionMode = iota // the OpenAI-compatible transcription route
-    TranscribeChat                           // a chat request in the Client's format
-)
-
-// TranscriptionRequest goes to the OpenAI-compatible transcription route whatever the format,
-// or in chat mode to the model as a chat request in the Client's format.
-type TranscriptionRequest struct {
-    Model string
-    // Open opens the clip once per attempt; the route's attempt streams it as it uploads, chat
-    // mode reads it whole, and each attempt then closes it.
-    Open     func(ctx context.Context) (io.ReadCloser, error)
-    FileName string     // names the clip, such as "clip.wav"; in chat mode, its audio format
-    Language string     // empty sends none; in chat mode, named by the default instruction
-    Prompt   string     // empty sends none; in chat mode, the instruction itself
-    Native   url.Values // the route's form fields beside the typed ones; chat mode refuses any
-}
-type Transcription struct {
-    Text  string
-    Usage TranscriptionUsage
-}
-type TranscriptionUsage struct{ InputTokens, OutputTokens, TotalTokens int }
-// Transcribe sends through the retry loop, opening the clip again for each attempt.
-func (c *Client) Transcribe(ctx context.Context, req *TranscriptionRequest) (*Transcription, error)
-// TranscriptionInstruction is chat mode's instruction for a request with no Prompt, naming
-// language when it isn't empty.
-func TranscriptionInstruction(language string) string
-// IncompleteTranscriptError is chat mode's reply that isn't completed, such as one stopped at the
-// engine's output token bound; Transcribe returns it wrapped, with no Transcription, unretried.
-type IncompleteTranscriptError struct {
-    Status protocol.Status
-    Reason protocol.IncompleteReason // empty when the reply gave none
-}
-
-// Model is one entry of the endpoint's model list: its id, and the entry as the endpoint sent it.
-type Model struct {
-    ID     string
-    Native jsontext.Value
-}
-// Models GETs the OpenAI-compatible models route whatever the format, through the retry loop.
-func (c *Client) Models(ctx context.Context) ([]Model, error)
-```
-
-### protocol
-
-Open Responses, spec 2026-04-24, in its stateless subset, under the spec's names (finding 25). A
-client extension's wire type carries go-ai's slug, `go-ai` (finding 4).
-
-```go
-package protocol // import "github.com/standards-lab/go-ai/protocol"
-
-type Request struct {
-    Model             string
-    Instructions      string
-    Input             []Item
-    Tools             []FunctionTool
-    ToolChoice        ToolChoice     // ToolChoiceMode, FunctionToolChoice, or AllowedToolChoice
-    Reasoning         ReasoningParam
-    Text              TextParam
-    MaxOutputTokens   int            // 0 leaves it to the endpoint; the least positive is each format's
-    ParallelToolCalls *bool          // nil leaves it to the endpoint
-    Native            jsontext.Value // the native tier, merged into the body's top level
-}
-func (r *Request) Validate() error
-
-type ReasoningParam struct {
-    Effort  ReasoningEffort
-    Summary ReasoningSummary
-}
-// An effort is the protocol's when an implemented format's spec defines it (finding 25).
-type ReasoningEffort string  // ReasoningEffortNone, Minimal, Low, Medium, High, XHigh, Max
-type ReasoningSummary string // ReasoningSummaryAuto, Concise, Detailed
-type TextParam struct {
-    Format    TextFormat // PlainTextFormat or JSONSchemaFormat
-    Verbosity Verbosity
-}
-type TextFormat interface{ textFormat() }
-type PlainTextFormat struct{}
-type JSONSchemaFormat struct {
-    Name, Description string
-    Schema            jsontext.Value
-    Strict            bool
-}
-type Verbosity string // VerbosityLow, Medium, High
-
-type Item interface{ item() } // Message, FunctionCall, FunctionCallOutput, Reasoning
-type Message struct {
-    ID      string
-    Status  Status
-    Role    Role
-    Content []ContentPart
-}
-type Role string // RoleUser, RoleSystem, RoleDeveloper, RoleAssistant
-type ContentPart interface{ contentPart() } // the parts below
-type InputText struct{ Text string }
-type InputImage struct {
-    ImageURL string // an http(s) URL, or DataURL's
-    Detail   ImageDetail
-}
-type ImageDetail string // ImageDetailAuto, Low, High
-func DataURL(mediaType string, data []byte) string
-type InputAudio struct { // the go-ai:input_audio extension
-    Data   []byte
-    Format AudioFormat
-}
-type AudioFormat string // AudioFormatWAV, AudioFormatMP3
-type OutputText struct{ Text string }
-type Refusal struct{ Refusal string }
-type ReasoningText struct{ Text string }
-type SummaryText struct{ Text string }
-type FunctionCall struct {
-    ID                     string
-    Status                 Status
-    CallID, Name, Arguments string
-}
-type FunctionCallOutput struct {
-    ID             string
-    Status         Status
-    CallID, Output string
-    OutputParts    []ContentPart
-}
-type Reasoning struct {
-    ID               string
-    Status           Status
-    Content          []ReasoningText
-    Summary          []SummaryText
-    EncryptedContent string // the endpoint's, or a format's go-ai:<format>/v1: envelope
-}
-type Status string // StatusInProgress, StatusCompleted, StatusIncomplete, StatusFailed
-
-type FunctionTool struct {
-    Name, Description string
-    Parameters        jsontext.Value
-    Strict            bool
-}
-type ToolChoice interface{ toolChoice() }
-type ToolChoiceMode string // ToolChoiceAuto, ToolChoiceNone, ToolChoiceRequired
-type FunctionToolChoice struct{ Name string }
-type AllowedToolChoice struct {
-    Tools []FunctionToolChoice
-    Mode  ToolChoiceMode
-}
-
-type Response struct {
-    ID, Model         string // the reply's, as the endpoint reports them
-    Output            []Item
-    Status            Status
-    IncompleteDetails *IncompleteDetails
-    Error             *ResponseError
-    Usage             Usage
-}
-type IncompleteDetails struct{ Reason IncompleteReason }
-type IncompleteReason string // ReasonMaxOutputTokens, ReasonContentFilter, ReasonContextWindow
-type ResponseError struct{ Code, Message string }
-type Usage struct {
-    InputTokens, OutputTokens, TotalTokens int
-    InputTokensDetails                     InputTokensDetails
-    OutputTokensDetails                    OutputTokensDetails
-}
-type InputTokensDetails struct{ CachedTokens int }
-type OutputTokensDetails struct{ ReasoningTokens int }
-
-// Event is the closed set of streaming events, each carrying its SequenceNumber.
-type Event interface{ event() }
-type ResponseCreated struct {
-    SequenceNumber int
-    Response       *Response
-}
-// ResponseCompleted, ResponseIncomplete, and ResponseFailed, the terminal events, are shaped as
-// ResponseCreated.
-type ErrorEvent struct {
-    SequenceNumber int
-    Error          ErrorPayload
-}
-type ErrorPayload struct{ Type, Code, Message, Param string }
-type OutputItemAdded struct {
-    SequenceNumber, OutputIndex int
-    Item                        Item
-}
-// OutputItemDone is shaped as OutputItemAdded.
-type ContentPartAdded struct {
-    SequenceNumber            int
-    ItemID                    string
-    OutputIndex, ContentIndex int
-    Part                      ContentPart
-}
-// ContentPartDone is shaped as ContentPartAdded.
-type OutputTextDelta struct {
-    SequenceNumber            int
-    ItemID                    string
-    OutputIndex, ContentIndex int
-    Delta                     string
-}
-// OutputTextDone (Text), RefusalDelta (Delta), RefusalDone (Refusal), ReasoningDelta (Delta),
-// and ReasoningDone (Text) are shaped as OutputTextDelta, with the field named.
-type FunctionCallArgumentsDelta struct {
-    SequenceNumber int
-    ItemID         string
-    OutputIndex    int
-    Delta          string
-}
-// FunctionCallArgumentsDone is shaped as FunctionCallArgumentsDelta, with Arguments for Delta.
-
-// Accumulator folds a stream's events, in the caller's loop, into the Response Generate returns.
-type Accumulator struct{ /* unexported */ }
-func (a *Accumulator) Add(e Event) error
-// Response is the folded Response: after a break, the partial one, in StatusInProgress.
-func (a *Accumulator) Response() *Response
-```
-
-### format and the three formats
-
-```go
-package format // import "github.com/standards-lab/go-ai/format"
-
-// Format is a wire format, chosen by its package's constructor at the composition root.
-type Format interface {
-    Route() string
-    EncodeRequest(req *protocol.Request, header http.Header) ([]byte, error)
-    DecodeResponse(body []byte) (*protocol.Response, error)
-    EncodeStreamRequest(req *protocol.Request, header http.Header) ([]byte, error)
-    EventStream() EventStream // the framing its replies stream in (finding 24)
-    NewStreamDecoder() StreamDecoder
-    DecodeError(body []byte) (message, typ, code string)
-}
-// StreamDecoder turns one stream's events into protocol events; it serves one stream.
-type StreamDecoder interface {
-    Decode(e WireEvent) ([]protocol.Event, error)
-    End() ([]protocol.Event, error)
-}
-// WireEvent is one event as its framing delivers it: under SSE, its event field and its data.
-type WireEvent struct {
-    Type string
-    Data []byte
-}
-type WireEventReader interface{ Next() (WireEvent, error) } // io.EOF at the body's clean end
-type EventStream interface {
-    MediaType() string // the Accept a streamed request sends
-    NewReader(body io.Reader) WireEventReader
-}
-var SSE EventStream // text/event-stream, over internal/sse
-// UnsupportedError is a format's refusal of a request feature, before anything is sent
-// (finding 28). Declared is false for a gap in the format's spec.
-type UnsupportedError struct {
-    Format, Feature, Value string
-    Declared               bool
-    Message                string
-}
-func (e *UnsupportedError) Error() string
-// DecodeOpenAIError decodes {"error": {"message", "type", "code"}}, for the OpenAI routes.
-func DecodeOpenAIError(body []byte) (message, typ, code string)
-
-package completions // import "github.com/standards-lab/go-ai/format/completions"
-// Options is the profile of one deployment: the gaps where it departs from Chat Completions'
-// spec. The zero value declares none and is the spec's form (finding 29).
-type Options struct {
-    RefusedEfforts       []protocol.ReasoningEffort `json:"refused_efforts,omitzero,case:strict"`
-    NoToolChoiceRequired bool                       `json:"no_tool_choice_required,omitzero,case:strict"`
-    NoAllowedTools       bool                       `json:"no_allowed_tools,omitzero,case:strict"`
-}
-type Format struct{ /* unexported */ }
-// New is Chat Completions, on "chat/completions". It reads a reply's reasoning from
-// reasoning_content, llama.cpp's name, or reasoning, vLLM's (finding 43).
-func New(opts Options) *Format
-
-package messages // import "github.com/standards-lab/go-ai/format/messages"
-// Options is the profile of one deployment: the gaps where it departs from the Messages API. The
-// zero value declares none and is the spec's form (finding 29).
-type Options struct {
-    RefusedEfforts []protocol.ReasoningEffort `json:"refused_efforts,omitzero,case:strict"`
-}
-type Format struct{ /* unexported */ }
-// New is Anthropic Messages, on "messages", sending its anthropic-version header. It refuses a
-// request with no MaxOutputTokens, with audio input, with the minimal effort, or with a system or
-// developer message after the conversation has begun, and drops the hints it has no form for.
-func New(opts Options) *Format
-
-package responses // import "github.com/standards-lab/go-ai/format/responses"
-// Options is the profile of one deployment: the gaps where it departs from the Open Responses
-// spec. The zero value declares none and is the spec's form (finding 29).
-type Options struct {
-    RefusedEfforts      []protocol.ReasoningEffort `json:"refused_efforts,omitzero,case:strict"`
-    NoAllowedTools      bool                       `json:"no_allowed_tools,omitzero,case:strict"`
-    ResendReasoningText bool                       `json:"resend_reasoning_text,omitzero,case:strict"` // for llama.cpp's router and vLLM
-}
-type Format struct{ /* unexported */ }
-func New(opts Options) *Format // Open Responses, on "responses"
-// MinMaxOutputTokens is the spec's least max_output_tokens, below which the format refuses a
-// MaxOutputTokens (finding 27). It refuses the minimal and max efforts, which the spec lacks.
-const MinMaxOutputTokens = 16
-```
-
 ## Modules
 
 go-ai's module layout, its dependency line and how the check holds it, `infer`'s nested module,
@@ -931,50 +562,20 @@ infer task `tools/infer`.
    (finding 47). The infer task's first tag then needs no change to the workflow, only its
    changelog.
 
-### The module tree
+### The base module
 
 The base module, `github.com/standards-lab/go-ai`, holds the packages of the surface section,
 their testdata, the integration tier, and `aitest`, the fake endpoint for tests. `internal/aitest`,
 go-ai's format-test kit, is the spike's `internal/clienttest`, renamed with the root package
 (finding 40); `internal/sse` and `internal/native` are the spike's.
 
-```text
-go-ai/                        module github.com/standards-lab/go-ai
-├── go.mod                    no require
-├── go.work                   use . and ./tools/infer, from the infer task
-├── CHANGELOG.md              the root's
-├── docs/                     the guide: concepts, quick-start, features, glossary
-├── *.go                      package ai
-├── protocol/
-├── aitest/                   the fake endpoint for tests
-├── format/
-│   ├── completions/testdata/ llama.cpp b11669's recordings, vLLM 0.33.0's in vllm/, vLLM 0.34.0's gap replies in vllm-0.34.0/, and Foundry's in foundry/
-│   ├── messages/testdata/
-│   └── responses/testdata/   as completions'
-├── integration/              the integration tier, behind the integration build tag
-├── internal/
-│   ├── aitest/
-│   ├── native/
-│   └── sse/
-└── tools/infer/              module github.com/standards-lab/go-ai/tools/infer
-    ├── go.mod                go-ai v0.4.0, go-cli-sdk v0.4.0, go-core v0.12.0
-    ├── CHANGELOG.md          infer's
-    ├── README.md
-    ├── docs/quick-start.md   a guided tour of each command and the common failures, with real output
-    ├── cmd/infer/
-    ├── integration/          infer's integration tier, behind the integration build tag
-    └── internal/
-        ├── app/
-        └── apptest/
-```
-
 Each format's testdata is recorded from llama.cpp b11669's router, from vLLM 0.33.0, and, for the
 profiles' gaps, from vLLM 0.34.0, and Chat Completions' and Open Responses' also from Azure AI
-Foundry, each set with a README that names its engine and build, says how it was recorded, and records what the
-engine departs from (findings 31 and 43). The integration tier is a root-level package of the
-base module, as the spike's is: the check builds, vets, and lints it under its build tag (finding
-45), and `mise run integration` runs it against the endpoints its `AI_<ROLE>_BASE_URL` variables
-name (finding 41). No CI job runs it.
+Foundry, each set with a README that names its engine and build, says how it was recorded, and
+records what the engine departs from (findings 31 and 43). The integration tier is a root-level
+package of the base module, as the spike's is: the check builds, vets, and lints it under its
+build tag (finding 45), and `mise run integration` runs it against the endpoints its
+`AI_<ROLE>_BASE_URL` variables name (finding 41). No CI job runs it.
 
 ### infer's module
 
@@ -1117,13 +718,389 @@ A scenario whose request the profile refuses before sending, a declared gap, ski
 gap; a refusal of the spec's own fails. `mise run integration` runs it after the base module's
 tier; no CI job runs either.
 
-### What each task adds
+### The lint configuration
 
-| task | adds |
-| --- | --- |
-| library | the base module; `"."` in `GO_MODULES`; the base depguard rule and the check's no-`require` assertion; the tagged lint and `mise run integration`; the release workflow over both tag namespaces; `CHANGELOG.md`; the tag `v0.1.0` |
-| infer | `tools/infer`, requiring go-ai `v0.1.0`; `"tools/infer"` in `GO_MODULES`; `go.work`; the infer depguard rule; `tools/infer/CHANGELOG.md`; the tag `tools/infer/v0.1.0` |
-| infer-profiles | `tools/infer` on go-ai `v0.2.0`; `--profile` over `INFER_PROFILE`; `AI_<ROLE>_PROFILE` in both integration tiers; the tag `tools/infer/v0.2.0` |
+`.golangci.yml` carries out the modules section's decisions 3 and 4 and finding 39. Its linters are the standard set,
+plus depguard, testpackage, and nolintlint. Tests are linted with the code they test, so the
+depguard rules hold them too, and the check runs golangci-lint a second time under the
+`integration` build tag, so each integration tier is linted as well.
+
+- **testpackage** keeps tests black-box. Its skip regexp is narrowed to `export_test.go`, the one
+  white-box file allowed. Its `allow-packages` names only the empty package name, which no package
+  has, in place of the default, `main`, so a command's tests are black-box too, in `main_test`. An
+  empty list would leave the default in force.
+- **depguard's allow entries match by prefix** unless they end in `$`, so go-ai's entries are
+  anchored: the module as itself, or a package under it, never a sibling such as `go-ai-extra`.
+  The infer rule's allow entry for go-ai would admit its internal packages too, so it denies
+  `go-ai/internal` by name; depguard takes the longer of an allow and a deny match, and the deny
+  is the longer.
+- **nolintlint** requires every suppression to name its linter and give its reason
+  (`architecture/principles/comments.md`).
+
+## Implementation notes
+
+This section holds the reasoning that the names and exported docs of the base module, its
+integration tier, and infer leave unsaid about their unexported code and tests. It lives here
+rather than in comments (`architecture/principles/comments.md`).
+
+### The transport
+
+- **New fixes what every request would send.** It encodes the query once, so a caller changing
+  its `url.Values` after New can't change the requests. It copies the fixed headers under
+  canonical names: names that differ only in case are one header, their values in the order of
+  the names' spellings, so the copy doesn't depend on the map's order. It refuses a name that
+  isn't an RFC 9110 token and a value with a control character other than the horizontal tab,
+  which net/http won't send, and the headers the Client sets itself, Content-Type, Accept, and
+  Authorization.
+- **A route's URL** is the base path and the route joined by exactly one slash, with the query.
+- **A body is made per attempt.** Its function is called once per attempt, after the token
+  source, and may add headers, such as a format's version header. It returns the reader and an
+  end function the attempt calls once it is done with the body: on its failure, or as its 2xx
+  reply's body is closed. End reports the body's own failure, such as a clip whose read failed
+  part way, which is the attempt's cause whatever the transport made of it. A 2xx reply's body
+  closes the request's body with it, and its Close returns the request body's failure alone: the
+  reply's own close failure, after its read, reports nothing the caller acts on.
+- **An attempt is built, then sent.** Building calls the token source first, before the body is
+  made, so a source error opens nothing and sends nothing. The header is the fixed headers, then
+  the body's, replacing any of the same name, then the bearer token, each value slice cloned so a
+  transport that changes the request's header changes neither. A body of unknown length, such as
+  a pipe, goes chunked. Building is apart from sending because its errors are every way an
+  attempt fails before anything is sent: they return at once, never classified for a retry, so a
+  token source that fails on its own network call isn't mistaken for the endpoint's connection
+  failing. Sending reads a non-2xx reply's body whole, a failed read keeping the part read as
+  still the best account of the error there is, decodes it with the format, and reads its
+  Retry-After as the reply arrives, reporting whether it could be read: a Retry-After of 0 waits
+  none, where one that can't be read leaves the wait to the backoff.
+- **There is one retry loop**, which Generate, GenerateStream (whose stream starts only once the
+  loop returns), Embed, Transcribe, and Models all send through. An attempt that fails before
+  anything is sent returns at once whatever its error wraps, as does one whose request body
+  failed on its own, such as a clip's read, which a later attempt doesn't mend. An attempt is made
+  again after a 408, 429, 502, 503, or 504 reply, or a connection failure before any reply while
+  the caller's context is live; a transport error once the context is done is the context's
+  doing. A connection failure is a network operation's error, such as a refused dial or a reset,
+  or the connection closed before the reply's header, which the transport reports as `io.EOF` or
+  `io.ErrUnexpectedEOF`. A host name that doesn't resolve isn't one, unless the resolver calls its
+  failure temporary. Nor is anything else, such as the transport's ResponseHeaderTimeout,
+  net/http's error for a server closing an idle connection, a TLS certificate the transport
+  refuses, or an error of the caller's own RoundTripper: the list is short so that only what a
+  later attempt can mend is retried.
+- **The backoff** caps the wait before attempt n+1, after n attempts, at BaseDelay doubled n-1
+  times, at most MaxDelay; the doubling stops at MaxDelay, so it can't overflow. The wait is full
+  jitter, a random duration from 0 up to the cap, the cap included; `export_test.go` replaces the
+  source so a test can time it. A Retry-After is whole seconds, or an HTTP date whose wait is the
+  time until it, none for a date passed; seconds too many to hold are the longest wait there is,
+  which exceeds any policy's MaxDelay.
+- **An APIError's text** bounds how much of a body without a message it prints, not what is read:
+  Body holds the whole reply.
+
+### Streaming and the idle bound
+
+- **A stream's request runs under a context of its own**, below the caller's, so the idle bound
+  can end the request, which unblocks a read waiting on it, without ending the caller's context.
+  The caller's context alone is checked for its cancel, since the request's being done may be the
+  bound's doing; once it is done, nothing more is yielded and its error ends the stream.
+- **A failed read's error.** Once the caller's context is done the transport has closed the
+  connection, so the read failed because of the context, and the error is the context's.
+  Otherwise the stream ended before its terminal event: the error matches `io.ErrUnexpectedEOF`,
+  which the transport returns for a connection dropped mid-body and the idle bound for a stalled
+  one, and also the read's own error, such as a connection reset.
+- **The idle bound times each read.** Its timer, `time.AfterFunc`'s so the bound starts no
+  goroutine of its own, runs only while a read waits, so the time the caller spends between events
+  isn't counted, and any bytes a read returns, a comment's included, end that read and so reset
+  the bound. When it fires, it cancels the stream's request, which unblocks the transport's read.
+  A read it cut off, or any read after, reports the stall whatever the transport returned: the
+  transport's error is the cancellation's, which the caller must not mistake for its own
+  context's. A read that reached the body's end as the timer fired is the end, since the stream
+  was whole. The stall matches `io.ErrUnexpectedEOF`, as the stream ended before its terminal
+  event, and `os.ErrDeadlineExceeded`, as a read past a `net.Conn`'s deadline does. Closing the
+  body stops the timer and cancels the request first, so a transport whose body resumes after a
+  failed read sees the request is done.
+
+### Embeddings, models, and transcription
+
+- **Embeddings travel as base64**, standard base64 of little-endian float32s: about a quarter of
+  the bytes of the float array, and exact. Each vector is placed by its item's index, and a
+  decoded vector is never nil, even when empty, so a placed index can be told from an open one.
+- **A model list entry is kept whole**, as the endpoint sent it, to become the Model's Native
+  beside the id decoded from it: its other members, such as `owned_by` and llama.cpp's router's
+  `status`, are the endpoint's. Decoding into a `jsontext.Value` copies the entry's bytes, so a
+  Model doesn't alias the reply buffer.
+- **The transcription route's form** has one boundary per call, so every attempt sends the same
+  form. Its fields go ahead of the file in order, the typed fields then Native's in sorted key
+  order, so the form is the same whatever the map's order; the file part's name, `file`, is
+  always set, so a Native key of that name clashes too. The file part's Content-Type is
+  `application/octet-stream`: a type guessed from the file name would depend on the host's MIME
+  tables, and llama.cpp reads the clip's format from its bytes. llama.cpp's reply also carries
+  type `transcript.text.done`, a usage type of `tokens`, and
+  `usage.input_tokens_details.cached_tokens`, which the client doesn't keep.
+- **Each attempt writes the form into a pipe** from a goroutine of its own, whose error, or EOF,
+  ends the request body's read. When the attempt ends, closing the pipe's read side fails a write
+  still blocked on it, so the goroutine ends; after a whole read, that is a no-op. The clip is
+  read, so a failure to close it changes nothing sent. The clip's reader keeps its own read error,
+  other than `io.EOF`: an upload that failed reading the clip has that as its cause, whatever the
+  transport made of the body's failed read. Any other failure of the goroutine's is a write into
+  the pipe the request closed, which the attempt's error accounts for.
+- **Chat mode probes the format first.** It asks the format to encode a request of the same
+  shape, its clip a placeholder, before the clip is opened or the token source called, so a
+  format that refuses audio refuses it there, and what it refuses doesn't depend on the clip's
+  bytes. A reply the model didn't finish holds part of a transcript at most, which reads as a
+  whole one, so it is refused, after the retry loop rather than inside it: sending the same clip
+  again meets the same bound or filter.
+
+### The aitest package
+
+- **An Endpoint ends with its test.** Its context ends when the test ends, and with it every
+  request's context; its cleanup ends that context before closing the server, which waits on the
+  handlers using it.
+- **A transcription upload** is parsed from the recorded copy of its body, read whole to record
+  it, with up to 32 MiB of the form in memory and the rest in temporary files the request's end
+  removes. Its file name is read from the part's Content-Disposition, since the parsed form's
+  file name keeps a path's base name alone, which would hide a client that sends the path it read
+  the clip from.
+- **What a request asks of its reply's shape** is decoded on the Chat Completions route alone and
+  zero elsewhere, so a ChatReply another route returns is unstreamed. A chat reply's id is made
+  from the request's arrival number, and its model is the request's. Everything a stream wrote is
+  flushed before it is held, so the client has read it.
+- **A Gate** keeps each parked request's channel in the order they parked, closing one to let its
+  request go; a count of the releases no parked request has taken yet, each letting a later
+  request through at once; and a channel closed and replaced when a request parks, which wakes
+  Await. Await's bound fails a test whose requests never arrive, naming the count, rather than
+  leaving it to hang until the test binary's timeout.
+
+### The completions format
+
+- **Item ids derive from the reply's id**, as `<reply id>/<output index>`, such as
+  `chatcmpl-abc/1`, alike for every kind of item and alike streamed and unstreamed: every chunk
+  carries the reply's id, so a stream's items get the ids DecodeResponse gives the same reply. An
+  id is unique within the reply, as its output index is, and across replies, as the reply's id is.
+  A reply with no id gives its items none: an id made of the index alone would repeat across
+  replies, where an empty id claims no uniqueness.
+- **Reasoning is read from reasoning_content first.** vLLM sends `reasoning` in its place; a
+  server that sends both sends one text under the two names, so reasoning_content alone is read,
+  never the two joined.
+- **The usage's reasoning tokens** are pointers on the wire, nil when the member is absent or
+  null, so a count of 0 under completion_tokens_details still counts as given and wins over the
+  top-level reasoning_tokens some servers send. A count is taken as given, never clamped, though
+  a server's may exceed completion_tokens, as Foundry's gpt-oss-120b's does.
+- **The request's members.** max_completion_tokens carries MaxOutputTokens: llama.cpp reads it
+  and max_tokens alike, as aliases of n_predict, and it is the name OpenAI keeps, having
+  deprecated max_tokens. stream is always sent, so a Native stream member clashes in both
+  encodings; stream_options is sent with a streamed request alone, as OpenAI refuses it
+  otherwise, and a Native stream_options is refused in both, as it is the stream's.
+  parallel_tool_calls is omitted when the request leaves it to the endpoint, so a Native member
+  of that name clashes only when it is set.
+- **The envelope** is what the format writes into a Reasoning item's encrypted_content and reads
+  back: the prefix `go-ai:completions/v1:`, naming the implementor, the format, and the version,
+  then `{"reasoning_content"}` as JSON in standard, padded base64. A change to the layout or the
+  members' meaning is a new version, and a new prefix; encrypted_content without this prefix was
+  written by another format, or another version, and isn't this format's to read. The tests pin
+  the envelopes as literals, so a layout change, which would orphan the envelopes callers hold,
+  fails there.
+- **A chunk that isn't JSON** is reported with its JSON error formatted, not wrapped: a chunk cut
+  short wraps `io.ErrUnexpectedEOF`, which in a stream means the stream ended before its terminal
+  event, and the chunk arrived whole.
+- **An error frame's param** is read by the format itself, as DecodeOpenAIError reads none; an
+  error of another shape, or a param that isn't a string, gives none.
+- **The stream decoder** records whether any event arrived, so End opens a stream of nothing but
+  chunks of no id and no choices before reporting it incomplete, and makes nothing for an empty
+  one. A call's output index follows from its tool-call index, the first call's index fixing the
+  base, so the output is the tool_calls array's order whatever order the calls begin in; calls
+  whose indexes skip one are refused at the finish_reason, before any closes.
+- **The recorded streams' cached prompt tokens** are pinned from the stream: llama.cpp's cache
+  held another share of the prompt for the stream than for the unstreamed send. Foundry's two
+  replies to one request differ even at temperature 0 and seed 7, so their reasoning and token
+  counts are pinned from the stream too.
+
+### The messages format
+
+- **Item ids derive from the reply's id**, as the completions format's do: `<reply id>/<output
+  index>`, such as `msg_abc/1`, and none for a reply with no id.
+- **Refusals come first in a fixed order.** The effort is checked first, so a request of an
+  effort Messages lacks, or one the profile declares refused, is refused for that effort whatever
+  else it holds; the input is encoded next, so a request whose content Messages has no form for
+  is refused for that content whatever else it lacks; max_tokens comes after. The
+  anthropic-version header is set only once the body is encoded, so a refused request adds none.
+  A Native tool_choice beside ParallelToolCalls is refused as the clash Marshal would report were
+  the request to send the member ParallelToolCalls sets.
+- **A refusal part goes back as a text block**, as Messages has no refusal block to send back.
+- **An image data URL's media type** is the type alone: its parameters, such as a charset, precede
+  `;base64` and are dropped. A data URL of no data is malformed, an error but not a refusal.
+- **The envelope** is the prefix `go-ai:messages/v1:`, then base64 of one of two shapes,
+  `{"thinking","signature"}` for a thinking block, both members always present, or `{"data"}` for
+  a redacted_thinking block. Its members are pointers so the shape shows in which are present: a
+  thinking block's signature is present even when empty, as llama.cpp's always is. A
+  well-formed envelope is of exactly one shape. A change to the layout or the members' meaning is
+  a new version, and a new prefix.
+- **The usage's counts** are pointers on the wire, nil when the reply omits them or gives null, so
+  a message_delta, whose counts are cumulative, keeps the counts it omits at what they were.
+  message_start's output counts are placeholders, such as Anthropic's output_tokens of 1, so they
+  are cleared there and message_delta gives the reply's.
+- **An error frame** is recognized from its data: type `error`, Anthropic's, whose error member
+  holds the error; or a body of a type no Messages event has and a string message, as llama.cpp's
+  is, which holds the error object at its top level and is read as an OpenAI-style body wrapping
+  it. message_start's message is an object, so it is never taken for one.
+- **The stream decoder** keeps each item's blocks, as a message is one block per part, and closes
+  an item once its blocks have stopped, it has ended, and its status is known: completed when an
+  item follows it, the stop_reason's once message_stop has made it final, as a later
+  message_delta may give another stop_reason. A tool_use block of no input_json_delta has the
+  input its start gave, `{}` from Anthropic or none from an endpoint that omits it, which becomes
+  `{}`, the arguments DecodeResponse gives the same call. An event that isn't JSON is reported with
+  its JSON error formatted, not wrapped, as the completions format's chunk is.
+- **The recorded replies** were each sent twice, streamed and not, and the endpoint makes new ids
+  for each, vLLM a new signature, and the router's prompt cache another split of the same input,
+  so the stream tests take those from the stream.
+
+### The responses format
+
+- **The request's members.** include, `["reasoning.encrypted_content"]`, store false, and stream
+  are always sent, so a Native member of any of those names clashes; parallel_tool_calls is
+  omitted when the request leaves it to the endpoint, so a Native member of that name clashes only
+  when it is set. The input is always an array of items, never the string form. A tool's strict
+  flag is always sent, so false stays false at llama.cpp's router, whose default is true. The audio
+  extension's part type carries the implementor slug, `go-ai:input_audio`, under the spec's
+  extension rule.
+- **The envelope** is the prefix `go-ai:responses/v1:`, then base64 of
+  `{"encrypted_content","content"}`, both members always present. Its members are pointers so an
+  envelope missing one reads as malformed. A change to the layout or the members' meaning is a
+  new version, and a new prefix.
+- **The stream decoder decodes a terminal event's response** as DecodeResponse decodes a reply,
+  through the same function without the package's prefix on its error.
+- **A skipped item holds its output index**, and the items after it are placed as if it weren't
+  there, so the events' output indexes leave no gap. Once an item after it is added, its place
+  can't be taken out, and a skipped item added there is an error. A skipped part holds its content
+  index in the same way.
+- **An event's output_index and content_index** are pointers, nil when the event gives none, as
+  the router's give none; such an event is placed by arrival and by its item_id.
+- **A reasoning item is added with neither encrypted_content nor summary**, though the spec lets
+  an in-progress item carry each, the encrypted_content possibly incomplete; its output_item.done
+  gives the whole of each, its encrypted_content going into the envelope. Foundry adds
+  gpt-5-mini's reasoning item with an encrypted_content of its own, unlike its output_item.done's,
+  which is unlike the terminal response's again, so each envelope holds the encrypted_content of
+  the item it was made from.
+- **An error frame's param** that isn't a string, such as null, leaves the payload's param empty;
+  the rest is still the error. An event that isn't JSON is reported with its JSON error
+  formatted, not wrapped, as the other formats' are.
+
+### The integration tier
+
+- **What a scenario proves is what the exported API shows.** That a reasoning round trip put the
+  reasoning on the wire, as the assistant message's reasoning, a thinking block, or a reasoning
+  item's content, is the unit tier's to prove: the exported API doesn't show the body. Each
+  scenario runs as one piece of test code per format, the format the only difference, and a
+  scenario an endpoint honors in some formats only runs through those alone.
+- **Every request carries a bound.** Messages requires max_tokens, and a reasoning model reasons
+  ahead of its answer or its call within the same bound, so a request to the agent, and the
+  vision stream's, leaves room for both. One request is bounded in time too: the endpoints have
+  their models loaded, so the bound covers generation alone, tens of seconds on a reasoning model.
+- **The model list is a check of its own.** TestModels wants each role's endpoint to list exactly
+  one model, so a misnamed or crowded endpoint fails there by name before any scenario of it runs;
+  a role whose `AI_<ROLE>_MODEL` names its model wants the list to name at least one.
+  A route the formats don't shape, such as embeddings', is sent in Chat Completions as the
+  client's format.
+- **A declared gap skips from inside the client.** A format refuses a request as it encodes it,
+  before anything is sent, on the goroutine that called Generate, GenerateStream's iterator, or
+  Transcribe, which is the test's own, so skipDeclared may skip the test there. Every scenario's
+  format is wrapped in one, so the skip is the tier's one rule.
+- **No failure prints a secret.** A header line that doesn't parse is reported by its number,
+  never its text, and a refused client by its variable and base URL; the model is read apart from
+  the credentials, so a scenario that prints it prints neither.
+- **The allowed_tools choice runs on Messages alone**, whose format sends it as the one tool it
+  allows under tool_choice any. Chat Completions and Open Responses send their own forms, as the
+  unit tier proves, and vLLM 0.33.0 honors neither: it refuses Chat Completions' with a 400 and
+  answers Open Responses' as auto, with no call.
+- **The embed scenario reads the vectors' decoding from their geometry.** It wants two alike
+  inputs closer to each other than either is to an unrelated one, which fails vectors decoded
+  with the wrong byte order or width, whose components are noise. It wants the third input,
+  embedded alone, to match the batch's third vector and not its first, which fails vectors placed
+  in arrival order or swapped. Their lengths are not
+  asserted: vLLM 0.33.0 gives granite-embedding-english-r2's vectors unnormalized, where llama.cpp
+  normalizes them.
+- **Media answers are read loosely.** Each shape of `shapes.png` must be named as a word of its
+  own, singular or plural, in any phrasing. A transcript of `phrase.wav` is compared with
+  everything but letters and digits stripped, so the access code passes as digits or words,
+  spaced or not, after "accesscode". The transcription route scenario skips unless
+  `AI_TRANSCRIPTION_BASE_URL` is set, as an audio endpoint may serve no route.
+- **A cancelled stream** yields no event after the cancel, the context's error as its one error,
+  and leaves the accumulated Response in progress, its message holding the text so far.
+
+### infer
+
+- **cmd/infer's run is apart from main** so its deferred stop releases the signal registration
+  before os.Exit, which skips deferred calls. The version is the build info's main module version,
+  `(devel)` when the binary carries none, as under go test.
+- **Nothing is read until a Build reaches it.** defineInfrastructure constructs nothing: each
+  setting is read in its node's constructor, so configuration is read only for a command that
+  declares a node, never in New. The dispatcher adds the lifecycle configuration node to every
+  Build. A setting is its default, replaced by its variable when that is set and non-empty, and
+  in turn by its flag when the dispatch set the flag, even to an empty value: the root's PreRun,
+  and each command flag's Validate, record which flags the dispatch set, as a flag variable can't
+  tell a flag given its default value, which still overrides the environment. A command's own
+  flag over a variable is that command's alone, so no other command accepts it or reads its
+  variable; `--mode`'s variable is named for the setting, `INFER_TRANSCRIPTION_MODE`, so it reads
+  as transcription's beside the other `INFER_` variables.
+- **The profile is decoded whole**, every member checked, not only the format in use's.
+- **The client sets no timeout**: a long stream is bounded by the run's context and the idle
+  timeout alone. The token and the headers are read once, as the client is built, and the client
+  makes no request. A header line that doesn't parse is reported by its number, never its text,
+  as the value is a secret, as the token is, which is why neither has a flag. The root help's
+  footer naming their variables renders in memory, so its write can't fail.
+- **ai.New's refusals are attributed by probing.** go-ai's errors carry no field, so only when
+  New refuses does infer put each setting to it again alone, beside values it never refuses: the
+  base URL with no options, the headers alone, the attempt count alone, the max delay alone, and
+  the base delay under the longest max delay. A base delay above the max delay is refused only
+  with both, so when New refuses the policy but no single field, the message names both delays;
+  with the max delay zero, the message says the base delay needs a max delay at least as long,
+  which says what to change. A max delay left unset is the default, never zero.
+- **infer retries by default** because it is run by hand and by scripts against endpoints that
+  shed load, where a transient 503 shouldn't end the run; go-ai's zero policy, which retries
+  nothing, suits a library. The default base delay is capped at a max delay given below it, but
+  a negative max delay is left for ai.New to refuse, naming it alone. The default max delay isn't
+  raised to meet a base delay given above it, so ai.New refuses that base delay, naming both.
+  go-ai sets no bound for a negative StreamIdleTimeout rather than refusing one, so infer refuses
+  it: a negative bound is a mistake, not a request for none. infer refuses an unknown
+  transcription mode in its own words rather than go-ai's.
+- **chat checks its request before it resolves the model**, so a refusal is found before the
+  models are listed; an unresolved request is checked under a stand-in name, as the checks refuse
+  only a request with none. A refusal with no feature is attributed by clearing one flag's field
+  at a time rather than setting it on a request of none: Messages refuses a request with no max
+  output tokens, so no format accepts a request with every field cleared. A max-tokens refusal with
+  no `--max-tokens` given is Messages'. `--instructions` and `--image` are never attributed: go-ai
+  refuses neither as chat sets them. An image's media type is its extension's, or else its
+  content's sniffed type, without parameters such as a charset, which a data URL doesn't take.
+- **chat's text reaches the terminal as it arrives.** Its writer flushes after each delta when
+  stdout buffers, and remembers the last byte, so the text ends with exactly one newline and an
+  empty text is an empty line.
+- **embed reads stdin line for line.** A final newline ends the last line rather than starting an
+  empty one, and a blank line is an empty input, which keeps the vectors line for line with the
+  input. A line may be as long as a model's context, which the scanner's default 64 KiB would
+  refuse, so a line may run to 64 MiB. models writes an entry's root only when it is a string: a
+  missing, null, or other root, or an entry that doesn't decode, is no root rather than a failure
+  on a member only some endpoints send.
+- **transcribe leaves the file to go-ai**, which opens it once per attempt, so a retry sends the
+  whole clip; infer neither reads nor checks it. go-ai is the authority on a format that can't
+  carry audio: infer reads its typed refusal only to word it, exit 1 rather than a usage error, as
+  it is the format and the mode together that can't transcribe. A chat-mode reply that isn't
+  completed writes no transcript, as it holds part of one at most. A route-mode 404's hint is a
+  line of its own, in parentheses, so the error is reported once, whole on its first line;
+  infer neither probes chat mode nor falls back to it, as a 404 can mean a wrong base URL too.
+- **The unit tier's graph test** takes the leaves from the App's own tree, not a copied list, so a
+  command mounted later is checked too, and proves its layer guard fails a fixture leaf that
+  declares a node ordered after one its path doesn't. New is shown to build nothing by a Replace
+  succeeding after it, as the graph freezes on its first Build. The live-stream test writes
+  through a buffering writer, as a terminal's may be, so a delta left unflushed never arrives
+  while the stream is held.
+- **The integration tier** builds the program once per run in TestMain; without the build tag the
+  harness only type-checks and needs no binary, so the unit tier runs its untagged tests of the
+  harness's mapping of a role's variables and of SkipDeclared. Every scenario on an endpoint runs
+  through runOn, so each gets the declared-gap skip. It reads go-ai's own integration testdata in
+  place, so the repository holds one copy of the media and one account of where it came from; the
+  tier runs from a checkout of go-ai, where that directory is always beside `tools/infer`.
+  TestChatReasoningEffort runs on the vision endpoint, not the agent's: gpt-oss-120b speaks
+  Harmony, which always reasons, and vLLM 0.33.0 refuses its effort none with a 400 through Chat
+  Completions and Open Responses and reasons anyway under Messages' thinking disabled, where
+  Gemma 4 honors the effort in all three. The reasoning at low gives none's zero its meaning, so
+  it is wanted only where none ran: Foundry's gpt-5-mini reasons at low through Open Responses but
+  reports none through Chat Completions, whose spec has no reasoning output.
 
 ## Rejected alternatives
 
@@ -1234,102 +1211,3 @@ What the review rules out, one line each with its reason, cited as the sections 
 - **One changelog and a `v*` trigger alone.** go-ai has two artifacts, each with its own changelog
   and tag namespace (finding 47; modules, decision 8).
 
-## Change list
-
-What each package of the spike at v0.4.0 becomes in go-ai, and what the evaluation and the surface
-change on the way, each item with its owning task and the findings or decisions behind it. Every
-package moves from
-`github.com/JaimeStill/spike-ai-pipeline-client` to `github.com/standards-lab/go-ai`, and every
-comment, error, and test that names the spike takes go-ai's names; the items don't repeat that. A
-package's other declarations port as the spike has them.
-
-### Packages
-
-**`client`, the root, becomes `ai`** (library):
-
-- The package is `ai`, and its errors are prefixed `ai: ` in place of `client: ` (finding 2;
-  decision 1).
-- `New(cfg Config)` becomes `New(baseURL, httpClient, wireFormat, opts Options)`, and `Config`
-  becomes `Options`, without `BaseURL`, `HTTP`, and `Format` (finding 6; decision 2).
-- A nil HTTP client or format panics by name, in place of `New`'s error (finding 8).
-- `Options.Retry` is a `RetryPolicy` value; `RetryPolicy.check` no longer refuses zero attempts,
-  and a `MaxAttempts` of 0 sends one (finding 7).
-- `Options.Header` is added, and `New` refuses one naming `Content-Type`, `Accept`, or
-  `Authorization`, and one net/http can't send (finding 12; decision 3).
-- `Options.StreamIdleTimeout` is added, bounding each read of a started stream in `stream.go`
-  (finding 22; decision 7).
-- `retry.go`'s set adds 502 and 504 (finding 13; decision 8).
-- `APIError.RetryAfter` is added, holding the Retry-After that `send` discards (finding 14;
-  decision 5).
-- `TranscriptionRequest.File` becomes `Open`, called once per attempt, and `Transcribe` joins the
-  retry loop (finding 36).
-- `Options.TranscriptionMode` is added, with `TranscriptionMode`, `TranscribeRoute`, the zero
-  value, and `TranscribeChat`, and `TranscriptionInstruction`, chat mode's default instruction;
-  `New` refuses an unknown mode (finding 37; decision 9).
-- `IncompleteTranscriptError` is added: a chat-mode reply that isn't completed returns it, with
-  no `Transcription` and no retry (finding 37; decision 9).
-- `Model` and `Client.Models` are added, with a GET beside the POSTs `request` builds (finding 38;
-  decision 6).
-- `doc.go` points to go-ai's README, names no caller, and documents `Embed`, `Transcribe`, and
-  `Models` on a client of any format (findings 51 and 52; decision 9).
-
-**`protocol`** (library): `InputAudio`'s wire type becomes `go-ai:input_audio` (finding 4), and
-`text.go` ports as the spike has it (finding 32).
-
-**`format`** (library): ported as the spike has it (finding 28).
-
-**`format/completions`, `format/messages`, and `format/responses`** (library):
-
-- Each reasoning envelope's prefix becomes `go-ai:<format>/v1:`, and an envelope under the spike's
-  prefix is dropped on encode (finding 4).
-- `messages`' and `responses`' `doc.go` state what the format sends, refuses, drops, and
-  normalizes, and the account of router build b11669 moves to their testdata READMEs (finding 31).
-- Each format's testdata is ported with its llama.cpp b11669 recordings, and vLLM 0.33.0's join
-  them in `testdata/vllm`, each set's README naming its engine and build (finding 43).
-- `completions` reads a reply's reasoning from vLLM's `reasoning` as well as
-  `reasoning_content` (finding 43).
-
-**`internal/sse`** (library): `Decoder.Retry` is dropped (finding 24).
-
-**`internal/native`** (library): ported as the spike has it (finding 33).
-
-**`internal/clienttest` becomes `internal/aitest`** (library), renamed with the root package
-(finding 40).
-
-**`integration`** (library):
-
-- `SPIKE_ROUTER_URL` gives way to `AI_AGENT_BASE_URL`, `AI_VISION_BASE_URL`, `AI_AUDIO_BASE_URL`,
-  `AI_EMBEDDING_BASE_URL`, and `AI_TRANSCRIPTION_BASE_URL`, each with no default, so a scenario
-  skips unless a caller names its role's endpoint; each scenario sends to the one model its
-  endpoint's `/models` lists (finding 41).
-- `router_test.go`'s `hinted` and `record` give way to assertions of what the format sent or what
-  the endpoint does with it, and a check that can't fail is deleted (finding 42).
-
-**`tools/infer`, new** (infer): the nested module, laid out from go-cli-sdk-template, with the
-commands models, embed, chat, transcribe, and version over the base module's surface, the root
-endpoint and retry flags over `INFER_` variables, the one-model fallback, and its unit and
-integration tiers (modules, "infer's module").
-
-### The repository
-
-- **`go.mod`** (library): `go 1.27` and no `require` (modules, decisions 2 and 3).
-- **`.golangci.yml`** (library): the spike's, its allow list on go-ai's module path and its base
-  rule excluding `tools/infer` (finding 44; modules, decisions 3 and 4). The infer task adds the
-  rule over `tools/infer`.
-- **`mise.toml`** (library): `"."` in `GO_MODULES`, the no-`require` assertion, the lint under the
-  integration tag, `mise run integration`, and `mise run upgrade`, without shellcheck (findings 41,
-  44 to 46; modules, decision 3). The infer task adds `"tools/infer"` to `GO_MODULES`.
-- **`.github/workflows/release.yml`** (library): go-storage's, over both tag namespaces (finding
-  47; modules, decision 8). go-ai's check-only `ci.yml` stands as it is, and the spike's is not
-  ported (finding 50).
-- **`CHANGELOG.md`** (library): Keep-a-Changelog, with none of the spike's entries, its first
-  release `v0.1.0` (finding 48; modules, decision 6). The infer task adds
-  `tools/infer/CHANGELOG.md` and the tag `tools/infer/v0.1.0`.
-- **`go.work`** (infer): `.` and `./tools/infer` (modules, decision 5).
-- **`README.md`** (library): go-ai's tier, its dependency line beside its link to the standard,
-  and its API by example, naming no caller (finding 52). The infer task adds `infer`'s usage.
-- **The spike's `STANDARDS.md`, `CLAUDE.md`, `context/`, and `scripts/currency.sh`** are not
-  ported: go-ai has its own (finding 49 for `scripts/currency.sh`), and its `STANDARDS.md` carries
-  the spike's three client rules, two of them changed (finding 53).
-- **The infer rerun against the workstations' vLLM endpoints** (data-intelligence, "Gates"),
-  through the formats the processing layer's endpoints use, and the fixes it finds (acceptance).

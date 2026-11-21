@@ -17,20 +17,12 @@ import (
 // [RawReply]. A typed reply is the wire shape of its route, and is written as that shape whichever
 // route returns it.
 type Reply interface {
-	// write writes the reply to w, shaped as a asks. ctx is the request's context, which a
-	// held stream waits on.
 	write(ctx context.Context, w http.ResponseWriter, a asked)
 }
 
-// asked is what a request asked of its reply's shape: what the Chat Completions route decoded of
-// it, and zero on every other route, so a ChatReply another route returns is unstreamed.
 type asked struct {
-	// arrival is the request's arrival number, from which a chat reply's id is made.
-	arrival int
-	// model is the request's model, which a chat reply names as the model that answered.
-	model string
-	// stream is set when the request asked to stream, and streamUsage when it asked, in
-	// stream_options.include_usage, for the stream's usage.
+	arrival             int
+	model               string
 	stream, streamUsage bool
 }
 
@@ -193,15 +185,10 @@ func (r RawReply) write(ctx context.Context, w http.ResponseWriter, _ asked) {
 	}
 }
 
-// hold holds a stream on g, when g is not nil, until the test lets it go, reporting false when
-// ctx ended first and the stream must end. Everything the stream wrote is flushed before it is
-// held, so the client has read it.
 func hold(ctx context.Context, g *Gate) bool {
 	return g == nil || g.Wait(ctx) == nil
 }
 
-// encode returns f as a server-sent event: its event field, a data field per line of its data,
-// and the blank line that dispatches it.
 func (f Frame) encode() string {
 	var b strings.Builder
 	if f.Event != "" {
@@ -237,8 +224,6 @@ func (r ErrorReply) write(_ context.Context, w http.ResponseWriter, _ asked) {
 	writeError(w, status, "", r.Message)
 }
 
-// writeError writes an OpenAI-style error reply of status, with the error's type, omitted when
-// empty, and message.
 func writeError(w http.ResponseWriter, status int, typ, message string) {
 	type detail struct {
 		Message string `json:"message"`
@@ -249,13 +234,17 @@ func writeError(w http.ResponseWriter, status int, typ, message string) {
 	}{detail{message, typ}})
 }
 
-// writeJSON writes v as a JSON reply of status.
 func writeJSON(w http.ResponseWriter, status int, v any) {
-	body, err := json.Marshal(v)
-	if err != nil {
-		panic(err) // the package's reply shapes are strings, integers, and their structs
-	}
+	body := mustMarshal(v)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
+}
+
+func mustMarshal(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic("aitest: a reply shape, all strings, integers, and their structs, failed to encode: " + err.Error())
+	}
+	return b
 }

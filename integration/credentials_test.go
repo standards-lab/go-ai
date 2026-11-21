@@ -15,16 +15,6 @@ import (
 	"github.com/standards-lab/go-ai/format/completions"
 )
 
-// This file is untagged, so the unit tier runs its tests: the reading of a role's credentials,
-// which the tagged scenarios use through newClient, is checked hermetically on every pull
-// request.
-
-// withCredentials returns opts with the credentials of the role whose API root variable is
-// baseVariable, such as AI_AGENT_BASE_URL, read through getenv: AI_<ROLE>_TOKEN, such as
-// AI_AGENT_TOKEN, when set and non-empty, as Options.Token, and the headers AI_<ROLE>_HEADER
-// holds, as parseHeader reads them, as Options.Header. With both unset it returns opts as given,
-// so the role's endpoint is sent what it was before either existed. Its error names the variable
-// and the line, never a value, as a value is a secret.
 func withCredentials(opts ai.Options, baseVariable string, getenv func(string) string) (ai.Options, error) {
 	role := strings.TrimSuffix(baseVariable, "_BASE_URL")
 	tokenVariable, headerVariable := role+"_TOKEN", role+"_HEADER"
@@ -41,25 +31,14 @@ func withCredentials(opts ai.Options, baseVariable string, getenv func(string) s
 	return opts, nil
 }
 
-// modelVariable is the variable that names the model of the role whose API root variable is
-// baseVariable: AI_<ROLE>_MODEL, such as AI_AGENT_MODEL for AI_AGENT_BASE_URL.
 func modelVariable(baseVariable string) string {
 	return strings.TrimSuffix(baseVariable, "_BASE_URL") + "_MODEL"
 }
 
-// namedModel returns the model AI_<ROLE>_MODEL names, read through getenv, for the role whose
-// API root variable is baseVariable, or "" when it is unset or empty, so the role's scenarios
-// send to the one model its endpoint lists. A model is no secret, so a scenario may print it; it
-// is read apart from the credentials, so printing it never prints them.
 func namedModel(baseVariable string, getenv func(string) string) string {
 	return getenv(modelVariable(baseVariable))
 }
 
-// parseHeader returns the headers v holds: one "Name: value" per line, split at the first colon,
-// the line, the name, and the value each trimmed of surrounding space, and a blank line skipped;
-// a name given on several lines has each value. A line with no colon, or no name before it, is
-// an error naming the line's number, never its text. It refuses nothing else: ai.New refuses a
-// name the Client sets and a name or value net/http can't send. An empty v is nil.
 func parseHeader(v string) (http.Header, error) {
 	var h http.Header
 	for i, line := range strings.Split(v, "\n") {
@@ -83,10 +62,6 @@ func parseHeader(v string) (http.Header, error) {
 	return h, nil
 }
 
-// newClient returns a Client of the endpoint at base, the API root baseVariable holds, speaking
-// f, adjusted by opts and by the role's credentials, which withCredentials reads through getenv.
-// Its error names baseVariable and base when New refuses, and never a token or header value, so
-// a failing scenario that prints it prints no secret.
 func newClient(baseVariable, base string, f format.Format, opts ai.Options, getenv func(string) string) (*ai.Client, error) {
 	opts, err := withCredentials(opts, baseVariable, getenv)
 	if err != nil {
@@ -99,14 +74,10 @@ func newClient(baseVariable, base string, f format.Format, opts ai.Options, gete
 	return c, nil
 }
 
-// env is a getenv over the variables it holds, any other unset.
 func env(vars map[string]string) func(string) string {
 	return func(name string) string { return vars[name] }
 }
 
-// AI_<ROLE>_HEADER's lines each become a header: one line or several, each trimmed of
-// surrounding space, a blank line skipped, a value kept whole after its first colon, and a name
-// given twice keeping both values; blank lines alone are no header.
 func TestParseHeader(t *testing.T) {
 	for _, tc := range []struct {
 		name, v string
@@ -134,8 +105,6 @@ func TestParseHeader(t *testing.T) {
 	}
 }
 
-// With neither credential variable set, the options are as given: no token source and no
-// header, as before the variables existed.
 func TestWithCredentials_Unset(t *testing.T) {
 	given := ai.Options{TranscriptionMode: ai.TranscribeChat}
 	got, err := withCredentials(given, "AI_AGENT_BASE_URL", env(map[string]string{"AI_VISION_TOKEN": "other"}))
@@ -147,8 +116,6 @@ func TestWithCredentials_Unset(t *testing.T) {
 	}
 }
 
-// The role's token and headers reach the endpoint's requests: the token as the bearer token,
-// each header beside it.
 func TestNewClient_SendsCredentials(t *testing.T) {
 	var got http.Header
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -173,12 +140,8 @@ func TestNewClient_SendsCredentials(t *testing.T) {
 	}
 }
 
-// secret is the token and header value of each refused credential, which no failure may print.
 const secret = "s3cret-value"
 
-// Each refused credential fails newClient naming the header variable or the role's base URL,
-// never the token or the header's value: a header line with no colon or no name, a name the
-// Client sets, and a name or value net/http can't send.
 func TestNewClient_FailureOmitsSecrets(t *testing.T) {
 	const base = "http://localhost:8000/v1"
 	for _, tc := range []struct {
@@ -208,8 +171,6 @@ func TestNewClient_FailureOmitsSecrets(t *testing.T) {
 	}
 }
 
-// AI_<ROLE>_MODEL names the role's own model; another role's, or the variable unset or empty,
-// names none.
 func TestNamedModel(t *testing.T) {
 	for _, tc := range []struct {
 		name string

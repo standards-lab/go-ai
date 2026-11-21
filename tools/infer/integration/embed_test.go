@@ -11,13 +11,6 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// TestEmbed embeds three inputs, two alike and one unrelated, as embed's
-// arguments, and wants one JSON array of numbers per input, one per line,
-// with one dimension count of at least 64, and the two alike inputs closer
-// to each other than either is to the unrelated one, which vectors written
-// out of input order, or decoded wrong, fail. Their lengths are not
-// asserted: vLLM 0.33.0 gives granite-embedding-english-r2's vectors
-// unnormalized.
 func TestEmbed(t *testing.T) {
 	inputs := []string{
 		"The cat sat on the warm windowsill all afternoon.",
@@ -55,7 +48,6 @@ func TestEmbed(t *testing.T) {
 	}
 }
 
-// cosine is the cosine similarity of a and b, which have the same length.
 func cosine(a, b []float64) float64 {
 	var ab, aa, bb float64
 	for i := range a {

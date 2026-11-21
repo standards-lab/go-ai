@@ -9,12 +9,6 @@ import (
 	"testing"
 )
 
-// TestDeclaredSkip runs the built program through runOn against a loopback
-// endpoint, as a role whose AI_<ROLE>_PROFILE refuses the effort none in
-// Open Responses: chat at --reasoning none is refused before sending, and
-// the scenario skips, while the endpoint gets no request. It needs no live
-// endpoint, so it never skips itself; it proves infer's declared refusal is
-// what SkipDeclared reads.
 func TestDeclaredSkip(t *testing.T) {
 	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

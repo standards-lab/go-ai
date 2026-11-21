@@ -56,8 +56,6 @@ type RetryPolicy struct {
 	MaxDelay time.Duration
 }
 
-// check reports a policy New refuses: a negative attempt count or delay, or a base delay above
-// the most delay.
 func (p RetryPolicy) check() error {
 	switch {
 	case p.MaxAttempts < 0:
@@ -70,8 +68,6 @@ func (p RetryPolicy) check() error {
 	return nil
 }
 
-// backoff is the cap on the wait before attempt n+1, after n attempts: BaseDelay doubled n-1
-// times, at most MaxDelay. The doubling stops at MaxDelay, so it can't overflow.
 func (p RetryPolicy) backoff(n int) time.Duration {
 	d := p.BaseDelay
 	for i := 1; i < n && d < p.MaxDelay; i++ {
@@ -83,7 +79,6 @@ func (p RetryPolicy) backoff(n int) time.Duration {
 	return min(d, p.MaxDelay)
 }
 
-// fullJitter is the Client's jitter source: a random duration from 0 up to d, d included.
 func fullJitter(d time.Duration) time.Duration {
 	if d <= 0 {
 		return 0
@@ -94,16 +89,7 @@ func fullJitter(d time.Duration) time.Duration {
 	return rand.N(d + 1)
 }
 
-// send sends a request of method to route, accepting accept, with the body makeBody makes for
-// each attempt, of contentType, or none when makeBody is nil, and returns a 2xx reply, its body
-// unread, for the caller to read and close; closing it ends the attempt's request body. Each
-// attempt is request's and do's; with the Client's retry policy, an attempt that fails in do as
-// RetryPolicy describes is made again after the wait it describes. An attempt that fails in
-// request, before anything is sent, such as on the token source's error or a clip that won't
-// open, is returned at once, whatever its error wraps, and so is one whose request body failed
-// on its own, such as a clip's read, which a later attempt doesn't mend. Every operation sends
-// through here, so this is the one retry loop: Generate, GenerateStream, whose stream starts
-// only once send returns, Embed, Transcribe, and Models.
+// See docs/design.md, "Implementation notes".
 func (c *Client) send(ctx context.Context, method, route string, makeBody body, contentType, accept string,
 	decodeError func(body []byte) (message, typ, code string)) (*http.Response, error) {
 	attempts := max(c.retry.MaxAttempts, 1)
@@ -142,8 +128,6 @@ func (c *Client) send(ctx context.Context, method, route string, makeBody body, 
 	}
 }
 
-// retryable reports whether an attempt that failed with err may be made again: a 408, 429, 502,
-// 503, or 504 reply, or a connection failure before any reply while ctx is live.
 func retryable(ctx context.Context, err error) bool {
 	if apiErr, ok := errors.AsType[*APIError](err); ok {
 		switch apiErr.Status {
@@ -153,21 +137,13 @@ func retryable(ctx context.Context, err error) bool {
 		}
 		return false
 	}
-	// A transport error once ctx is done is ctx's doing, not the connection's.
 	if ctx.Err() != nil {
 		return false
 	}
 	return connectionFailure(err)
 }
 
-// connectionFailure reports whether err, from sending a request, is the connection failing
-// before any reply: a network operation's error, such as a refused dial or a reset, or the
-// connection closed before the reply's header, which the transport reports as io.EOF or
-// io.ErrUnexpectedEOF. A host name that doesn't resolve isn't, unless the resolver calls its
-// failure temporary. Anything else, such as the transport's ResponseHeaderTimeout, net/http's
-// error for a server closing an idle connection, a TLS certificate the transport refuses, or an
-// error of the caller's own RoundTripper, isn't: the list is short so that only what a later
-// attempt can mend is retried.
+// See docs/design.md, "Implementation notes".
 func connectionFailure(err error) bool {
 	if dnsErr, ok := errors.AsType[*net.DNSError](err); ok {
 		return dnsErr.IsTemporary
@@ -178,11 +154,6 @@ func connectionFailure(err error) bool {
 	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
-// parseRetryAfter reads a Retry-After header's value, h, at now: whole seconds, or an HTTP date,
-// which http.ParseTime reads, its wait the time from now until it, or none for a date passed. It
-// reports false for an empty, negative, or unreadable value, which leaves the wait to the
-// backoff. Seconds too many to hold are the longest wait there is, which exceeds any policy's
-// MaxDelay.
 func parseRetryAfter(h string, now time.Time) (time.Duration, bool) {
 	h = strings.TrimSpace(h)
 	if h == "" {

@@ -9,11 +9,6 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// TestChat asks the agent a one-word question with a reasoning effort, in
-// each format, streamed and unstreamed, and wants the answer on stdout, a
-// completed summary on stderr, and the reply's reasoning counted there. The
-// agent's model always reasons, so TestChatReasoningEffort, not this, shows
-// an effort reaching the model.
 func TestChat(t *testing.T) {
 	eachChat(t, func(t *testing.T, formatEnv, streamFlag string) {
 		res := runOn(t, agent, []string{formatEnv}, "chat", streamFlag,
@@ -34,11 +29,6 @@ func TestChat(t *testing.T) {
 	})
 }
 
-// TestChatIncompleteAtMaxTokens asks the agent for a long answer under
-// --max-tokens 16, go-ai's least bound, in each format, streamed and
-// unstreamed, and wants the reply incomplete for max_output_tokens: exit 1,
-// the summary's status incomplete, and the error naming the reason, last on
-// stderr. The bound reaching the model is what ends the reply early.
 func TestChatIncompleteAtMaxTokens(t *testing.T) {
 	eachChat(t, func(t *testing.T, formatEnv, streamFlag string) {
 		res := runOn(t, agent, []string{formatEnv}, "chat", streamFlag, "--max-tokens", "16",
@@ -54,32 +44,14 @@ func TestChatIncompleteAtMaxTokens(t *testing.T) {
 	})
 }
 
-// TestChatReasoningEffort asks TestChat's question at --reasoning none and
-// at --reasoning low, in each format, streamed and unstreamed, and wants the
-// answer each time, no reasoning item at none, and at least one at low, so
-// the zero shows the effort reached the model rather than a model that
-// never reasons.
-//
-// It runs on the vision endpoint, not the agent's: the agent's model,
-// gpt-oss-120b, speaks Harmony, which always reasons. vLLM 0.33.0 refuses
-// its reasoning_effort none with a 400 through Chat Completions and Open
-// Responses, and through Messages takes thinking {"type":"disabled"} and
-// reasons anyway. The vision model, Gemma 4, honors the effort in all three
-// formats.
-//
-// The reasoning at low is wanted only to give none's zero its meaning, so it
-// is wanted only where none ran. Where the role's profile declares none
-// refused, the none case skips and low wants the answer alone: Foundry's
-// gpt-5-mini reasons at low through Open Responses but, through Chat
-// Completions, whose spec has no reasoning output, returns none and reports
-// no reasoning tokens.
+// See docs/design.md, "Implementation notes".
 func TestChatReasoningEffort(t *testing.T) {
 	eachChat(t, func(t *testing.T, formatEnv, streamFlag string) {
-		noneRan := false // whether the none case reached the model, not skipped
+		noneRan := false
 		for _, c := range []struct {
 			effort  string
-			atLeast int // the fewest reasoning items wanted
-			atMost  int // the most, or -1 for no bound
+			atLeast int
+			atMost  int
 		}{
 			{effort: "none", atLeast: 0, atMost: 0},
 			{effort: "low", atLeast: 1, atMost: -1},

@@ -1,25 +1,22 @@
 #!/usr/bin/env bash
-# Records the Open Responses replies in this directory from vLLM 0.33.0. Run it from anywhere;
-# it writes each reply's body, as it arrived, beside itself. See README.md.
+# Records the Open Responses replies in this directory from vLLM 0.33.0.
+# See README.md
 set -euo pipefail
 cd "$(dirname "$0")"
 
-AGENT=http://gb10-1:8000/v1   # openai/gpt-oss-120b
-VISION=http://gb10-2:8000/v1  # nvidia/Gemma-4-26B-A4B-NVFP4
+AGENT=http://gb10-1:8000/v1
+VISION=http://gb10-2:8000/v1
 
-# record name base body: posts body to base's responses unstreamed, writing name.json.
 record() {
   curl -sS -o "$1.json" -H 'Content-Type: application/json' \
     -d "$3,\"stream\":false,\"store\":false,\"include\":[\"reasoning.encrypted_content\"]}" "$2/responses"
 }
 
-# record_stream name base body: posts body streamed, as EncodeStreamRequest asks, writing name.sse.
 record_stream() {
   curl -sS -N -o "$1.sse" -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
     -d "$3,\"stream\":true,\"store\":false,\"include\":[\"reasoning.encrypted_content\"]}" "$2/responses"
 }
 
-# Each body is left open, its stream and stateless members appended by record and record_stream.
 cities='"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Name three French cities, comma-separated, nothing else."}]}]'
 weather='"tools":[{"type":"function","name":"get_weather","description":"Get the current temperature in a city, in degrees Celsius.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]},"strict":false}]'
 

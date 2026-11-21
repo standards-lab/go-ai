@@ -10,8 +10,10 @@ Completions alone.
 reply's body as it arrived, with `curl -o`. Nothing is stripped or edited. It reads
 `AI_VISION_BASE_URL` and `AI_VISION_HEADER`, the variables the integration tiers read, the header
 here `api-key: <key>`, and hands the URL and the headers to curl in a config on stdin (`curl -K -`),
-so neither the account's name nor its key is in curl's arguments, its output, or a file; curl runs
-with `-s` and without `-S`, so an error prints no host. The script prints one line per request, its
+so neither the account's name nor its key is in curl's arguments, its output, or a file. The
+header lines reach that config through a pipe from `printf`, a shell builtin, so no value is in
+any process's arguments or a temporary file either. curl runs with `-s` and without `-S`, so an
+error prints no host. The script prints one line per request, its
 time, path, model, whether it streamed, and its HTTP status, and stops at any status but 200,
 discarding that reply so it never replaces a recording. Run it again to re-record; the ids and some
 texts will differ, and the tests that pin them must follow.

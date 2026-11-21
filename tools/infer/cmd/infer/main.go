@@ -13,9 +13,7 @@ func main() {
 	os.Exit(run())
 }
 
-// run runs infer and returns its exit code. It is separate from main so the
-// deferred stop releases the signal registration before os.Exit, which
-// skips deferred calls.
+// See docs/design.md, "Implementation notes".
 func run() int {
 	ctx, stop := process.SignalContext()
 	defer stop()

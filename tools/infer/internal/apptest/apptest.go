@@ -73,7 +73,6 @@ func Halt(a *app.App) {
 	})
 }
 
-// envPrefix opens the name of every variable infer reads.
 const envPrefix = "INFER_"
 
 // Env gives the test the environment a run reads: every INFER_ variable the

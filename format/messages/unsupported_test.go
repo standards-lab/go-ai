@@ -11,18 +11,12 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// unknownItem, unknownChoice, and unknownFormat are an item, a tool choice, and a text format of
-// a type the format doesn't know, each taking its interface's method from the protocol type it
-// embeds.
 type (
 	unknownItem   struct{ protocol.Message }
 	unknownChoice struct{ protocol.FunctionToolChoice }
 	unknownFormat struct{ protocol.PlainTextFormat }
 )
 
-// TestEncodeRefusalIsUnsupported wants each request the format refuses refused with a
-// *format.UnsupportedError of the feature and value refused, a spec-level refusal, and the
-// refusal's message unchanged, streamed or not.
 func TestEncodeRefusalIsUnsupported(t *testing.T) {
 	user := text(protocol.RoleUser, "hi")
 	part := func(p protocol.ContentPart) *protocol.Request {
@@ -36,8 +30,6 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 	choice := ask(user)
 	choice.Tools = []protocol.FunctionTool{{Name: "f"}}
 	choice.ToolChoice = unknownChoice{protocol.FunctionToolChoice{Name: "f"}}
-	// parallel is a request of a tool and ParallelToolCalls, its Native tool_choice clashing with
-	// the member ParallelToolCalls sets, whether or not the request sends it.
 	parallel := func(p bool, choice protocol.ToolChoice) *protocol.Request {
 		req := withNative(ask(user), `{"tool_choice":{"type":"any"}}`)
 		req.Tools = []protocol.FunctionTool{{Name: "f"}}
@@ -116,9 +108,6 @@ func TestEncodeRefusalIsUnsupported(t *testing.T) {
 	}
 }
 
-// TestEncodeMalformedDataURLIsNotUnsupported wants an image data URL of no data, which is
-// malformed rather than a feature Messages has no form for, refused with an error that isn't a
-// *format.UnsupportedError.
 func TestEncodeMalformedDataURLIsNotUnsupported(t *testing.T) {
 	req := ask(protocol.Message{Role: protocol.RoleUser, Content: []protocol.ContentPart{
 		protocol.InputImage{ImageURL: "data:image/png;base64"},

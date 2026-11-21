@@ -14,9 +14,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// encode encodes req, failing t if it is invalid or EncodeRequest refuses it, or unless
-// EncodeRequest sets the anthropic-version header, 2026-10-21, and no other. The client validates
-// every request before encoding it, so a request the format is given here is a valid one.
 func encode(t *testing.T, req *protocol.Request) []byte {
 	t.Helper()
 	if err := req.Validate(); err != nil {
@@ -34,7 +31,6 @@ func encode(t *testing.T, req *protocol.Request) []byte {
 	return body
 }
 
-// decode decodes reply as the body of a 2xx reply.
 func decode(reply string) (*protocol.Response, error) {
 	return messages.New(messages.Options{}).DecodeResponse([]byte(reply))
 }
@@ -47,27 +43,19 @@ func assistant(parts ...protocol.ContentPart) protocol.Message {
 	return protocol.Message{Role: protocol.RoleAssistant, Content: parts}
 }
 
-// withNative returns req with native as its Native.
 func withNative(req *protocol.Request, native string) *protocol.Request {
 	req.Native = jsontext.Value(native)
 	return req
 }
 
-// seal returns the messages format's envelope of the JSON text e, as DecodeResponse writes it
-// into a reasoning item's encrypted_content.
 func seal(e string) string {
 	return "go-ai:messages/v1:" + base64.StdEncoding.EncodeToString([]byte(e))
 }
 
-// thinkingEnvelope is the envelope of a thinking block of text "hm" and signature "sig", as
-// DecodeResponse writes it: base64 of {"thinking":"hm","signature":"sig"}.
 const thinkingEnvelope = "go-ai:messages/v1:eyJ0aGlua2luZyI6ImhtIiwic2lnbmF0dXJlIjoic2lnIn0="
 
-// redactedEnvelope is the envelope of a redacted_thinking block of data "x": base64 of
-// {"data":"x"}.
 const redactedEnvelope = "go-ai:messages/v1:eyJkYXRhIjoieCJ9"
 
-// ask is a request to model m of the input items, bounded at 64 output tokens.
 func ask(input ...protocol.Item) *protocol.Request {
 	return &protocol.Request{Model: "m", Input: input, MaxOutputTokens: 64}
 }
@@ -247,7 +235,6 @@ func TestEncode(t *testing.T) {
 	}
 }
 
-// TestEncodeRefuses covers the valid requests the format refuses, each before it sets a header.
 func TestEncodeRefuses(t *testing.T) {
 	user := text(protocol.RoleUser, "hi")
 	image := func(url string) *protocol.Request {
@@ -308,13 +295,10 @@ func TestEncodeRefuses(t *testing.T) {
 	}
 }
 
-// textThinking is the thinking text of the reply recorded in testdata/text.json.
 const textThinking = `The user asks: "Name three French cities, comma-separated, nothing else." The developer says: "Answer with the names alone." So we should output three French city names, separated by commas, no extra text. So something like "Paris, Lyon, Marseille". Ensure no extra punctuation beyond commas. Probably just "Paris, Lyon, Marseille".`
 
-// toolUseThinking is the thinking text of the reply recorded in testdata/tool_use.json.
 const toolUseThinking = `The user asks: "What is the weather in Paris right now?" We need to get current temperature in Paris. Use function get_weather with city "Paris".`
 
-// quote returns s as a JSON string.
 func quote(s string) string {
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -323,14 +307,12 @@ func quote(s string) string {
 	return string(b)
 }
 
-// TestDecodeRecorded decodes the router's replies recorded in testdata.
 func TestDecodeRecorded(t *testing.T) {
 	cases := []struct {
 		file string
 		want *protocol.Response
 	}{
 		{
-			// The thinking block ahead of the text is a reasoning item, its signature empty.
 			file: "text.json",
 			want: &protocol.Response{
 				ID:    "chatcmpl-AM4P3ZlmlUsqESx8ANKHI8limmMGUALi",
@@ -355,7 +337,6 @@ func TestDecodeRecorded(t *testing.T) {
 			},
 		},
 		{
-			// A thinking block, then a tool_use block, its input the call's arguments.
 			file: "tool_use.json",
 			want: &protocol.Response{
 				ID:    "chatcmpl-FtWUtroPbbUwM5wedxWLbnuDkCXabSyo",
@@ -365,8 +346,6 @@ func TestDecodeRecorded(t *testing.T) {
 						ID:      "chatcmpl-FtWUtroPbbUwM5wedxWLbnuDkCXabSyo/0",
 						Status:  protocol.StatusCompleted,
 						Content: []protocol.ReasoningText{{Text: toolUseThinking}},
-						// The envelope's literal, pinned: base64 of
-						// {"thinking":<toolUseThinking>,"signature":""}.
 						EncryptedContent: "go-ai:messages/v1:" +
 							"eyJ0aGlua2luZyI6IlRoZSB1c2VyIGFza3M6IFwiV2hhdCBpcyB0aGUgd2VhdGhlciBpbiBQYXJpcyByaWdodCBub3c/XCIgV2UgbmVlZCB0byBnZXQgY3VycmVudCB0ZW1wZXJhdHVyZSBpbiBQYXJpcy4gVXNlIGZ1bmN0aW9uIGdldF93ZWF0aGVyIHdpdGggY2l0eSBcIlBhcmlzXCIuIiwic2lnbmF0dXJlIjoiIn0=",
 					},

@@ -2,7 +2,7 @@
 
 The judgement calls the standards-reviewer applies to go-ai, beyond what `mise run check`
 enforces: each one line, with the architecture page that applies. They come from go-ai's design
-review, `context/design.md`.
+review, `docs/design.md`.
 
 - `architecture/principles/context-architecture.md`: the README and each package's `doc.go` hold
   go-ai's documentation; a change that alters documented behavior updates them with it.
@@ -61,3 +61,6 @@ review, `context/design.md`.
 - `architecture/standards/go-elemental/principles/cli-applications.md`: `infer` is laid out from
   go-cli-sdk-template, and `infrastructure.go` is the only file of its composition root that names
   a format.
+- `architecture/principles/comments.md`: every comment is one of the five kinds, in source, tests,
+  scripts, and every configuration file (TOML, YAML, `.gitignore`); a doc comment on an unexported
+  identifier or a test function is not package documentation.

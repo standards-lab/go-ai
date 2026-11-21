@@ -8,18 +8,12 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// The reasoning of the gpt-oss-120b replies recorded in testdata/foundry, unstreamed and
-// streamed. Foundry's two replies to one request differ, even at temperature 0 and seed 7.
 const (
 	foundryCitiesReasoning       = "Need to output three French cities, comma-separated, nothing else."
 	foundryCitiesStreamReasoning = "We just output three French cities separated by commas."
 	foundryLengthReasoning       = "The user asks: \"Name three French cities, comma-separated,"
 )
 
-// TestDecodeFoundry decodes the Azure AI Foundry replies recorded in testdata/foundry. gpt-5-mini
-// gives no reasoning text in Chat Completions, only its count; gpt-oss-120b gives its reasoning
-// as reasoning_content, and its usage's reasoning_tokens beside completion_tokens rather than in
-// completion_tokens_details, which the format doesn't read, so its reasoning tokens decode as 0.
 func TestDecodeFoundry(t *testing.T) {
 	message := func(id, s string) protocol.Message {
 		return protocol.Message{
@@ -78,9 +72,6 @@ func TestDecodeFoundry(t *testing.T) {
 			},
 		},
 		{
-			// Stopped at max_completion_tokens 16 in the reasoning: the content is empty, which
-			// gives no message, and the reasoning is incomplete. The usage's top-level
-			// reasoning_tokens, 18, exceeds its completion_tokens, 16, and is taken as given.
 			file: "oss_length.json",
 			want: &protocol.Response{
 				ID:    "79d4bb81100a4cf1afc6a40330a9b0ab",
@@ -108,14 +99,6 @@ func TestDecodeFoundry(t *testing.T) {
 	}
 }
 
-// TestStreamFoundry translates the Azure AI Foundry streams recorded in testdata/foundry to
-// events, and folds them to the Response DecodeResponse gives for the same request unstreamed,
-// given the stream's ids, its reasoning text, and its usage. Foundry's two replies to one request
-// differ in their reasoning and their token counts, so those are pinned from the stream.
-//
-// gpt-5-mini's streams open with a chunk of an empty id and no choices, its prompt's content
-// filter results, which claims nothing about the reply: the stream's id and model are the next
-// chunk's, which response.created bears.
 func TestStreamFoundry(t *testing.T) {
 	cases := []struct {
 		name      string

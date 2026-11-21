@@ -15,9 +15,6 @@ import (
 	"github.com/standards-lab/go-ai/protocol"
 )
 
-// textDeltas ranges c's stream of a user message with ctx on its own goroutine, sending each
-// text delta to the channel it returns, which it closes when the stream ends, and the error
-// that ended the stream, if any, to errs.
 func textDeltas(ctx context.Context, c *ai.Client, errs chan<- error) <-chan string {
 	deltas := make(chan string, 16)
 	go func() {
@@ -36,8 +33,6 @@ func textDeltas(ctx context.Context, c *ai.Client, errs chan<- error) <-chan str
 	return deltas
 }
 
-// nextDelta returns the next text delta of deltas, failing t if none comes within five seconds
-// or the stream ends first.
 func nextDelta(t *testing.T, deltas <-chan string) string {
 	t.Helper()
 	select {
@@ -52,8 +47,6 @@ func nextDelta(t *testing.T, deltas <-chan string) string {
 	}
 }
 
-// rest returns the text of every delta left in deltas, until the stream ends, failing t if it
-// doesn't end within five seconds.
 func rest(t *testing.T, deltas <-chan string) string {
 	t.Helper()
 	var b strings.Builder
@@ -71,8 +64,6 @@ func rest(t *testing.T, deltas <-chan string) string {
 	}
 }
 
-// checkHeld fails t if deltas has a delta ready: the stream is held, so nothing after the hold
-// has been written.
 func checkHeld(t *testing.T, deltas <-chan string) {
 	t.Helper()
 	select {
@@ -82,8 +73,6 @@ func checkHeld(t *testing.T, deltas <-chan string) {
 	}
 }
 
-// awaitUnparked blocks until g has no request parked, failing t if one still is after five
-// seconds.
 func awaitUnparked(t *testing.T, g *aitest.Gate) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -95,9 +84,6 @@ func awaitUnparked(t *testing.T, g *aitest.Gate) {
 	}
 }
 
-// TestChatReplyHold wants a streamed chat reply held after its first piece of text to reach
-// GenerateStream's consumer with that piece while it is held, and the rest only once the gate
-// releases it: a consumer sees each delta as it arrives.
 func TestChatReplyHold(t *testing.T) {
 	var g aitest.Gate
 	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(context.Context, aitest.ChatRequest) aitest.Reply {
@@ -119,9 +105,6 @@ func TestChatReplyHold(t *testing.T) {
 	}
 }
 
-// TestChatReplyHoldIdle wants a held stream to fail with go-ai's idle error, which matches
-// io.ErrUnexpectedEOF and os.ErrDeadlineExceeded, when the client's StreamIdleTimeout passes
-// while it is held, and the held stream to end, its Wait returned, so nothing hangs.
 func TestChatReplyHoldIdle(t *testing.T) {
 	var g aitest.Gate
 	e := aitest.Serve(t, aitest.Routes{ChatCompletions: func(context.Context, aitest.ChatRequest) aitest.Reply {
@@ -137,8 +120,6 @@ func TestChatReplyHoldIdle(t *testing.T) {
 		}
 		if d, ok := ev.(protocol.OutputTextDelta); ok {
 			text.WriteString(d.Delta)
-			// The idle bound runs only while a read waits, so waiting here for the hold costs
-			// the stream nothing.
 			g.Await(t, 1)
 		}
 	}
@@ -151,8 +132,6 @@ func TestChatReplyHoldIdle(t *testing.T) {
 	awaitUnparked(t, &g)
 }
 
-// TestRawReplyHold wants a raw reply's frames held after a given frame to reach a Messages
-// client's consumer up to that frame while held, and the rest once the gate opens.
 func TestRawReplyHold(t *testing.T) {
 	frames := []aitest.Frame{
 		{Event: "message_start", Data: `{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"m","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":0}}}`},
@@ -185,9 +164,6 @@ func TestRawReplyHold(t *testing.T) {
 	}
 }
 
-// TestHoldEndsWithTest wants a test that ends while its streams are held, a chat reply's and a
-// raw reply's, the client waiting on neither its own context nor an idle bound, not to hang:
-// the endpoint ends each held stream, which the client reads as one cut short.
 func TestHoldEndsWithTest(t *testing.T) {
 	var g aitest.Gate
 	errs := make(chan error, 2)
@@ -202,7 +178,6 @@ func TestHoldEndsWithTest(t *testing.T) {
 				},
 			},
 		})
-		// Background, not the test's context, so only the endpoint's end can end the streams.
 		chat := textDeltas(context.Background(), chatClient(t, e, ai.Options{}), errs)
 		raw := textDeltas(context.Background(), newClient(t, e, messages.New(messages.Options{})), errs)
 		nextDelta(t, chat)
