@@ -1,12 +1,11 @@
 # responses testdata
 
-Open Responses replies recorded from llama.cpp b11669, its router on gb10-2 serving set A, each
-unstreamed (`.json`), and two streamed too (`.sse`, below), for a request of the body
-`EncodeRequest` sends, `"stream":false`, `"store":false`, and
-`"include":["reasoning.encrypted_content"]` among its members, posted to
-`/v1/responses?autoload=false`. The successful ones were sent with `temperature` 0 and `seed` 7.
-The decode tests compare what `DecodeResponse` gives for each `.json` reply with the response it
-should be; the error tests read the error bodies.
+Open Responses replies recorded from llama.cpp b11669, its router on gb10-2, each unstreamed
+(`.json`), and two streamed too (`.sse`, below), for a request of the body `EncodeRequest` sends,
+`"stream":false`, `"store":false`, and `"include":["reasoning.encrypted_content"]` among its
+members, posted to `/v1/responses?autoload=false`. The successful ones were sent with `temperature`
+0 and `seed` 7. The decode tests compare what `DecodeResponse` gives for each `.json` reply with the
+response it should be; the error tests read the error bodies.
 
 - `text.json`: gpt-oss-120b with `instructions` "Answer with the names alone.", asked "Name three
   French cities, comma-separated, nothing else." with `max_output_tokens` 256; a reasoning item,

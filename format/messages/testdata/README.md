@@ -1,14 +1,14 @@
 # messages testdata
 
-Anthropic Messages replies recorded from llama.cpp b11669, its router on gb10-2 serving set A, each
-unstreamed (`.json`), and some streamed too (`.sse`, the body as it arrived) for the same request,
-sent with `temperature` 0 and `seed` 7 to `/v1/messages?autoload=false`. The decode tests compare
-what `DecodeResponse` gives for each `.json` with the response it should be. The stream tests
-translate each `.sse` and fold its events, and compare the result with what `DecodeResponse` gives
-for its `.json` given the stream's reply id and tool_use ids, as the two were separate requests,
-and with each call's arguments the stream's text, which the `.json`'s input holds as the same JSON
-written compact: the router parses a call's arguments for an unstreamed reply, and streams the
-model's own text.
+Anthropic Messages replies recorded from llama.cpp b11669, its router on gb10-2, each unstreamed
+(`.json`), and some streamed too (`.sse`, the body as it arrived) for the same request, sent with
+`temperature` 0 and `seed` 7 to `/v1/messages?autoload=false`. The decode tests compare what
+`DecodeResponse` gives for each `.json` with the response it should be. The stream tests translate
+each `.sse` and fold its events, and compare the result with what `DecodeResponse` gives for its
+`.json` given the stream's reply id and tool_use ids, as the two were separate requests, and with
+each call's arguments the stream's text, which the `.json`'s input holds as the same JSON written
+compact: the router parses a call's arguments for an unstreamed reply, and streams the model's own
+text.
 
 Each streamed request sent `"stream":true`, as `EncodeStreamRequest` does, and each unstreamed
 one `"stream":false`. The router's prompt cache makes a repeated request's reply differ at times,

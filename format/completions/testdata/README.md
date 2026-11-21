@@ -1,7 +1,7 @@
 # completions testdata
 
-Chat Completions replies recorded from llama.cpp b11669, its router on gb10-2 serving set A, each
-streamed (`.sse`, the body as it arrived) and unstreamed (`.json`) for the same request, sent with
+Chat Completions replies recorded from llama.cpp b11669, its router on gb10-2, each streamed
+(`.sse`, the body as it arrived) and unstreamed (`.json`) for the same request, sent with
 `temperature` 0 and `seed` 7 so the two replies agree. The stream tests translate each `.sse` and
 fold its events, and compare the result with what `DecodeResponse` gives for the `.json` given the
 stream's id and its tool calls' ids: the two were separate requests, so their ids differ, and the

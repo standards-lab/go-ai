@@ -18,7 +18,7 @@ of a go-ai checkout.
 ## 1. Install
 
 ```sh
-go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.3.0
+go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.3.1
 ```
 
 `infer` alone prints its help. This part shows the commands and the two settings that have no

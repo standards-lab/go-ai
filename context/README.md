@@ -7,15 +7,13 @@ standard library only; its convenience CLI, `infer`, lives in the nested module 
 
 Its goals live in the coordinator's roadmap (`standards-lab/roadmap/index.toml`). It is built
 from spike-ai-pipeline-client v0.4.0 to the design review in [`docs/design.md`](../docs/design.md).
-The coordinator maps each name of docproc's [`context/layers.md` at commit f3633c3](https://github.com/standards-lab/docproc/blob/f3633c3/context/layers.md), "go-ai's surface", to one go-ai
-name (`standards-lab/docs/ai-strategy.md`, "go-ai's name map and requests").
 
 ## Capability map
 
 - **Protocol** (built): [protocol/doc.go](../protocol/doc.go).
 - **Formats** (built): [format/doc.go](../format/doc.go).
 - **Client** (built): [doc.go](../doc.go).
-- **Resilience** (built): [retry.go](../retry.go).
+- **Resilience** (built): [retry.go](../retry.go) and [idle.go](../idle.go).
 - **Test support** (built): [aitest/doc.go](../aitest/doc.go).
 - **infer** (built): [tools/infer/README.md](../tools/infer/README.md).
 - **Integration tiers** (built): [integration/doc.go](../integration/doc.go).
