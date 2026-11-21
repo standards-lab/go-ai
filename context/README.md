@@ -6,9 +6,9 @@ generates, streams, embeds, and transcribes without a vendor SDK. Its base modul
 standard library only; its convenience CLI, `infer`, lives in the nested module `tools/infer`.
 
 Its goals live in the coordinator's roadmap (`standards-lab/roadmap/index.toml`). It is built
-from spike-ai-pipeline-client v0.4.0 to the design review in [`docs/design.md`](../docs/design.md);
-the map from each name of docproc's `context/layers.md`, "go-ai's surface", to one go-ai name is
-the coordinator's (`standards-lab/docs/ai-strategy.md`, "go-ai's name map and requests").
+from spike-ai-pipeline-client v0.4.0 to the design review in [`docs/design.md`](../docs/design.md).
+The coordinator maps each name of docproc's `context/layers.md`, "go-ai's surface", to one go-ai
+name (`standards-lab/docs/ai-strategy.md`, "go-ai's name map and requests").
 
 ## Capability map
 

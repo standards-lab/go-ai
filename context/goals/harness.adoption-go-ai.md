@@ -65,7 +65,7 @@ Two-way. Nothing is tagged.
 
 ## Progress
 
-slices 0/6 committed · standards — · spec — · editor —
+slices 6/6 committed · standards ✓ · spec ✓ · editor ✓
 
 ## Decisions
 
@@ -73,5 +73,5 @@ None.
 
 ## Pending edits
 
-- coordinator · docs/ai-strategy.md:222: go-ai's `context/design.md` becomes `docs/design.md`; the
-  section names and numbers it cites don't change.
+- coordinator · docs/ai-strategy.md:222-223: go-ai's `context/design.md` becomes `docs/design.md`,
+  and "that note's" becomes "that page's"; the section names and numbers it cites don't change.

@@ -2,7 +2,7 @@
 
 go-ai's design, reviewed from spike-ai-pipeline-client v0.4.0: what the spike is measured against,
 what go-ai keeps, changes, and drops from it, the surface the library and infer tasks of
-v1.ai.client build to, the reasoning behind the base module's unexported code, and the
+v1.ai.client build to, the reasoning behind both modules' unexported code and tests, and the
 alternatives the review rules out. The judgement calls it settles are go-ai's `STANDARDS.md`. The
 base module is built to it, and where building against the endpoints changed the review, the
 finding or decision states what holds.
@@ -720,15 +720,15 @@ tier; no CI job runs either.
 
 ### The lint configuration
 
-`.golangci.yml` carries out decisions 3 and 4 and finding 39. Its linters are the standard set,
+`.golangci.yml` carries out the modules section's decisions 3 and 4 and finding 39. Its linters are the standard set,
 plus depguard, testpackage, and nolintlint. Tests are linted with the code they test, so the
 depguard rules hold them too, and the check runs golangci-lint a second time under the
 `integration` build tag, so each integration tier is linted as well.
 
 - **testpackage** keeps tests black-box. Its skip regexp is narrowed to `export_test.go`, the one
-  white-box file allowed. Its `allow-packages` is narrowed from its default, `main`, so a
-  command's tests are black-box too, in `main_test`: it names only the empty package name, which
-  no package has, since an empty list leaves the default in force.
+  white-box file allowed. Its `allow-packages` names only the empty package name, which no package
+  has, in place of the default, `main`, so a command's tests are black-box too, in `main_test`. An
+  empty list would leave the default in force.
 - **depguard's allow entries match by prefix** unless they end in `$`, so go-ai's entries are
   anchored: the module as itself, or a package under it, never a sibling such as `go-ai-extra`.
   The infer rule's allow entry for go-ai would admit its internal packages too, so it denies
@@ -739,9 +739,9 @@ depguard rules hold them too, and the check runs golangci-lint a second time und
 
 ## Implementation notes
 
-The reasoning behind the unexported code and the tests of the base module, its integration tier,
-and infer that their names and exported docs leave unsaid, kept here rather than in comments
-(`architecture/principles/comments.md`).
+This section holds the reasoning that the names and exported docs of the base module, its
+integration tier, and infer leave unsaid about their unexported code and tests. It lives here
+rather than in comments (`architecture/principles/comments.md`).
 
 ### The transport
 
@@ -847,7 +847,7 @@ and infer that their names and exported docs leave unsaid, kept here rather than
   whole one, so it is refused, after the retry loop rather than inside it: sending the same clip
   again meets the same bound or filter.
 
-### aitest
+### The aitest package
 
 - **An Endpoint ends with its test.** Its context ends when the test ends, and with it every
   request's context; its cleanup ends that context before closing the server, which waits on the
@@ -873,8 +873,8 @@ and infer that their names and exported docs leave unsaid, kept here rather than
   `chatcmpl-abc/1`, alike for every kind of item and alike streamed and unstreamed: every chunk
   carries the reply's id, so a stream's items get the ids DecodeResponse gives the same reply. An
   id is unique within the reply, as its output index is, and across replies, as the reply's id is.
-  A reply with no id gives its items none: an id made of the index alone would repeat in every
-  reply, which an empty one doesn't claim not to.
+  A reply with no id gives its items none: an id made of the index alone would repeat across
+  replies, where an empty id claims no uniqueness.
 - **Reasoning is read from reasoning_content first.** vLLM sends `reasoning` in its place; a
   server that sends both sends one text under the two names, so reasoning_content alone is read,
   never the two joined.
@@ -1008,10 +1008,11 @@ and infer that their names and exported docs leave unsaid, kept here rather than
   allows under tool_choice any. Chat Completions and Open Responses send their own forms, as the
   unit tier proves, and vLLM 0.33.0 honors neither: it refuses Chat Completions' with a 400 and
   answers Open Responses' as auto, with no call.
-- **The embed scenario reads the vectors' decoding from their geometry.** Two alike inputs closer
-  to each other than either is to an unrelated one fails a vector decoded with the wrong byte
-  order or width, its components noise; the third input embedded alone matching the batch's third
-  vector, and not its first, fails vectors in arrival order or swapped. Their lengths are not
+- **The embed scenario reads the vectors' decoding from their geometry.** It wants two alike
+  inputs closer to each other than either is to an unrelated one, which fails vectors decoded
+  with the wrong byte order or width, whose components are noise. It wants the third input,
+  embedded alone, to match the batch's third vector and not its first, which fails vectors placed
+  in arrival order or swapped. Their lengths are not
   asserted: vLLM 0.33.0 gives granite-embedding-english-r2's vectors unnormalized, where llama.cpp
   normalizes them.
 - **Media answers are read loosely.** Each shape of `shapes.png` must be named as a word of its
@@ -1042,27 +1043,27 @@ and infer that their names and exported docs leave unsaid, kept here rather than
   timeout alone. The token and the headers are read once, as the client is built, and the client
   makes no request. A header line that doesn't parse is reported by its number, never its text,
   as the value is a secret, as the token is, which is why neither has a flag. The root help's
-  footer naming them renders in memory, so its write can't fail.
+  footer naming their variables renders in memory, so its write can't fail.
 - **ai.New's refusals are attributed by probing.** go-ai's errors carry no field, so only when
   New refuses does infer put each setting to it again alone, beside values it never refuses: the
-  base URL with no options, the headers alone, the attempt count alone, the most delay alone, and
-  the base delay under the longest most delay. A base delay above the most delay is refused only
-  with both, so a policy refused when no field is names both delays; with the most delay zero,
-  the refusal says the base delay needs one at least as long, which says what to change. A most
-  delay left unset is the default, never zero.
+  base URL with no options, the headers alone, the attempt count alone, the max delay alone, and
+  the base delay under the longest max delay. A base delay above the max delay is refused only
+  with both, so when New refuses the policy but no single field, the message names both delays;
+  with the max delay zero, the message says the base delay needs a max delay at least as long,
+  which says what to change. A max delay left unset is the default, never zero.
 - **infer retries by default** because it is run by hand and by scripts against endpoints that
   shed load, where a transient 503 shouldn't end the run; go-ai's zero policy, which retries
-  nothing, suits a library. The default base delay is capped at a most delay given below it, but
-  a negative most delay is left for ai.New to refuse, naming it alone, and a base delay given
-  above the default most delay isn't raised to, so ai.New refuses it naming both. go-ai sets no
-  bound for a negative StreamIdleTimeout rather than refusing one, so infer refuses it: a negative
-  bound is a mistake, not a request for none. An unknown transcription mode is refused in infer's
-  words rather than go-ai's.
+  nothing, suits a library. The default base delay is capped at a max delay given below it, but
+  a negative max delay is left for ai.New to refuse, naming it alone. The default max delay isn't
+  raised to meet a base delay given above it, so ai.New refuses that base delay, naming both.
+  go-ai sets no bound for a negative StreamIdleTimeout rather than refusing one, so infer refuses
+  it: a negative bound is a mistake, not a request for none. infer refuses an unknown
+  transcription mode in its own words rather than go-ai's.
 - **chat checks its request before it resolves the model**, so a refusal is found before the
   models are listed; an unresolved request is checked under a stand-in name, as the checks refuse
   only a request with none. A refusal with no feature is attributed by clearing one flag's field
   at a time rather than setting it on a request of none: Messages refuses a request with no max
-  output tokens, so no request of no fields is accepted by every format. A max-tokens refusal with
+  output tokens, so no format accepts a request with every field cleared. A max-tokens refusal with
   no `--max-tokens` given is Messages'. `--instructions` and `--image` are never attributed: go-ai
   refuses neither as chat sets them. An image's media type is its extension's, or else its
   content's sniffed type, without parameters such as a charset, which a data URL doesn't take.
