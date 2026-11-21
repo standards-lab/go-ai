@@ -26,6 +26,8 @@ requests once and picks a format by changing one constructor.
 3. [Features](docs/features.md): every feature, package by package, in the detail needed to use
    it without reading the source.
 4. [Glossary](docs/glossary.md): the vocabulary the library uses.
+5. [Design](docs/design.md): the design review from the spike, its findings, the surface and
+   module decisions, and the alternatives it rules out.
 
 The package documentation, `go doc github.com/standards-lab/go-ai/...`, is the reference for
 each exported name. [`infer`'s README](tools/infer/README.md) covers the CLI.

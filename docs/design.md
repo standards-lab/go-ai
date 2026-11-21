@@ -2,17 +2,15 @@
 
 go-ai's design, reviewed from spike-ai-pipeline-client v0.4.0: what the spike is measured against,
 what go-ai keeps, changes, and drops from it, the surface the library and infer tasks of
-v1.ai.client build to, the alternatives the review rules out, and the change list each task works
-from. The judgement calls it settles are go-ai's `STANDARDS.md`. The base module is built to it,
-and where building against the endpoints changed the review, the finding or decision states what
-holds.
+v1.ai.client build to, and the alternatives the review rules out. The judgement calls it settles
+are go-ai's `STANDARDS.md`. The base module is built to it, and where building against the
+endpoints changed the review, the finding or decision states what holds.
 
 ## Evaluation
 
 Fable 5.2's evaluation of the spike at tag v0.4.0, one finding per issue or simplification. Each
 names the spike's package or file, what it is measured against, and a verdict with its reason:
-**kept** as the spike has it, **changed** in go-ai, or **dropped**. Where a finding changes a
-signature, the surface section states the signature.
+**kept** as the spike has it, **changed** in go-ai, or **dropped**.
 
 The measures are cited in short. A bare page name, such as `dependencies.md`, is a Go Elemental
 principle under the architecture repository's `standards/go-elemental/principles/`;
@@ -21,8 +19,8 @@ docproc's `context/layers.md`, which states the processing layer's boundaries, i
 surface" listing the names that layer calls. "data-intelligence" is standards-lab's
 `context/data-intelligence.md`, which states what go-ai's first long-running service consumer asks
 of it; cited bare, it is the section "What it asks of the goals beneath it". "ai-strategy" is
-standards-lab's `context/ai-strategy.md`, whose "The client and processing layers" maps each name
-of layers' surface to go-ai's.
+standards-lab's `context/ai-strategy.md` and its detail page, `docs/ai-strategy.md`, whose "go-ai's
+name map and requests" maps each name of layers' surface to go-ai's.
 
 ### Layout and names
 
@@ -424,10 +422,11 @@ of layers' surface to go-ai's.
 
 ## Surface
 
-go-ai's base module as signatures, from the spike at v0.4.0 with the evaluation's changes
-applied. The module path is `github.com/standards-lab/go-ai`; its packages are the root,
-`protocol`, `format`, and the three formats below `format`. Each block lists declarations only; an
-unexported field or helper the spike has stays as it is unless a finding changes it.
+go-ai's base module, from the spike at v0.4.0 with the evaluation's changes applied. The module
+path is `github.com/standards-lab/go-ai`; its packages are the root, `protocol`, `format`, and the
+three formats below `format`. `protocol` is Open Responses, spec 2026-04-24, in its stateless
+subset, under the spec's names (finding 25). A client extension's wire type carries go-ai's slug,
+`go-ai` (finding 4). Each package's `doc.go` and godoc state its declarations.
 
 ### What this section settles
 
@@ -499,375 +498,6 @@ The nine items the evaluation left open, each decided with its reason:
    would cost a request per call and hide a misconfigured endpoint, and pinning Chat Completions
    in the root package would make the transport name a format.
 
-### The root package
-
-```go
-// Package ai is go-ai's model client: one transport over the protocol, in the wire format its
-// constructor is given, with embeddings, transcription, and the model listing beside it.
-package ai // import "github.com/standards-lab/go-ai"
-
-// TokenSource returns the bearer token for one attempt. An empty token sends none.
-type TokenSource func(ctx context.Context) (string, error)
-
-// Options are New's optional inputs. The zero value selects every default: no query, no token,
-// no header, no retry, no idle bound, and transcription through the route. New copies Query,
-// Header, and Retry.
-type Options struct {
-    Query             url.Values        // added to every request's URL
-    Token             TokenSource       // nil sends no Authorization header
-    Header            http.Header       // fixed headers on every request, such as x-api-key
-    Retry             RetryPolicy       // the zero value retries nothing
-    StreamIdleTimeout time.Duration     // bounds each read of a started stream; 0 sets none
-    TranscriptionMode TranscriptionMode // TranscribeRoute, the zero value, or TranscribeChat
-}
-
-// RetryPolicy resends a request on a 408, 429, 502, 503, or 504 reply, or a connection failure
-// before any reply, never a started stream. It waits a full-jitter exponential backoff, which a
-// Retry-After replaces; a wait past MaxDelay or ctx's deadline returns the last error at once.
-type RetryPolicy struct {
-    MaxAttempts int           // the most requests for a call, the first included; 0 sends one
-    BaseDelay   time.Duration // the cap on the first wait, doubled for each after it
-    MaxDelay    time.Duration // the cap on any wait, and the longest Retry-After honored
-}
-
-// Client makes requests of one endpoint in one wire format. It is safe for concurrent use when
-// its TokenSource and format are, and sets no limit of its own.
-type Client struct{ /* unexported */ }
-
-// New returns a Client and makes no request. A nil httpClient or wireFormat panics by name.
-// A baseURL that isn't an absolute http or https URL without query or fragment, a negative
-// attempt count or delay, a BaseDelay above MaxDelay, a Header name that isn't a header name or
-// that names Content-Type, Accept, or Authorization, a Header value with a control character, or
-// an unknown TranscriptionMode is an error.
-func New(baseURL string, httpClient *http.Client, wireFormat format.Format,
-    opts Options) (*Client, error)
-
-// APIError is a non-2xx reply, returned wrapped and reached with errors.As.
-type APIError struct {
-    Status     int           // the HTTP status code
-    Message    string        // the endpoint's error message, when the body gave one
-    Type       string        // the endpoint's error type, such as "invalid_request_error"
-    Code       string        // the endpoint's error code; a numeric one as its decimal text
-    Body       []byte        // the reply's body
-    RetryAfter time.Duration // the reply's Retry-After, as a wait from its arrival; 0 for none
-}
-func (e *APIError) Error() string
-
-// Generate validates and encodes req, then sends it through the retry loop.
-func (c *Client) Generate(ctx context.Context, req *protocol.Request) (*protocol.Response, error)
-
-// GenerateStream is lazy: each range sends the request. Each pair is an event or an error; the
-// events run from ResponseCreated to one terminal event (completed, incomplete, failed).
-func (c *Client) GenerateStream(ctx context.Context,
-    req *protocol.Request) iter.Seq2[protocol.Event, error]
-
-// EmbeddingRequest goes to the OpenAI-compatible embeddings route whatever the format.
-type EmbeddingRequest struct {
-    Model  string
-    Input  []string       // the batch, sent as one request; its size is the caller's
-    Native jsontext.Value // members merged into the body's top level
-}
-type Embeddings struct {
-    Vectors [][]float32 // Vectors[i] is Input[i]'s
-    Usage   EmbeddingUsage
-}
-type EmbeddingUsage struct{ PromptTokens, TotalTokens int }
-func (c *Client) Embed(ctx context.Context, req *EmbeddingRequest) (*Embeddings, error)
-
-// TranscriptionMode is how Transcribe transcribes (decision 9).
-type TranscriptionMode int
-const (
-    TranscribeRoute TranscriptionMode = iota // the OpenAI-compatible transcription route
-    TranscribeChat                           // a chat request in the Client's format
-)
-
-// TranscriptionRequest goes to the OpenAI-compatible transcription route whatever the format,
-// or in chat mode to the model as a chat request in the Client's format.
-type TranscriptionRequest struct {
-    Model string
-    // Open opens the clip once per attempt; the route's attempt streams it as it uploads, chat
-    // mode reads it whole, and each attempt then closes it.
-    Open     func(ctx context.Context) (io.ReadCloser, error)
-    FileName string     // names the clip, such as "clip.wav"; in chat mode, its audio format
-    Language string     // empty sends none; in chat mode, named by the default instruction
-    Prompt   string     // empty sends none; in chat mode, the instruction itself
-    Native   url.Values // the route's form fields beside the typed ones; chat mode refuses any
-}
-type Transcription struct {
-    Text  string
-    Usage TranscriptionUsage
-}
-type TranscriptionUsage struct{ InputTokens, OutputTokens, TotalTokens int }
-// Transcribe sends through the retry loop, opening the clip again for each attempt.
-func (c *Client) Transcribe(ctx context.Context, req *TranscriptionRequest) (*Transcription, error)
-// TranscriptionInstruction is chat mode's instruction for a request with no Prompt, naming
-// language when it isn't empty.
-func TranscriptionInstruction(language string) string
-// IncompleteTranscriptError is chat mode's reply that isn't completed, such as one stopped at the
-// engine's output token bound; Transcribe returns it wrapped, with no Transcription, unretried.
-type IncompleteTranscriptError struct {
-    Status protocol.Status
-    Reason protocol.IncompleteReason // empty when the reply gave none
-}
-
-// Model is one entry of the endpoint's model list: its id, and the entry as the endpoint sent it.
-type Model struct {
-    ID     string
-    Native jsontext.Value
-}
-// Models GETs the OpenAI-compatible models route whatever the format, through the retry loop.
-func (c *Client) Models(ctx context.Context) ([]Model, error)
-```
-
-### protocol
-
-Open Responses, spec 2026-04-24, in its stateless subset, under the spec's names (finding 25). A
-client extension's wire type carries go-ai's slug, `go-ai` (finding 4).
-
-```go
-package protocol // import "github.com/standards-lab/go-ai/protocol"
-
-type Request struct {
-    Model             string
-    Instructions      string
-    Input             []Item
-    Tools             []FunctionTool
-    ToolChoice        ToolChoice     // ToolChoiceMode, FunctionToolChoice, or AllowedToolChoice
-    Reasoning         ReasoningParam
-    Text              TextParam
-    MaxOutputTokens   int            // 0 leaves it to the endpoint; the least positive is each format's
-    ParallelToolCalls *bool          // nil leaves it to the endpoint
-    Native            jsontext.Value // the native tier, merged into the body's top level
-}
-func (r *Request) Validate() error
-
-type ReasoningParam struct {
-    Effort  ReasoningEffort
-    Summary ReasoningSummary
-}
-// An effort is the protocol's when an implemented format's spec defines it (finding 25).
-type ReasoningEffort string  // ReasoningEffortNone, Minimal, Low, Medium, High, XHigh, Max
-type ReasoningSummary string // ReasoningSummaryAuto, Concise, Detailed
-type TextParam struct {
-    Format    TextFormat // PlainTextFormat or JSONSchemaFormat
-    Verbosity Verbosity
-}
-type TextFormat interface{ textFormat() }
-type PlainTextFormat struct{}
-type JSONSchemaFormat struct {
-    Name, Description string
-    Schema            jsontext.Value
-    Strict            bool
-}
-type Verbosity string // VerbosityLow, Medium, High
-
-type Item interface{ item() } // Message, FunctionCall, FunctionCallOutput, Reasoning
-type Message struct {
-    ID      string
-    Status  Status
-    Role    Role
-    Content []ContentPart
-}
-type Role string // RoleUser, RoleSystem, RoleDeveloper, RoleAssistant
-type ContentPart interface{ contentPart() } // the parts below
-type InputText struct{ Text string }
-type InputImage struct {
-    ImageURL string // an http(s) URL, or DataURL's
-    Detail   ImageDetail
-}
-type ImageDetail string // ImageDetailAuto, Low, High
-func DataURL(mediaType string, data []byte) string
-type InputAudio struct { // the go-ai:input_audio extension
-    Data   []byte
-    Format AudioFormat
-}
-type AudioFormat string // AudioFormatWAV, AudioFormatMP3
-type OutputText struct{ Text string }
-type Refusal struct{ Refusal string }
-type ReasoningText struct{ Text string }
-type SummaryText struct{ Text string }
-type FunctionCall struct {
-    ID                     string
-    Status                 Status
-    CallID, Name, Arguments string
-}
-type FunctionCallOutput struct {
-    ID             string
-    Status         Status
-    CallID, Output string
-    OutputParts    []ContentPart
-}
-type Reasoning struct {
-    ID               string
-    Status           Status
-    Content          []ReasoningText
-    Summary          []SummaryText
-    EncryptedContent string // the endpoint's, or a format's go-ai:<format>/v1: envelope
-}
-type Status string // StatusInProgress, StatusCompleted, StatusIncomplete, StatusFailed
-
-type FunctionTool struct {
-    Name, Description string
-    Parameters        jsontext.Value
-    Strict            bool
-}
-type ToolChoice interface{ toolChoice() }
-type ToolChoiceMode string // ToolChoiceAuto, ToolChoiceNone, ToolChoiceRequired
-type FunctionToolChoice struct{ Name string }
-type AllowedToolChoice struct {
-    Tools []FunctionToolChoice
-    Mode  ToolChoiceMode
-}
-
-type Response struct {
-    ID, Model         string // the reply's, as the endpoint reports them
-    Output            []Item
-    Status            Status
-    IncompleteDetails *IncompleteDetails
-    Error             *ResponseError
-    Usage             Usage
-}
-type IncompleteDetails struct{ Reason IncompleteReason }
-type IncompleteReason string // ReasonMaxOutputTokens, ReasonContentFilter, ReasonContextWindow
-type ResponseError struct{ Code, Message string }
-type Usage struct {
-    InputTokens, OutputTokens, TotalTokens int
-    InputTokensDetails                     InputTokensDetails
-    OutputTokensDetails                    OutputTokensDetails
-}
-type InputTokensDetails struct{ CachedTokens int }
-type OutputTokensDetails struct{ ReasoningTokens int }
-
-// Event is the closed set of streaming events, each carrying its SequenceNumber.
-type Event interface{ event() }
-type ResponseCreated struct {
-    SequenceNumber int
-    Response       *Response
-}
-// ResponseCompleted, ResponseIncomplete, and ResponseFailed, the terminal events, are shaped as
-// ResponseCreated.
-type ErrorEvent struct {
-    SequenceNumber int
-    Error          ErrorPayload
-}
-type ErrorPayload struct{ Type, Code, Message, Param string }
-type OutputItemAdded struct {
-    SequenceNumber, OutputIndex int
-    Item                        Item
-}
-// OutputItemDone is shaped as OutputItemAdded.
-type ContentPartAdded struct {
-    SequenceNumber            int
-    ItemID                    string
-    OutputIndex, ContentIndex int
-    Part                      ContentPart
-}
-// ContentPartDone is shaped as ContentPartAdded.
-type OutputTextDelta struct {
-    SequenceNumber            int
-    ItemID                    string
-    OutputIndex, ContentIndex int
-    Delta                     string
-}
-// OutputTextDone (Text), RefusalDelta (Delta), RefusalDone (Refusal), ReasoningDelta (Delta),
-// and ReasoningDone (Text) are shaped as OutputTextDelta, with the field named.
-type FunctionCallArgumentsDelta struct {
-    SequenceNumber int
-    ItemID         string
-    OutputIndex    int
-    Delta          string
-}
-// FunctionCallArgumentsDone is shaped as FunctionCallArgumentsDelta, with Arguments for Delta.
-
-// Accumulator folds a stream's events, in the caller's loop, into the Response Generate returns.
-type Accumulator struct{ /* unexported */ }
-func (a *Accumulator) Add(e Event) error
-// Response is the folded Response: after a break, the partial one, in StatusInProgress.
-func (a *Accumulator) Response() *Response
-```
-
-### format and the three formats
-
-```go
-package format // import "github.com/standards-lab/go-ai/format"
-
-// Format is a wire format, chosen by its package's constructor at the composition root.
-type Format interface {
-    Route() string
-    EncodeRequest(req *protocol.Request, header http.Header) ([]byte, error)
-    DecodeResponse(body []byte) (*protocol.Response, error)
-    EncodeStreamRequest(req *protocol.Request, header http.Header) ([]byte, error)
-    EventStream() EventStream // the framing its replies stream in (finding 24)
-    NewStreamDecoder() StreamDecoder
-    DecodeError(body []byte) (message, typ, code string)
-}
-// StreamDecoder turns one stream's events into protocol events; it serves one stream.
-type StreamDecoder interface {
-    Decode(e WireEvent) ([]protocol.Event, error)
-    End() ([]protocol.Event, error)
-}
-// WireEvent is one event as its framing delivers it: under SSE, its event field and its data.
-type WireEvent struct {
-    Type string
-    Data []byte
-}
-type WireEventReader interface{ Next() (WireEvent, error) } // io.EOF at the body's clean end
-type EventStream interface {
-    MediaType() string // the Accept a streamed request sends
-    NewReader(body io.Reader) WireEventReader
-}
-var SSE EventStream // text/event-stream, over internal/sse
-// UnsupportedError is a format's refusal of a request feature, before anything is sent
-// (finding 28). Declared is false for a gap in the format's spec.
-type UnsupportedError struct {
-    Format, Feature, Value string
-    Declared               bool
-    Message                string
-}
-func (e *UnsupportedError) Error() string
-// DecodeOpenAIError decodes {"error": {"message", "type", "code"}}, for the OpenAI routes.
-func DecodeOpenAIError(body []byte) (message, typ, code string)
-
-package completions // import "github.com/standards-lab/go-ai/format/completions"
-// Options is the profile of one deployment: the gaps where it departs from Chat Completions'
-// spec. The zero value declares none and is the spec's form (finding 29).
-type Options struct {
-    RefusedEfforts       []protocol.ReasoningEffort `json:"refused_efforts,omitzero,case:strict"`
-    NoToolChoiceRequired bool                       `json:"no_tool_choice_required,omitzero,case:strict"`
-    NoAllowedTools       bool                       `json:"no_allowed_tools,omitzero,case:strict"`
-}
-type Format struct{ /* unexported */ }
-// New is Chat Completions, on "chat/completions". It reads a reply's reasoning from
-// reasoning_content, llama.cpp's name, or reasoning, vLLM's (finding 43).
-func New(opts Options) *Format
-
-package messages // import "github.com/standards-lab/go-ai/format/messages"
-// Options is the profile of one deployment: the gaps where it departs from the Messages API. The
-// zero value declares none and is the spec's form (finding 29).
-type Options struct {
-    RefusedEfforts []protocol.ReasoningEffort `json:"refused_efforts,omitzero,case:strict"`
-}
-type Format struct{ /* unexported */ }
-// New is Anthropic Messages, on "messages", sending its anthropic-version header. It refuses a
-// request with no MaxOutputTokens, with audio input, with the minimal effort, or with a system or
-// developer message after the conversation has begun, and drops the hints it has no form for.
-func New(opts Options) *Format
-
-package responses // import "github.com/standards-lab/go-ai/format/responses"
-// Options is the profile of one deployment: the gaps where it departs from the Open Responses
-// spec. The zero value declares none and is the spec's form (finding 29).
-type Options struct {
-    RefusedEfforts      []protocol.ReasoningEffort `json:"refused_efforts,omitzero,case:strict"`
-    NoAllowedTools      bool                       `json:"no_allowed_tools,omitzero,case:strict"`
-    ResendReasoningText bool                       `json:"resend_reasoning_text,omitzero,case:strict"` // for llama.cpp's router and vLLM
-}
-type Format struct{ /* unexported */ }
-func New(opts Options) *Format // Open Responses, on "responses"
-// MinMaxOutputTokens is the spec's least max_output_tokens, below which the format refuses a
-// MaxOutputTokens (finding 27). It refuses the minimal and max efforts, which the spec lacks.
-const MinMaxOutputTokens = 16
-```
-
 ## Modules
 
 go-ai's module layout, its dependency line and how the check holds it, `infer`'s nested module,
@@ -931,42 +561,12 @@ infer task `tools/infer`.
    (finding 47). The infer task's first tag then needs no change to the workflow, only its
    changelog.
 
-### The module tree
+### The base module
 
 The base module, `github.com/standards-lab/go-ai`, holds the packages of the surface section,
 their testdata, the integration tier, and `aitest`, the fake endpoint for tests. `internal/aitest`,
 go-ai's format-test kit, is the spike's `internal/clienttest`, renamed with the root package
 (finding 40); `internal/sse` and `internal/native` are the spike's.
-
-```text
-go-ai/                        module github.com/standards-lab/go-ai
-├── go.mod                    no require
-├── go.work                   use . and ./tools/infer, from the infer task
-├── CHANGELOG.md              the root's
-├── docs/                     the guide: concepts, quick-start, features, glossary
-├── *.go                      package ai
-├── protocol/
-├── aitest/                   the fake endpoint for tests
-├── format/
-│   ├── completions/testdata/ llama.cpp b11669's recordings, vLLM 0.33.0's in vllm/, vLLM 0.34.0's gap replies in vllm-0.34.0/, and Foundry's in foundry/
-│   ├── messages/testdata/
-│   └── responses/testdata/   as completions'
-├── integration/              the integration tier, behind the integration build tag
-├── internal/
-│   ├── aitest/
-│   ├── native/
-│   └── sse/
-└── tools/infer/              module github.com/standards-lab/go-ai/tools/infer
-    ├── go.mod                go-ai v0.4.0, go-cli-sdk v0.4.0, go-core v0.12.0
-    ├── CHANGELOG.md          infer's
-    ├── README.md
-    ├── docs/quick-start.md   a guided tour of each command and the common failures, with real output
-    ├── cmd/infer/
-    ├── integration/          infer's integration tier, behind the integration build tag
-    └── internal/
-        ├── app/
-        └── apptest/
-```
 
 Each format's testdata is recorded from llama.cpp b11669's router, from vLLM 0.33.0, and, for the
 profiles' gaps, from vLLM 0.34.0, and Chat Completions' and Open Responses' also from Azure AI
@@ -1117,14 +717,6 @@ A scenario whose request the profile refuses before sending, a declared gap, ski
 gap; a refusal of the spec's own fails. `mise run integration` runs it after the base module's
 tier; no CI job runs either.
 
-### What each task adds
-
-| task | adds |
-| --- | --- |
-| library | the base module; `"."` in `GO_MODULES`; the base depguard rule and the check's no-`require` assertion; the tagged lint and `mise run integration`; the release workflow over both tag namespaces; `CHANGELOG.md`; the tag `v0.1.0` |
-| infer | `tools/infer`, requiring go-ai `v0.1.0`; `"tools/infer"` in `GO_MODULES`; `go.work`; the infer depguard rule; `tools/infer/CHANGELOG.md`; the tag `tools/infer/v0.1.0` |
-| infer-profiles | `tools/infer` on go-ai `v0.2.0`; `--profile` over `INFER_PROFILE`; `AI_<ROLE>_PROFILE` in both integration tiers; the tag `tools/infer/v0.2.0` |
-
 ## Rejected alternatives
 
 What the review rules out, one line each with its reason, cited as the sections above cite theirs;
@@ -1234,102 +826,3 @@ What the review rules out, one line each with its reason, cited as the sections 
 - **One changelog and a `v*` trigger alone.** go-ai has two artifacts, each with its own changelog
   and tag namespace (finding 47; modules, decision 8).
 
-## Change list
-
-What each package of the spike at v0.4.0 becomes in go-ai, and what the evaluation and the surface
-change on the way, each item with its owning task and the findings or decisions behind it. Every
-package moves from
-`github.com/JaimeStill/spike-ai-pipeline-client` to `github.com/standards-lab/go-ai`, and every
-comment, error, and test that names the spike takes go-ai's names; the items don't repeat that. A
-package's other declarations port as the spike has them.
-
-### Packages
-
-**`client`, the root, becomes `ai`** (library):
-
-- The package is `ai`, and its errors are prefixed `ai: ` in place of `client: ` (finding 2;
-  decision 1).
-- `New(cfg Config)` becomes `New(baseURL, httpClient, wireFormat, opts Options)`, and `Config`
-  becomes `Options`, without `BaseURL`, `HTTP`, and `Format` (finding 6; decision 2).
-- A nil HTTP client or format panics by name, in place of `New`'s error (finding 8).
-- `Options.Retry` is a `RetryPolicy` value; `RetryPolicy.check` no longer refuses zero attempts,
-  and a `MaxAttempts` of 0 sends one (finding 7).
-- `Options.Header` is added, and `New` refuses one naming `Content-Type`, `Accept`, or
-  `Authorization`, and one net/http can't send (finding 12; decision 3).
-- `Options.StreamIdleTimeout` is added, bounding each read of a started stream in `stream.go`
-  (finding 22; decision 7).
-- `retry.go`'s set adds 502 and 504 (finding 13; decision 8).
-- `APIError.RetryAfter` is added, holding the Retry-After that `send` discards (finding 14;
-  decision 5).
-- `TranscriptionRequest.File` becomes `Open`, called once per attempt, and `Transcribe` joins the
-  retry loop (finding 36).
-- `Options.TranscriptionMode` is added, with `TranscriptionMode`, `TranscribeRoute`, the zero
-  value, and `TranscribeChat`, and `TranscriptionInstruction`, chat mode's default instruction;
-  `New` refuses an unknown mode (finding 37; decision 9).
-- `IncompleteTranscriptError` is added: a chat-mode reply that isn't completed returns it, with
-  no `Transcription` and no retry (finding 37; decision 9).
-- `Model` and `Client.Models` are added, with a GET beside the POSTs `request` builds (finding 38;
-  decision 6).
-- `doc.go` points to go-ai's README, names no caller, and documents `Embed`, `Transcribe`, and
-  `Models` on a client of any format (findings 51 and 52; decision 9).
-
-**`protocol`** (library): `InputAudio`'s wire type becomes `go-ai:input_audio` (finding 4), and
-`text.go` ports as the spike has it (finding 32).
-
-**`format`** (library): ported as the spike has it (finding 28).
-
-**`format/completions`, `format/messages`, and `format/responses`** (library):
-
-- Each reasoning envelope's prefix becomes `go-ai:<format>/v1:`, and an envelope under the spike's
-  prefix is dropped on encode (finding 4).
-- `messages`' and `responses`' `doc.go` state what the format sends, refuses, drops, and
-  normalizes, and the account of router build b11669 moves to their testdata READMEs (finding 31).
-- Each format's testdata is ported with its llama.cpp b11669 recordings, and vLLM 0.33.0's join
-  them in `testdata/vllm`, each set's README naming its engine and build (finding 43).
-- `completions` reads a reply's reasoning from vLLM's `reasoning` as well as
-  `reasoning_content` (finding 43).
-
-**`internal/sse`** (library): `Decoder.Retry` is dropped (finding 24).
-
-**`internal/native`** (library): ported as the spike has it (finding 33).
-
-**`internal/clienttest` becomes `internal/aitest`** (library), renamed with the root package
-(finding 40).
-
-**`integration`** (library):
-
-- `SPIKE_ROUTER_URL` gives way to `AI_AGENT_BASE_URL`, `AI_VISION_BASE_URL`, `AI_AUDIO_BASE_URL`,
-  `AI_EMBEDDING_BASE_URL`, and `AI_TRANSCRIPTION_BASE_URL`, each with no default, so a scenario
-  skips unless a caller names its role's endpoint; each scenario sends to the one model its
-  endpoint's `/models` lists (finding 41).
-- `router_test.go`'s `hinted` and `record` give way to assertions of what the format sent or what
-  the endpoint does with it, and a check that can't fail is deleted (finding 42).
-
-**`tools/infer`, new** (infer): the nested module, laid out from go-cli-sdk-template, with the
-commands models, embed, chat, transcribe, and version over the base module's surface, the root
-endpoint and retry flags over `INFER_` variables, the one-model fallback, and its unit and
-integration tiers (modules, "infer's module").
-
-### The repository
-
-- **`go.mod`** (library): `go 1.27` and no `require` (modules, decisions 2 and 3).
-- **`.golangci.yml`** (library): the spike's, its allow list on go-ai's module path and its base
-  rule excluding `tools/infer` (finding 44; modules, decisions 3 and 4). The infer task adds the
-  rule over `tools/infer`.
-- **`mise.toml`** (library): `"."` in `GO_MODULES`, the no-`require` assertion, the lint under the
-  integration tag, `mise run integration`, and `mise run upgrade`, without shellcheck (findings 41,
-  44 to 46; modules, decision 3). The infer task adds `"tools/infer"` to `GO_MODULES`.
-- **`.github/workflows/release.yml`** (library): go-storage's, over both tag namespaces (finding
-  47; modules, decision 8). go-ai's check-only `ci.yml` stands as it is, and the spike's is not
-  ported (finding 50).
-- **`CHANGELOG.md`** (library): Keep-a-Changelog, with none of the spike's entries, its first
-  release `v0.1.0` (finding 48; modules, decision 6). The infer task adds
-  `tools/infer/CHANGELOG.md` and the tag `tools/infer/v0.1.0`.
-- **`go.work`** (infer): `.` and `./tools/infer` (modules, decision 5).
-- **`README.md`** (library): go-ai's tier, its dependency line beside its link to the standard,
-  and its API by example, naming no caller (finding 52). The infer task adds `infer`'s usage.
-- **The spike's `STANDARDS.md`, `CLAUDE.md`, `context/`, and `scripts/currency.sh`** are not
-  ported: go-ai has its own (finding 49 for `scripts/currency.sh`), and its `STANDARDS.md` carries
-  the spike's three client rules, two of them changed (finding 53).
-- **The infer rerun against the workstations' vLLM endpoints** (data-intelligence, "Gates"),
-  through the formats the processing layer's endpoints use, and the fixes it finds (acceptance).

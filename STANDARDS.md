@@ -2,7 +2,7 @@
 
 The judgement calls the standards-reviewer applies to go-ai, beyond what `mise run check`
 enforces: each one line, with the architecture page that applies. They come from go-ai's design
-review, `context/design.md`.
+review, `docs/design.md`.
 
 - `architecture/principles/context-architecture.md`: the README and each package's `doc.go` hold
   go-ai's documentation; a change that alters documented behavior updates them with it.
