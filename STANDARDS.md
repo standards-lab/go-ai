@@ -60,4 +60,4 @@ review, `docs/design.md`.
 - `architecture/standards/go-elemental/principles/cli-applications.md`: `infer` is laid out from
   go-cli-sdk-template, and `infrastructure.go` is the only file of its composition root that names
   a format.
-- `architecture/principles/comments.md`: applies to every file in both modules.
+- `architecture/principles/comments.md`: every comment, in both modules.
