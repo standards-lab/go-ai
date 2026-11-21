@@ -717,6 +717,25 @@ A scenario whose request the profile refuses before sending, a declared gap, ski
 gap; a refusal of the spec's own fails. `mise run integration` runs it after the base module's
 tier; no CI job runs either.
 
+### The lint configuration
+
+`.golangci.yml` carries out decisions 3 and 4 and finding 39. Its linters are the standard set,
+plus depguard, testpackage, and nolintlint. Tests are linted with the code they test, so the
+depguard rules hold them too, and the check runs golangci-lint a second time under the
+`integration` build tag, so each integration tier is linted as well.
+
+- **testpackage** keeps tests black-box. Its skip regexp is narrowed to `export_test.go`, the one
+  white-box file allowed. Its `allow-packages` is narrowed from its default, `main`, so a
+  command's tests are black-box too, in `main_test`: it names only the empty package name, which
+  no package has, since an empty list leaves the default in force.
+- **depguard's allow entries match by prefix** unless they end in `$`, so go-ai's entries are
+  anchored: the module as itself, or a package under it, never a sibling such as `go-ai-extra`.
+  The infer rule's allow entry for go-ai would admit its internal packages too, so it denies
+  `go-ai/internal` by name; depguard takes the longer of an allow and a deny match, and the deny
+  is the longer.
+- **nolintlint** requires every suppression to name its linter and give its reason
+  (`architecture/principles/comments.md`).
+
 ## Rejected alternatives
 
 What the review rules out, one line each with its reason, cited as the sections above cite theirs;

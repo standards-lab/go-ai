@@ -61,3 +61,6 @@ review, `docs/design.md`.
 - `architecture/standards/go-elemental/principles/cli-applications.md`: `infer` is laid out from
   go-cli-sdk-template, and `infrastructure.go` is the only file of its composition root that names
   a format.
+- `architecture/principles/comments.md`: every comment is one of the five kinds, in source, tests,
+  scripts, and every configuration file (TOML, YAML, `.gitignore`); a doc comment on an unexported
+  identifier or a test function is not package documentation.
