@@ -122,7 +122,7 @@ The repository is a Go workspace of two modules, the base module and `tools/infe
 through [mise](https://mise.jdx.dev):
 
 ```sh
-mise run check        # build, vet, format, fix, tidy, test, and lint every module, then lint-context and lint-references; writes nothing
+mise run check        # build, vet, format, fix, tidy, test, and lint every module, then lint-context, lint-references, and lint-secrets; writes nothing
 mise run currency     # report requirements, Go, tools, and action pins behind their latest
 mise run upgrade      # upgrade every module's go directive and requirements, and the tools, to their latest
 mise run integration  # run every module's integration tier against the AI_*_BASE_URL endpoints
@@ -147,6 +147,8 @@ which an endpoint that lists more than one, such as a cloud account's whole cata
 
 An endpoint that needs credentials takes them from `AI_<ROLE>_TOKEN`, sent as the bearer token,
 and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value.
+`mise run integration` fills an unset `AI_<ROLE>_TOKEN` from the committed `fnox.toml`
+([Secrets](#secrets)).
 
 A role's [profile](docs/concepts.md#profiles) goes in `AI_<ROLE>_PROFILE`, the JSON object keyed
 by format name that `infer`'s `--profile` takes. Unset, each format follows its spec. A scenario
@@ -159,6 +161,17 @@ AI_AGENT_BASE_URL=https://gateway.example/agent/v1 AI_AGENT_HEADER='api-key: …
 `mise run integration` then runs `infer`'s tier against the same variables. The check builds the
 tier but never runs it, and no CI job runs it, because the models are on the organization's own
 machines.
+
+### Secrets
+
+`fnox.toml` holds go-ai's one development-time secret, `AI_GATEWAY_TOKEN`, the integration
+tier's model gateway key, encrypted to two recipients: `laptop` and the offline `backup`. Only
+`mise run integration` is granted it, and the task copies it into `AI_<ROLE>_TOKEN` for each role
+whose `AI_<ROLE>_BASE_URL` is set and whose `AI_<ROLE>_TOKEN` is unset.
+
+The [development-secrets
+principle](https://github.com/standards-lab/architecture/blob/main/principles/development-secrets.md)
+gives the convention and every step, including supplying your own value.
 
 ## Modules and tags
 

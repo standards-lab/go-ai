@@ -60,4 +60,6 @@ review, `docs/design.md`.
 - `architecture/standards/go-elemental/principles/cli-applications.md`: `infer` is laid out from
   go-cli-sdk-template, and `infrastructure.go` is the only file of its composition root that names
   a format.
+- `architecture/principles/development-secrets.md`: development-time secrets live in the
+  repository's own committed, age-encrypted `fnox.toml`, each with a description.
 - `architecture/principles/comments.md`: every comment, in both modules.

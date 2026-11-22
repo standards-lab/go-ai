@@ -2,6 +2,8 @@
 .claude/briefs/
 .state/
 mise.local.toml
+fnox.local.toml
+.fnox.local.toml
 bin/
 
 *.swp

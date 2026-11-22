@@ -25,6 +25,9 @@
 // a header ai.New refuses fails it naming the role's base URL; no failure prints a token or a
 // header value. The reading of them is untagged, so the unit tier tests it.
 //
+// `mise run integration` fills an unset AI_<ROLE>_TOKEN from the committed fnox.toml, as the
+// README's "Secrets" says.
+//
 // A scenario whose role's variable is unset skips, naming the variable, so the tier with none
 // set skips whole. A scenario sends to the one model its endpoint's model list names, and fails
 // when the list names none or more than one. A role may instead name its model in

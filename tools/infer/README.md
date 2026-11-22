@@ -185,7 +185,7 @@ The repository's [mise](https://mise.jdx.dev) tasks cover both modules and run f
 repository root:
 
 ```sh
-mise run check        # build, vet, format, fix, tidy, test, and lint every module, then lint-context and lint-references; writes nothing
+mise run check        # build, vet, format, fix, tidy, test, and lint every module, then lint-context, lint-references, and lint-secrets; writes nothing
 mise run integration  # run every module's integration tier against the AI_*_BASE_URL endpoints
 ```
 
@@ -210,6 +210,8 @@ Every role also runs `models`. A role whose variable is unset skips. A credentia
 against a loopback endpoint always runs, and checks that the token and header arrive and that no
 log shows them. A run refused for a gap the role's profile declares skips its scenario. The
 suite sends go-ai's `integration/testdata` media, so it runs from a checkout.
+`mise run integration` fills an unset `AI_<ROLE>_TOKEN` from the committed `fnox.toml`'s
+`AI_GATEWAY_TOKEN`, as [go-ai's Secrets](../../README.md#secrets) says.
 
 ## License
 
