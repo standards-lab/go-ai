@@ -165,11 +165,9 @@ machines.
 ### Secrets
 
 `fnox.toml` holds go-ai's one development-time secret, `AI_GATEWAY_TOKEN`, the integration
-tier's model gateway key, encrypted to two recipients: `laptop` and the offline `backup`. It says
-what it is and how to get your own; `mise secrets ls` lists it without a key. Only
+tier's model gateway key, encrypted to two recipients: `laptop` and the offline `backup`. Only
 `mise run integration` is granted it, and the task copies it into `AI_<ROLE>_TOKEN` for each role
-whose `AI_<ROLE>_BASE_URL` is set and whose `AI_<ROLE>_TOKEN` is unset, so a token you export for a
-role takes precedence.
+whose `AI_<ROLE>_BASE_URL` is set and whose `AI_<ROLE>_TOKEN` is unset.
 
 The [development-secrets
 principle](https://github.com/standards-lab/architecture/blob/main/principles/development-secrets.md)

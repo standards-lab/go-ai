@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # lint-secrets checks the repository's fnox configuration without a decryption key: every secret
 # in a tracked fnox.toml has a description, every age-provider value is age ciphertext, no tracked
-# file holds an age secret key, and git ignores fnox.local.toml. It needs git, jq, and mise's pinned
-# mikefarah yq, reads no network, writes nothing, and exits non-zero on any failure.
+# file holds an age secret key, and git ignores and doesn't track fnox.local.toml or
+# .fnox.local.toml. It needs git, jq, and mise's pinned mikefarah yq, reads no network, writes
+# nothing, and exits non-zero on any failure.
 # See README.md, "Secrets"
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)" || exit
@@ -52,7 +53,7 @@ check_config() {
   [[ -n $rows ]] || return
   while IFS=$'\t' read -r scope name described age ciphertext; do
     if [[ $described != true ]]; then
-      refuse "$file: $scope.$name has no description; add description = \"<what it is, what reads it, how to generate your own>\" with fnox set $name --description"
+      refuse "$file: $scope.$name has no description; add description = \"<what it is, what reads it, how to generate your own>\" with fnox -c ./$file set $name --description"
     fi
     if [[ $age == true && $ciphertext != true ]]; then
       refuse "$file: $scope.$name's value is not age ciphertext; set it through fnox -c ./$file set $name, which encrypts it, and rotate the value if plaintext was ever committed"
