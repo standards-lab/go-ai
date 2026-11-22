@@ -147,8 +147,8 @@ which an endpoint that lists more than one, such as a cloud account's whole cata
 
 An endpoint that needs credentials takes them from `AI_<ROLE>_TOKEN`, sent as the bearer token,
 and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value. For each role
-whose base URL is set and whose `AI_<ROLE>_TOKEN` is unset, `mise run integration` fills it from
-`AI_GATEWAY_TOKEN`, from the committed `fnox.toml` ([Secrets](#secrets)), and redacts it in its
+whose base URL is set and whose `AI_<ROLE>_TOKEN` is unset, `mise run integration` fills it with
+`AI_GATEWAY_TOKEN` from the committed `fnox.toml` ([Secrets](#secrets)), and redacts it in its
 output. Without a key that decrypts it, fnox warns and the tier runs with what you export.
 
 A role's [profile](docs/concepts.md#profiles) goes in `AI_<ROLE>_PROFILE`, the JSON object keyed
@@ -167,7 +167,7 @@ machines.
 
 `fnox.toml` holds go-ai's development-time secret, `AI_GATEWAY_TOKEN`, the integration tier's
 model gateway key, encrypted with [age](https://age-encryption.org) to the maintainer's
-recipients. It says what it is and how to get your own; list it, with no key, with:
+recipients. It says what it is and how to get your own. This lists it without a key:
 
 ```sh
 mise secrets ls
