@@ -146,10 +146,9 @@ which an endpoint that lists more than one, such as a cloud account's whole cata
 | `AI_TRANSCRIPTION_BASE_URL` | serves the transcription route | route-mode `Transcribe` |
 
 An endpoint that needs credentials takes them from `AI_<ROLE>_TOKEN`, sent as the bearer token,
-and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value. For each role
-whose base URL is set and whose `AI_<ROLE>_TOKEN` is unset, `mise run integration` fills it with
-`AI_GATEWAY_TOKEN` from the committed `fnox.toml` ([Secrets](#secrets)), and redacts it in its
-output. Without a key that decrypts it, fnox warns and the tier runs with what you export.
+and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either value.
+`mise run integration` fills an unset `AI_<ROLE>_TOKEN` from the committed `fnox.toml`
+([Secrets](#secrets)).
 
 A role's [profile](docs/concepts.md#profiles) goes in `AI_<ROLE>_PROFILE`, the JSON object keyed
 by format name that `infer`'s `--profile` takes. Unset, each format follows its spec. A scenario
@@ -165,27 +164,16 @@ machines.
 
 ### Secrets
 
-`fnox.toml` holds go-ai's development-time secret, `AI_GATEWAY_TOKEN`, the integration tier's
-model gateway key, encrypted with [age](https://age-encryption.org) to the maintainer's
-recipients. It says what it is and how to get your own. This lists it without a key:
+`fnox.toml` holds go-ai's one development-time secret, `AI_GATEWAY_TOKEN`, the integration
+tier's model gateway key, encrypted to two recipients: `laptop` and the offline `backup`. It says
+what it is and how to get your own; `mise secrets ls` lists it without a key. Only
+`mise run integration` is granted it, and the task copies it into `AI_<ROLE>_TOKEN` for each role
+whose `AI_<ROLE>_BASE_URL` is set and whose `AI_<ROLE>_TOKEN` is unset, so a token you export for a
+role takes precedence.
 
-```sh
-mise secrets ls
-```
-
-To use your own value, generate an age identity with `age-keygen -o ~/.config/fnox/age.txt`, then
-write the value to the gitignored `fnox.local.toml`, which overrides `fnox.toml`. Give that file
-an age provider whose recipient is your own public key (`age-keygen -y ~/.config/fnox/age.txt`),
-then run:
-
-```sh
-fnox -c ./fnox.local.toml set AI_GATEWAY_TOKEN
-```
-
-In a fork, replace the recipients in `fnox.toml` with your own and set the value again. A plain
-`fnox set` writes to the committed `fnox.toml`, so name `fnox.local.toml` with `-c` unless you
-mean to change the committed file. The architecture's development-secrets principle,
-`architecture/principles/development-secrets.md`, governs this arrangement.
+The [development-secrets
+principle](https://github.com/standards-lab/architecture/blob/main/principles/development-secrets.md)
+gives the convention and every step, including supplying your own value.
 
 ## Modules and tags
 
