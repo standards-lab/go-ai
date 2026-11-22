@@ -7,7 +7,7 @@ experimental = true
 task.run_auto_install = false
 
 [tools]
-"github:standards-lab/claude-plugins" = { version = "0.22.0", version_prefix = "marathon/v" }
+"github:standards-lab/claude-plugins" = { version = "0.23.0", version_prefix = "marathon/v" }
 "aqua:FiloSottile/age" = "1.3.2"
 fnox = "1.50.0"
 go = "1.27.4"
