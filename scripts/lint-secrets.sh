@@ -38,8 +38,8 @@ secrets_of() {
     | [$scope, .key,
        ((.value.description // "") | gsub("^\\s+|\\s+$"; "") | length > 0 | tostring),
        ((age_providers($p) | index($provider)) != null and (.value | has("value")) | tostring),
-       ((.value.value // "") | startswith("fnox-age-batch-v1:")
-         or ((.[0:32] | @base64d?) // "" | startswith("age-encryption.org/v1\n")) | tostring)]
+       ((.value.value // "") | ltrimstr("fnox-age-batch-v1:") | (.[0:32] | @base64d?) // ""
+         | startswith("age-encryption.org/v1\n") | tostring)]
     | @tsv'
 }
 
