@@ -5,8 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 AGENT=http://gb10-1:8000/v1
-VISION=http://gb10-2:8000/v1
-AUDIO=http://framework:8001/v1
+VISION=http://gb10-2:8001/v1
+AUDIO=http://framework:8002/v1
 
 record() {
   curl -sS -o "$1.json" -H 'Content-Type: application/json' -d "$3,\"stream\":false}" "$2/chat/completions"
