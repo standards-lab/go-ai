@@ -516,7 +516,7 @@ import (
 func embed(ctx context.Context, client *ai.Client, model string) error {
 	emb, err := client.Embed(ctx, &ai.EmbeddingRequest{
 		Model: model,
-		Input: []string{"The Nile flows north.", "The Amazon carries the most water."},
+		Input: []string{"passage: The Nile flows north.", "passage: The Amazon carries the most water."},
 	})
 	if err != nil {
 		return err
@@ -533,13 +533,15 @@ func embed(ctx context.Context, client *ai.Client, model string) error {
 		"embed":      func() error { return embed(ctx, client, model) },
 ```
 
-Point it at an embedding endpoint:
+Point it at an embedding endpoint. This output is from intfloat/multilingual-e5-large, served
+under the name `embedding`. The model expects `passage: ` before each stored passage and
+`query: ` before each query, so the inputs carry the prefix:
 
 ```text
-$ ASK_BASE_URL=http://localhost:8002/v1 ASK_MODEL=ibm-granite/granite-embedding-english-r2 go run . embed
-0: 768 numbers, starting -1.4219
-1: 768 numbers, starting -0.2383
-16 tokens
+$ ASK_BASE_URL=http://localhost:8003/v1 ASK_MODEL=embedding go run . embed
+0: 1024 numbers, starting 0.0122
+1: 1024 numbers, starting 0.0408
+23 tokens
 ```
 
 The batch size, and how many batches run at once, are yours to choose.
@@ -600,10 +602,11 @@ func transcribe(ctx context.Context, model string) error {
 ```
 
 `Open` is called once per attempt, so a retry reads the clip again. The file name's extension,
-`.wav` or `.mp3`, gives the clip's encoding.
+`.wav` or `.mp3`, gives the clip's encoding. This output is from gemma-4-E4B-it, served under the
+name `audio`:
 
 ```text
-$ ASK_BASE_URL=http://localhost:8001/v1 ASK_MODEL=google/gemma-4-E4B-it ASK_CLIP=phrase.wav go run . transcribe
+$ ASK_BASE_URL=http://localhost:8002/v1 ASK_MODEL=audio ASK_CLIP=phrase.wav go run . transcribe
 The access code is 7429.
 ```
 

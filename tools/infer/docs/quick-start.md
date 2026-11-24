@@ -246,19 +246,20 @@ usage: 181 input tokens, 10 output tokens, 191 total tokens
 
 ## 9. Embed
 
-This step uses granite-embedding-english-r2, which returns 768 numbers per vector:
+This step uses intfloat/multilingual-e5-large, which returns 1,024 numbers per vector:
 
 ```sh
 export INFER_BASE_URL=http://localhost:8003/v1
 ```
 
-Each argument is one input, and each vector is one line:
+Each argument is one input, and each vector is one line. The model expects `passage: ` before
+each stored passage and `query: ` before each query, so the inputs carry the prefix:
 
 ```text
-$ infer embed "first passage" "second passage"
-[0.18164062,-0.6640625,-0.47851562,0.46484375,0.8828125,…]
-[-0.44921875,-0.78125,-0.55859375,1.1484375,0.49804688,…]
-usage: 8 input tokens, 8 total tokens
+$ infer embed "passage: first passage" "passage: second passage"
+[0.046260916,0.023065569,0.0023157918,-0.043930296,0.056205258,…]
+[0.042841334,0.018850785,-0.008285137,-0.03904309,0.042606838,…]
+usage: 12 input tokens, 12 total tokens
 ```
 
 With no arguments, each line of stdin is one input. The usage goes to stderr, so a redirect
@@ -266,7 +267,7 @@ captures only the vectors:
 
 ```text
 $ infer embed < passages.txt > vectors.jsonl
-usage: 8 input tokens, 8 total tokens
+usage: 12 input tokens, 12 total tokens
 $ wc -l vectors.jsonl
 2 vectors.jsonl
 ```
