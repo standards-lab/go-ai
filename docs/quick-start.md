@@ -602,10 +602,11 @@ func transcribe(ctx context.Context, model string) error {
 ```
 
 `Open` is called once per attempt, so a retry reads the clip again. The file name's extension,
-`.wav` or `.mp3`, gives the clip's encoding.
+`.wav` or `.mp3`, gives the clip's encoding. This output is from gemma-4-E4B-it, served under the
+name `audio`:
 
 ```text
-$ ASK_BASE_URL=http://localhost:8001/v1 ASK_MODEL=google/gemma-4-E4B-it ASK_CLIP=phrase.wav go run . transcribe
+$ ASK_BASE_URL=http://localhost:8002/v1 ASK_MODEL=audio ASK_CLIP=phrase.wav go run . transcribe
 The access code is 7429.
 ```
 
