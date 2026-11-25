@@ -199,6 +199,10 @@ convention it can't send: a `native` that isn't a JSON object, or that sets `mod
 `native` also has, before anything is sent. `Client.EmbeddingProfile` returns a copy of the
 profile the client applies.
 
+`Tokenize` counts a text as `Embed` would send it: it prepends the prefix the profile declares
+for the request's `InputType`, so the count matches the embedding's prompt tokens. A
+convention's `native` has no form on the tokenize route and isn't sent.
+
 An `EmbeddingProfile` decodes from JSON as a format's profile does: under its snake_case names
 alone, strictly with `json.RejectUnknownMembers(true)`, and an unknown input type is always an
 error. go-ai ships no presets.
@@ -218,10 +222,12 @@ client, err := ai.New("http://localhost:8000/v1", httpClient, completions.New(co
 A nil HTTP client or format is a wiring mistake, so `New` panics and names it. A base URL or
 option it can't use is an error.
 
-The client has five operations. `Generate` and `GenerateStream` go through the format.
+The client has six operations. `Generate` and `GenerateStream` go through the format.
 `Embed`, `Models`, and route-mode `Transcribe` go to the OpenAI-compatible routes
 (`embeddings`, `models`, and `audio/transcriptions`) whatever the format, because the engines
-serve those routes beside every format's own. Each `Model` that `Models` returns carries its
+serve those routes beside every format's own. `Tokenize` goes to vLLM's `tokenize` route
+whatever the format; vLLM serves it at the server's root, not below `/v1`, so its client's base
+URL is the server's root or a gateway's API root that forwards it. Each `Model` that `Models` returns carries its
 `ID` and, as `Native`, its list entry as the endpoint sent it, for the members go-ai has no
 field for.
 

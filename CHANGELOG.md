@@ -27,6 +27,16 @@ only; `tools/infer` keeps its own.
 - `ai.Client.EmbeddingProfile`, a copy of the profile the Client applies.
 - `aitest.EmbeddingRequest.Native`, the body's members beside `model`, `input`, and
   `encoding_format`, in the order they arrived.
+- `ai.Client.Tokenize`, which counts an `ai.TokenizeRequest`'s text in its model's tokenizer
+  through vLLM's `tokenize` route, served at the server's root, and returns `ai.Tokens`: `Count`,
+  `MaxModelLen`, and the token `IDs`. It sends `add_special_tokens: true` and the prefix the
+  embedding profile declares for the request's `InputType`, so the count is what `Embed` of the
+  same text takes; a convention's native members aren't sent. It refuses a nil request, no
+  model, or an unknown input type before anything is sent, and a reply without a count or whose
+  count disagrees with its token ids.
+- `aitest.Routes.Tokenize`, answering `POST /tokenize` and `POST /v1/tokenize`, with
+  `aitest.TokenizeRequest` (model, prompt as sent, `add_special_tokens`) and
+  `aitest.TokenizeReply` (count as given, `max_model_len`, token ids).
 
 ## [v0.4.0] - 2026-11-19
 

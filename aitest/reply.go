@@ -13,8 +13,8 @@ import (
 )
 
 // Reply is what a route function answers with. Only the package's own reply types are Replies:
-// [ChatReply], [EmbeddingsReply], [TranscriptionReply], [ModelsReply], [ErrorReply], and
-// [RawReply]. A typed reply is the wire shape of its route, and is written as that shape whichever
+// [ChatReply], [EmbeddingsReply], [TokenizeReply], [TranscriptionReply], [ModelsReply],
+// [ErrorReply], and [RawReply]. A typed reply is the wire shape of its route, and is written as that shape whichever
 // route returns it.
 type Reply interface {
 	write(ctx context.Context, w http.ResponseWriter, a asked)
@@ -61,6 +61,26 @@ func (r EmbeddingsReply) write(_ context.Context, w http.ResponseWriter, _ asked
 		body.Data[i] = item{Object: "embedding", Index: i, Embedding: base64.StdEncoding.EncodeToString(b)}
 	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+// TokenizeReply is a tokenize route's reply, as vLLM shapes it: the count, the model's most
+// tokens, and the token ids, with token_strs null.
+type TokenizeReply struct {
+	// Count is the reply's count, written as given, so a test can make it disagree with Tokens.
+	Count int
+	// MaxModelLen is the reply's max_model_len; zero writes none.
+	MaxModelLen int
+	// Tokens is the reply's tokens, the token ids; nil writes none.
+	Tokens []int
+}
+
+func (r TokenizeReply) write(_ context.Context, w http.ResponseWriter, _ asked) {
+	writeJSON(w, http.StatusOK, struct {
+		Count       int       `json:"count"`
+		MaxModelLen int       `json:"max_model_len,omitzero"`
+		Tokens      []int     `json:"tokens,omitzero"`
+		TokenStrs   *[]string `json:"token_strs"`
+	}{r.Count, r.MaxModelLen, r.Tokens, nil})
 }
 
 // TranscriptionReply is a transcription route's reply, as response_format json shapes it,

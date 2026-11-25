@@ -23,6 +23,13 @@
 // instead sends the clip as a chat request in the Client's format, which must carry audio, as
 // Chat Completions does, for an endpoint whose audio model has no transcription route.
 //
+// Tokenize, like Embed, sits outside the protocol and the Format. It counts a text's tokens in
+// the model's own tokenizer through vLLM's tokenize route, which vLLM serves at the server's
+// root rather than below /v1, so its Client's base URL is the server's root, or a gateway's API
+// root that forwards the route. It sends the model, the text with the prefix the
+// EmbeddingProfile declares for its input type, and add_special_tokens true, so the count is what
+// Embed of the same text takes; a convention's native members aren't sent.
+//
 // go-ai's README (https://github.com/standards-lab/go-ai#readme) states the module's place in Go
 // Elemental, its dependency line, and its API by example.
 //
@@ -49,6 +56,9 @@
 //   - [EmbeddingProfile] maps each input type to its [InputConvention], a prefix before every
 //     input and native members merged into the body.
 //   - [Client.EmbeddingProfile] returns a copy of the profile the Client applies.
+//   - [Client.Tokenize] counts a [TokenizeRequest]'s text in its model's tokenizer, with the
+//     prefix of its input type, and returns its [Tokens]: the count, the model's most tokens,
+//     and the token ids.
 //   - [Client.Models] lists the endpoint's models, each a [Model]: its id, and its list entry
 //     as the endpoint sent it.
 //   - [Client.Transcribe] sends a [TranscriptionRequest]'s clip and returns its

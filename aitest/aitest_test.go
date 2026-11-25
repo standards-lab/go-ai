@@ -212,6 +212,10 @@ func TestUnscriptedRouteAnswers404(t *testing.T) {
 			_, err := c.Models(t.Context())
 			return err
 		}},
+		{"tokenize", func() error {
+			_, err := c.Tokenize(t.Context(), &ai.TokenizeRequest{Model: "m", Text: "x"})
+			return err
+		}},
 		{"unknown path", func() error {
 			_, err := c.Generate(t.Context(), userText("m", "hi"))
 			return err
@@ -362,6 +366,54 @@ func TestModels(t *testing.T) {
 	for i, id := range []string{"gemma", "qwen"} {
 		if models[i].ID != id || string(models[i].Native) != entries[i] {
 			t.Errorf("Models[%d] = %q %s, want %q %s", i, models[i].ID, models[i].Native, id, entries[i])
+		}
+	}
+}
+
+func TestTokenize(t *testing.T) {
+	var got []aitest.TokenizeRequest
+	e := aitest.Serve(t, aitest.Routes{Tokenize: func(_ context.Context, req aitest.TokenizeRequest) aitest.Reply {
+		got = append(got, req)
+		return aitest.TokenizeReply{Count: 3, MaxModelLen: 512, Tokens: []int{0, 33600, 2}}
+	}})
+	root := strings.TrimSuffix(e.URL(), "/v1")
+	for _, base := range []string{root, e.URL()} {
+		c, err := ai.New(base, http.DefaultClient, completions.New(completions.Options{}), ai.Options{})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		tokens, err := c.Tokenize(t.Context(), &ai.TokenizeRequest{Model: "embedder", Text: "hello"})
+		if err != nil {
+			t.Fatalf("Tokenize at %s: %v", base, err)
+		}
+		if want := (&ai.Tokens{Count: 3, MaxModelLen: 512, IDs: []int{0, 33600, 2}}); !reflect.DeepEqual(tokens, want) {
+			t.Errorf("Tokenize at %s = %+v, want %+v", base, tokens, want)
+		}
+	}
+	want := aitest.TokenizeRequest{Arrival: 1, Model: "embedder", Prompt: "hello", AddSpecialTokens: true}
+	if len(got) != 2 || got[0] != want || got[1] != want {
+		t.Errorf("route got %+v, want %+v at each of /tokenize and /v1/tokenize", got, want)
+	}
+	var paths []string
+	for _, r := range e.Requests() {
+		paths = append(paths, r.Path)
+	}
+	if !slices.Equal(paths, []string{"/tokenize", "/v1/tokenize"}) {
+		t.Errorf("paths = %q, want [/tokenize /v1/tokenize]", paths)
+	}
+}
+
+func TestTokenizeReplyShape(t *testing.T) {
+	replies := []aitest.TokenizeReply{{Count: 2, MaxModelLen: 512, Tokens: []int{0, 2}}, {Count: 5}}
+	e := aitest.Serve(t, aitest.Routes{Tokenize: func(_ context.Context, req aitest.TokenizeRequest) aitest.Reply {
+		return replies[req.Arrival-1]
+	}})
+	for i, want := range []string{
+		`{"count":2,"max_model_len":512,"tokens":[0,2],"token_strs":null}`,
+		`{"count":5,"token_strs":null}`,
+	} {
+		if status, body := send(t, e, http.MethodPost, "/tokenize", `{"model":"m","prompt":"x"}`); status != http.StatusOK || body != want {
+			t.Errorf("reply %d = %d %s, want 200 %s", i, status, body, want)
 		}
 	}
 }

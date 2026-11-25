@@ -102,6 +102,23 @@ A failure the endpoint reports inside the stream is not an error pair. The strea
 - The reply's `Vectors[i]` is the embedding of `Input[i]`. `Usage` has `PromptTokens` and
   `TotalTokens`, the endpoint's names.
 
+### Tokenize
+
+`Tokenize` counts a `TokenizeRequest`'s text in its model's own tokenizer, as a caller chunking
+text for an embedding model needs. It POSTs to the `tokenize` route, whatever the client's
+format. vLLM serves that route at the server's root, not below `/v1`, so the client's base URL is
+the server's root, or a gateway's API root that forwards it, such as `/<alias>/v1`:
+
+- `Model` is required. `Text` is sent as one prompt; an empty text is sent as it is.
+- `add_special_tokens` is always true, so the count is the `PromptTokens` that `Embed` of the same
+  text reports.
+- `InputType` prepends the prefix the client's `Options.Embedding` profile declares for it, so the
+  count is what `Embed` of the same type takes. The convention's native members aren't sent. The
+  zero type, and a type the profile declares nothing for, count the text as given.
+- The reply's `Count` is the token count, `MaxModelLen` the model's most tokens (zero when the
+  reply has none), and `IDs` the token ids. A reply without a count, or whose count disagrees
+  with its ids, is an error.
+
 ### Models
 
 `Models` GETs the `models` route and returns each model's `ID`, in the endpoint's order, with
@@ -280,14 +297,15 @@ it to `ai.New`.
 
 `aitest.Serve` starts a loopback OpenAI-compatible endpoint for a test, closed when the test
 ends. It records every request, in order, in `Endpoint.Requests`, and answers each route with the
-function `Routes` gives: Chat Completions, embeddings, transcriptions, and models, each given its
-request decoded and numbered by arrival, and any other path below `/v1`, such as `messages` or
-`responses`, raw. A route without a function answers 404 with an OpenAI-style error body.
+function `Routes` gives: Chat Completions, embeddings, transcriptions, models, and tokenize (at
+`/tokenize` and `/v1/tokenize`), each given its request decoded and numbered by arrival, and any
+other path below `/v1`, such as `messages` or `responses`, raw. A route without a function
+answers 404 with an OpenAI-style error body.
 
 A route function answers with a typed reply in its route's wire shape (`ChatReply`, streamed
-when the request asks, `EmbeddingsReply`, `TranscriptionReply`, `ModelsReply`), an `ErrorReply`
-of any status with an optional Retry-After, or a `RawReply` of a JSON body or server-sent event
-`Frame`s, written as given. A `Gate` parks requests inside route functions, and holds a
+when the request asks, `EmbeddingsReply`, `TranscriptionReply`, `ModelsReply`,
+`TokenizeReply`), an `ErrorReply` of any status with an optional Retry-After, or a `RawReply` of
+a JSON body or server-sent event `Frame`s, written as given. A `Gate` parks requests inside route functions, and holds a
 streamed reply after a given piece, until the test releases them, to prove a caller's
 concurrency bound or cancellation. The package imports only the standard library, so any
 module's tests can use it.

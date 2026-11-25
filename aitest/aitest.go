@@ -23,6 +23,8 @@ const (
 	embeddingsPath     = "/v1/embeddings"
 	transcriptionsPath = "/v1/audio/transcriptions"
 	modelsPath         = "/v1/models"
+	tokenizePath       = "/tokenize"
+	apiTokenizePath    = "/v1/tokenize"
 )
 
 const maxFormMemory = 32 << 20
@@ -42,6 +44,10 @@ type Routes struct {
 	Transcriptions func(ctx context.Context, req TranscriptionRequest) Reply
 	// Models answers GET /v1/models.
 	Models func(ctx context.Context, req ModelsRequest) Reply
+	// Tokenize answers POST /tokenize, vLLM's tokenize route at the server's root, and POST
+	// /v1/tokenize, the route a gateway forwards below its API root. Requests to the two paths
+	// are numbered apart.
+	Tokenize func(ctx context.Context, req TokenizeRequest) Reply
 	// Raw answers any other path below /v1, keyed by the path after /v1/, such as "messages" or
 	// "responses", whatever the method. A key that names a typed route above fails Serve.
 	Raw map[string]func(ctx context.Context, req RawRequest) Reply
@@ -74,6 +80,18 @@ type EmbeddingRequest struct {
 	// one JSON object in the order they arrived, such as {"dimensions":256}; empty when it has
 	// none.
 	Native jsontext.Value
+}
+
+// TokenizeRequest is a request to the tokenize route, decoded.
+type TokenizeRequest struct {
+	// Arrival is the request's place among the path's requests, from 1.
+	Arrival int
+	// Model is the request's model.
+	Model string
+	// Prompt is the text to tokenize, as it arrived, any prefix the client added included.
+	Prompt string
+	// AddSpecialTokens is the request's add_special_tokens, false when it has none.
+	AddSpecialTokens bool
 }
 
 // TranscriptionRequest is a request to the transcription route, its multipart form decoded.
@@ -127,7 +145,7 @@ type Endpoint struct {
 func Serve(t testing.TB, routes Routes) *Endpoint {
 	t.Helper()
 	for key := range routes.Raw {
-		if p := "/v1/" + key; p == chatPath || p == embeddingsPath || p == transcriptionsPath || p == modelsPath {
+		if p := "/v1/" + key; p == chatPath || p == embeddingsPath || p == transcriptionsPath || p == modelsPath || p == apiTokenizePath {
 			t.Fatalf("aitest: Raw route %q is a typed route; give its function in Routes", key)
 		}
 	}
@@ -211,6 +229,13 @@ func (e *Endpoint) dispatch(ctx context.Context, req Request) (Reply, asked, boo
 		return rt.Transcriptions(ctx, tr), asked{}, true, nil
 	case req.Path == modelsPath && req.Method == http.MethodGet && rt.Models != nil:
 		return rt.Models(ctx, ModelsRequest{Arrival: e.arrive(req.Path)}), asked{}, true, nil
+	case (req.Path == tokenizePath || req.Path == apiTokenizePath) && req.Method == http.MethodPost && rt.Tokenize != nil:
+		tr, err := decodeTokenizeRequest(req.Body)
+		if err != nil {
+			return nil, asked{}, true, err
+		}
+		tr.Arrival = e.arrive(req.Path)
+		return rt.Tokenize(ctx, tr), asked{}, true, nil
 	}
 	key, ok := strings.CutPrefix(req.Path, "/v1/")
 	if f := rt.Raw[key]; ok && f != nil {
@@ -253,6 +278,18 @@ func decodeEmbeddingRequest(body []byte) (EmbeddingRequest, error) {
 		return EmbeddingRequest{}, fmt.Errorf("decode embeddings input: %w", err)
 	}
 	return req, nil
+}
+
+func decodeTokenizeRequest(body []byte) (TokenizeRequest, error) {
+	var wire struct {
+		Model            string `json:"model"`
+		Prompt           string `json:"prompt"`
+		AddSpecialTokens bool   `json:"add_special_tokens"`
+	}
+	if err := json.Unmarshal(body, &wire); err != nil {
+		return TokenizeRequest{}, fmt.Errorf("decode tokenize request: %w", err)
+	}
+	return TokenizeRequest{Model: wire.Model, Prompt: wire.Prompt, AddSpecialTokens: wire.AddSpecialTokens}, nil
 }
 
 func otherMembers(body []byte, typed ...string) (jsontext.Value, error) {
