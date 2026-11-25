@@ -3,6 +3,7 @@ package ai
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -112,7 +113,7 @@ const transcriptionFormatting = "\n\nFollow these specific instructions for form
 // carries no timestamps, and timestamp_granularities, which only verbose_json honors, has
 // nothing to shape. temperature and max_tokens, which llama.cpp passes to its chat completion,
 // and stream, which changes the reply's shape, are left to Native; in TranscribeChat,
-// MaxOutputTokens bounds the reply.
+// MaxOutputTokens bounds the reply, and sampling such as temperature goes through ChatNative.
 type TranscriptionRequest struct {
 	// Model is the audio model's id. It is required.
 	Model string
@@ -147,8 +148,17 @@ type TranscriptionRequest struct {
 	// reply Transcribe can't decode. A key that clashes with a field the typed fields set is
 	// refused: model, response_format, and file always, and language and prompt when Language
 	// and Prompt are set. So is an empty key, which names no field. TranscribeChat sends no
-	// form, so it refuses a request with any.
+	// form, so it refuses a request with any before anything is sent; its native tier is
+	// ChatNative.
 	Native url.Values
+	// ChatNative is the native tier of TranscribeChat: a JSON object sent as the chat request's
+	// protocol.Request.Native, its members merged into the top level of the format's body as
+	// they are, for a feature of the engine the typed fields don't cover, such as sampling:
+	// {"temperature":0} makes a transcript repeatable. Empty sends none. The format refuses it
+	// as it refuses any request's Native, before anything is sent. TranscribeRoute sends no
+	// JSON body, so it refuses a request with any before anything is sent; its native tier is
+	// Native.
+	ChatNative jsontext.Value
 	// MaxOutputTokens bounds the tokens of the model's reply in TranscribeChat; zero sends none,
 	// leaving the bound to the engine, and a negative bound is refused before anything is sent.
 	// It is the chat request's protocol.Request.MaxOutputTokens, so it goes out in the format's
@@ -190,8 +200,8 @@ type TranscriptionUsage struct {
 //
 // In TranscribeRoute, the default, it uploads the clip to the endpoint's OpenAI-compatible
 // transcription route, with the OpenAI-style error body's details on an *APIError. It refuses a nil
-// request, one with no model, Open, or file name, a nonzero MaxOutputTokens, and a Native key that
-// is empty or clashes with a typed field, before the token source is called or anything is sent.
+// request, one with no model, Open, or file name, a nonzero MaxOutputTokens, any ChatNative, and a
+// Native key that is empty or clashes with a typed field, before the token source is called or anything is sent.
 // Each attempt's upload streams: a goroutine writes the multipart form (the model, response_format
 // json, the language and prompt when set, Native's fields, then the clip) into a pipe the request
 // reads, so the clip is read as it is sent, never held whole, and goes chunked, its length unknown.
@@ -203,10 +213,11 @@ type TranscriptionUsage struct {
 // In TranscribeChat, it sends one request in the Client's format, to its route: Model, and one user
 // message of the clip as a protocol.InputAudio part, in the format FileName's extension gives, and
 // the instruction as an InputText part, Prompt or else TranscriptionInstruction's, bounded by
-// MaxOutputTokens when it is set. It reads the clip whole, as the request's body holds it. It needs
+// MaxOutputTokens when it is set, with ChatNative as its native tier. It reads the clip whole, as the request's body holds it. It needs
 // a format that carries audio, which today is Chat Completions. It refuses a nil request, one with
 // no model or Open, a FileName whose extension isn't .wav or .mp3, a negative MaxOutputTokens, any
-// Native field, and a format that refuses audio, such as Messages, before the clip is opened, the
+// Native field, a ChatNative the format refuses, and a format that refuses audio, such as Messages,
+// before the clip is opened, the
 // token source is called, or anything is sent; an empty clip, which protocol.Request.Validate
 // refuses, is refused once it is read, before it is sent. Text is the reply's output text, and
 // Usage is the reply's usage. As the route returns a whole transcript or an error, so does chat
@@ -281,6 +292,9 @@ func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) 
 		return nil, err
 	}
 	probe := chatRequest(req, []byte{0}, audioFormat)
+	if err := probe.Validate(); err != nil {
+		return nil, err
+	}
 	if _, err := c.format.EncodeRequest(probe, make(http.Header)); err != nil {
 		return nil, err
 	}
@@ -393,7 +407,7 @@ func chatTranscription(req *TranscriptionRequest) (protocol.AudioFormat, error) 
 	case req.MaxOutputTokens < 0:
 		return "", fmt.Errorf("request's MaxOutputTokens %d is negative", req.MaxOutputTokens)
 	case len(req.Native) > 0:
-		return "", errors.New("chat mode sends no form, so it takes no native fields")
+		return "", errors.New("chat mode sends no form, so it takes no native fields; send its native tier through ChatNative")
 	}
 	ext := path.Ext(req.FileName)
 	f, ok := audioFormats[strings.ToLower(ext)]
@@ -411,6 +425,7 @@ func chatRequest(req *TranscriptionRequest, data []byte, audioFormat protocol.Au
 	return &protocol.Request{
 		Model:           req.Model,
 		MaxOutputTokens: req.MaxOutputTokens,
+		Native:          req.ChatNative,
 		Input: []protocol.Item{protocol.Message{
 			Role: protocol.RoleUser,
 			Content: []protocol.ContentPart{
@@ -431,6 +446,8 @@ func transcriptionFields(req *TranscriptionRequest) ([][2]string, error) {
 		return nil, errors.New("request has no file name")
 	case req.MaxOutputTokens != 0:
 		return nil, errors.New("route mode has no typed field for MaxOutputTokens; send the route's max_tokens through Native")
+	case len(req.ChatNative) > 0:
+		return nil, errors.New("route mode sends no JSON body, so it takes no ChatNative; send the route's fields through Native")
 	}
 	fields := [][2]string{{"model", req.Model}, {"response_format", "json"}}
 	if req.Language != "" {

@@ -42,6 +42,11 @@ only; `tools/infer` keeps its own.
   that reaches the bound returns an `ai.IncompleteTranscriptError` with reason
   `max_output_tokens`. `Transcribe` refuses a negative bound, and in route mode any nonzero bound,
   whose `max_tokens` goes through `Native`, before anything is sent.
+- `ai.TranscriptionRequest.ChatNative`, chat mode's native tier: a JSON object sent as the chat
+  request's `protocol.Request.Native`, such as `{"temperature":0}` for a repeatable transcript;
+  empty sends none. The format refuses it as it refuses any request's `Native`, and route mode
+  refuses any, before anything is sent. `Native` stays the route's form fields, which chat mode
+  refuses.
 
 ### Changed
 

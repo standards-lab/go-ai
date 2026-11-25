@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/base64"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -282,6 +283,41 @@ func TestTranscribeChatMaxOutputTokens(t *testing.T) {
 	}
 }
 
+func TestTranscribeChatNative(t *testing.T) {
+	cases := []struct {
+		name   string
+		native jsontext.Value
+		sent   bool
+	}{
+		{"none", nil, false},
+		{"temperature", jsontext.Value(`{"temperature":0}`), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := serveChat(t, http.StatusOK, audioReply)
+			c := chatClient(t, srv.URL(), ai.Options{})
+			_, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
+				Model: "m", Open: reopen(tone(t)), FileName: "tone.wav", ChatNative: tc.native,
+			})
+			if err != nil {
+				t.Fatalf("Transcribe: %v", err)
+			}
+			got := aitest.Only(t, srv)
+			var body map[string]jsontext.Value
+			if err := json.Unmarshal(got.Body, &body); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			temperature, ok := body["temperature"]
+			switch {
+			case !tc.sent && ok:
+				t.Errorf("body = %s, want no temperature", got.Body)
+			case tc.sent && (!ok || string(temperature) != "0"):
+				t.Errorf("body = %s, want temperature 0", got.Body)
+			}
+		})
+	}
+}
+
 func TestTranscribeChatReply(t *testing.T) {
 	srv := serveChat(t, http.StatusOK, audioReply)
 	c := chatClient(t, srv.URL(), ai.Options{})
@@ -396,6 +432,18 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 			r.Native = url.Values{"temperature": {"0"}}
 			return r
 		}, "takes no native fields"},
+		{"ChatNative that isn't an object", false, func(r *ai.TranscriptionRequest) *ai.TranscriptionRequest {
+			r.ChatNative = jsontext.Value(`[0]`)
+			return r
+		}, "native field isn't a JSON object"},
+		{"ChatNative clashing with a typed field", false, func(r *ai.TranscriptionRequest) *ai.TranscriptionRequest {
+			r.ChatNative = jsontext.Value(`{"temperature":0,"model":"other"}`)
+			return r
+		}, "native member model clashes"},
+		{"ChatNative stream", false, func(r *ai.TranscriptionRequest) *ai.TranscriptionRequest {
+			r.ChatNative = jsontext.Value(`{"stream":true}`)
+			return r
+		}, "native member stream clashes"},
 		{"negative MaxOutputTokens", false, func(r *ai.TranscriptionRequest) *ai.TranscriptionRequest {
 			r.MaxOutputTokens = -1
 			return r

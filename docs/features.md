@@ -134,7 +134,9 @@ repeat, so its retry runs nothing twice.
 - `Model`, `Open`, and `FileName` are required. `Open` is called once per attempt, so a retry
   reads the clip again.
 - `Language` and `Prompt` are optional.
-- `Native` (form fields, route mode only) carries a parameter such as `temperature`.
+- `Native` (form fields, route mode only) and `ChatNative` (a JSON object, chat mode only) are
+  each mode's native tier, carrying a parameter such as `temperature`; the other mode refuses
+  each before anything is sent.
 
 The client's `TranscriptionMode` picks how it sends:
 
@@ -145,6 +147,8 @@ The client's `TranscriptionMode` picks how it sends:
 | `Language` | the route's `language` field, such as `en` | named in the instruction, such as `English` |
 | `Prompt` | the route's `prompt` field | the instruction, in place of `TranscriptionInstruction(Language)` |
 | `MaxOutputTokens` | refused when nonzero; send `max_tokens` through `Native` | the reply's bound, in the format's field (`max_completion_tokens`); zero sends none |
+| `Native` | form fields beside the typed ones, such as `temperature` | refused when set; send the native tier through `ChatNative` |
+| `ChatNative` | refused when set; send the native tier through `Native` | the chat request's `Native`, merged into the body, such as `{"temperature":0}`; empty sends none |
 | Needs | an endpoint with the route | a format that carries audio (Chat Completions); `.wav` or `.mp3` in `FileName` |
 
 `Client.TranscriptionMode` returns the mode the client was built with. A `TranscriptionMode`

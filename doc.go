@@ -21,7 +21,10 @@
 // EmbeddingProfile declares for it; a type the profile declares nothing for is a hint the model
 // has no form for, as OpenAI's embeddings API has none, and is dropped. Transcribe's chat mode
 // instead sends the clip as a chat request in the Client's format, which must carry audio, as
-// Chat Completions does, for an endpoint whose audio model has no transcription route.
+// Chat Completions does, for an endpoint whose audio model has no transcription route. Each mode
+// has its own native tier, refused by the other before anything is sent: a TranscriptionRequest's
+// Native holds the route's form fields, and its ChatNative the chat request's JSON object, such as
+// sampling.
 //
 // Tokenize, like Embed, sits outside the protocol and the Format. It counts a text's tokens in
 // the model's own tokenizer through vLLM's tokenize route, which vLLM serves at the server's
