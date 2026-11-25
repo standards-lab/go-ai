@@ -175,6 +175,34 @@ if err != nil {
 vision, err := ai.New(visionURL, httpClient, completions.New(completions.Options{}), ai.Options{})
 ```
 
+### Embedding profiles
+
+Many retrieval models embed a search query and a stored document differently, and each marks
+the two its own way. intfloat/multilingual-e5-large reads `query: ` before a query and
+`passage: ` before a document, and Nomic's models have prefixes of their own. Some hosted APIs
+take a parameter instead, and OpenAI's embeddings API has none.
+
+An `EmbeddingRequest` names what its inputs are in `InputType`: `InputQuery`, `InputDocument`,
+or `InputNone`, the zero value. The client's `ai.Options.Embedding`, an `ai.EmbeddingProfile`,
+maps each type to its model's convention: a `prefix` prepended to every input, a `native` JSON
+object merged into the body as the request's own `Native` is, or both. A caller names the type
+and stays independent of the model:
+
+```json
+{"input_types": {"document": {"prefix": "passage: "}, "query": {"prefix": "query: "}}}
+```
+
+The zero type sends the input as given. A type the profile declares nothing for is a hint the
+model has no form for, so `Embed` drops it and sends the input as given too. `New` refuses a
+convention it can't send: a `native` that isn't a JSON object, or that sets `model`, `input`, or
+`encoding_format`. `Embed` refuses a request whose `Native` has a member the convention's
+`native` also has, before anything is sent. `Client.EmbeddingProfile` returns a copy of the
+profile the client applies.
+
+An `EmbeddingProfile` decodes from JSON as a format's profile does: under its snake_case names
+alone, strictly with `json.RejectUnknownMembers(true)`, and an unknown input type is always an
+error. go-ai ships no presets.
+
 ## The client
 
 `ai.New` joins an API root, the caller's `*http.Client`, and a format into a `*ai.Client`.

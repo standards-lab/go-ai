@@ -95,6 +95,10 @@ A failure the endpoint reports inside the stream is not an error pair. The strea
   concurrency are the caller's.
 - `Native` is merged into the body, for a parameter such as `dimensions`. It may not set
   `model`, `input`, or `encoding_format`.
+- `InputType`, `InputQuery` or `InputDocument`, is sent in the convention the client's
+  `Options.Embedding` profile declares for it: a prefix before every input, native members, or
+  both (see [concepts](concepts.md#embedding-profiles)). The zero type, and a type the profile
+  declares nothing for, send the input as given.
 - The reply's `Vectors[i]` is the embedding of `Input[i]`. `Usage` has `PromptTokens` and
   `TotalTokens`, the endpoint's names.
 

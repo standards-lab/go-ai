@@ -22,7 +22,8 @@
 //   - [ChatMessage] is one message of a ChatRequest: its role, text, images, and audio.
 //   - [ChatImage] is an image of a ChatMessage: a data URL's media type and bytes, or a URL.
 //   - [ChatAudio] is an audio clip of a ChatMessage: its format and bytes.
-//   - [EmbeddingRequest] is an embeddings request: its arrival number, model, and inputs.
+//   - [EmbeddingRequest] is an embeddings request: its arrival number, model, inputs as sent,
+//     and other members.
 //   - [TranscriptionRequest] is a transcription upload: its arrival number, model, prompt,
 //     language, file name as sent and bytes, and other form fields.
 //   - [ModelsRequest] is a models request: its arrival number.

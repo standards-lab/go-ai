@@ -250,8 +250,8 @@ func TestEmbeddings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Embed: %v", err)
 	}
-	if got.Arrival != 1 || got.Model != "embedder" || !slices.Equal(got.Input, []string{"a", "b", ""}) {
-		t.Errorf("route got %+v, want arrival 1, model embedder, inputs [a b \"\"]", got)
+	if got.Arrival != 1 || got.Model != "embedder" || !slices.Equal(got.Input, []string{"a", "b", ""}) || len(got.Native) != 0 {
+		t.Errorf("route got %+v, want arrival 1, model embedder, inputs [a b \"\"], no native", got)
 	}
 	want := &ai.Embeddings{
 		Vectors: [][]float32{{0.5, -1.25}, {3, 0}, {}},
@@ -259,6 +259,24 @@ func TestEmbeddings(t *testing.T) {
 	}
 	if !reflect.DeepEqual(emb, want) {
 		t.Errorf("Embed = %+v, want %+v", emb, want)
+	}
+}
+
+func TestEmbeddingsNative(t *testing.T) {
+	var got aitest.EmbeddingRequest
+	e := aitest.Serve(t, aitest.Routes{Embeddings: func(_ context.Context, req aitest.EmbeddingRequest) aitest.Reply {
+		got = req
+		return aitest.EmbeddingsReply{Vectors: [][]float32{{1}}}
+	}})
+	body := `{"dimensions":256,"model":"m","input":["query: a"],"encoding_format":"base64","input_type":{"kind": "q"}}`
+	if status, reply := send(t, e, http.MethodPost, "/embeddings", body); status != http.StatusOK {
+		t.Fatalf("POST /v1/embeddings = %d %s, want 200", status, reply)
+	}
+	if !slices.Equal(got.Input, []string{"query: a"}) {
+		t.Errorf("Input = %q, want [query: a]", got.Input)
+	}
+	if want := `{"dimensions":256,"input_type":{"kind": "q"}}`; string(got.Native) != want {
+		t.Errorf("Native = %s, want %s", got.Native, want)
 	}
 }
 

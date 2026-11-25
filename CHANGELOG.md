@@ -7,6 +7,27 @@ only; `tools/infer` keeps its own.
 
 ## [Unreleased]
 
+### Added
+
+- `ai.InputType`, what an embedding request's inputs are: `InputQuery`, `InputDocument`, or
+  `InputNone`, the zero value, with `String`, `MarshalText`, and `UnmarshalText` naming them
+  `query`, `document`, and `none`. `UnmarshalText` refuses any other name, and `MarshalText` an
+  unknown type.
+- `ai.EmbeddingRequest.InputType`, sent in the convention the client's embedding profile
+  declares for it. The zero type, and a type the profile declares nothing for, send the input as
+  given; `Embed` refuses an unknown type.
+- `ai.Options.Embedding`, an `ai.EmbeddingProfile` mapping each input type to an
+  `ai.InputConvention`: a `Prefix` prepended to every input and a `Native` object merged into the
+  body. It decodes from JSON under snake_case names, such as
+  `{"input_types":{"document":{"prefix":"passage: "},"query":{"prefix":"query: "}}}`. `New`
+  refuses a convention for `InputNone` or an unknown type, and a `Native` that isn't a JSON
+  object with unique member names or that sets `model`, `input`, or `encoding_format`; `Embed`
+  refuses a request whose `Native` shares a member with the convention's, before anything is
+  sent.
+- `ai.Client.EmbeddingProfile`, a copy of the profile the Client applies.
+- `aitest.EmbeddingRequest.Native`, the body's members beside `model`, `input`, and
+  `encoding_format`, in the order they arrived.
+
 ## [v0.4.0] - 2026-11-19
 
 This release adds a public fake model endpoint for tests, `aitest`, which any module's tests can

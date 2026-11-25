@@ -67,8 +67,13 @@ type EmbeddingRequest struct {
 	Arrival int
 	// Model is the request's model.
 	Model string
-	// Input is the texts to embed, in order. A single string input is one text.
+	// Input is the texts to embed, in order, as they arrived, any prefix the client added
+	// included. A single string input is one text.
 	Input []string
+	// Native holds the body's other members, those beside model, input, and encoding_format, as
+	// one JSON object in the order they arrived, such as {"dimensions":256}; empty when it has
+	// none.
+	Native jsontext.Value
 }
 
 // TranscriptionRequest is a request to the transcription route, its multipart form decoded.
@@ -231,6 +236,11 @@ func decodeEmbeddingRequest(body []byte) (EmbeddingRequest, error) {
 	}
 	var req EmbeddingRequest
 	req.Model = wire.Model
+	other, err := otherMembers(body, "model", "input", "encoding_format")
+	if err != nil {
+		return EmbeddingRequest{}, fmt.Errorf("decode embeddings request: %w", err)
+	}
+	req.Native = other
 	if wire.Input.Kind() == '"' {
 		var s string
 		if err := json.Unmarshal(wire.Input, &s); err != nil {
@@ -243,6 +253,42 @@ func decodeEmbeddingRequest(body []byte) (EmbeddingRequest, error) {
 		return EmbeddingRequest{}, fmt.Errorf("decode embeddings input: %w", err)
 	}
 	return req, nil
+}
+
+func otherMembers(body []byte, typed ...string) (jsontext.Value, error) {
+	d := jsontext.NewDecoder(bytes.NewReader(body))
+	if _, err := d.ReadToken(); err != nil {
+		return nil, err
+	}
+	var out jsontext.Value
+	for d.PeekKind() != '}' {
+		tok, err := d.ReadToken()
+		if err != nil {
+			return nil, err
+		}
+		name := tok.String()
+		v, err := d.ReadValue()
+		if err != nil {
+			return nil, err
+		}
+		if slices.Contains(typed, name) {
+			continue
+		}
+		if len(out) == 0 {
+			out = jsontext.Value{'{'}
+		} else {
+			out = append(out, ',')
+		}
+		out, err = jsontext.AppendQuote(out, name)
+		if err != nil {
+			return nil, err
+		}
+		out = append(append(out, ':'), v...)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return append(out, '}'), nil
 }
 
 func decodeTranscriptionRequest(req Request) (TranscriptionRequest, error) {
