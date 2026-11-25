@@ -144,6 +144,7 @@ The client's `TranscriptionMode` picks how it sends:
 | The clip | streamed as a file upload, never held whole | read whole into the request |
 | `Language` | the route's `language` field, such as `en` | named in the instruction, such as `English` |
 | `Prompt` | the route's `prompt` field | the instruction, in place of `TranscriptionInstruction(Language)` |
+| `MaxOutputTokens` | refused when nonzero; send `max_tokens` through `Native` | the reply's bound, in the format's field (`max_completion_tokens`); zero sends none |
 | Needs | an endpoint with the route | a format that carries audio (Chat Completions); `.wav` or `.mp3` in `FileName` |
 
 `Client.TranscriptionMode` returns the mode the client was built with. A `TranscriptionMode`

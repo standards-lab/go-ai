@@ -84,11 +84,19 @@ type chatBody struct {
 	} `json:"messages"`
 }
 
+const (
+	cardFormatting = "\n\nFollow these specific instructions for formatting the answer:\n" +
+		"* Only output the transcription, with no newlines.\n" +
+		"* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."
+	noLanguageInstruction = "Transcribe the following speech segment in its original language into text." + cardFormatting
+	englishInstruction    = "Transcribe the following speech segment in English into English text." + cardFormatting
+)
+
 func TestTranscriptionInstruction(t *testing.T) {
 	cases := map[string]string{
-		"":        "Transcribe the following speech segment into text. Only output the transcription, with no newlines.",
-		"English": "Transcribe the following speech segment in English into English text. Only output the transcription, with no newlines.",
-		"fr":      "Transcribe the following speech segment in fr into fr text. Only output the transcription, with no newlines.",
+		"":        noLanguageInstruction,
+		"English": englishInstruction,
+		"fr":      "Transcribe the following speech segment in fr into fr text." + cardFormatting,
 	}
 	for language, want := range cases {
 		if got := ai.TranscriptionInstruction(language); got != want {
@@ -192,14 +200,11 @@ func TestTranscribeChatRequest(t *testing.T) {
 		format      string
 		instruction string
 	}{
-		{"default instruction", "tone.wav", "", "", "wav",
-			"Transcribe the following speech segment into text. Only output the transcription, with no newlines."},
-		{"default instruction naming the language", "tone.wav", "English", "", "wav",
-			"Transcribe the following speech segment in English into English text. Only output the transcription, with no newlines."},
+		{"default instruction", "tone.wav", "", "", "wav", noLanguageInstruction},
+		{"default instruction naming the language", "tone.wav", "English", "", "wav", englishInstruction},
 		{"prompt in place of the instruction", "tone.wav", "English", "Write down what is said.", "wav",
 			"Write down what is said."},
-		{"mp3 extension in upper case", "dir/TONE.MP3", "", "", "mp3",
-			"Transcribe the following speech segment into text. Only output the transcription, with no newlines."},
+		{"mp3 extension in upper case", "dir/TONE.MP3", "", "", "mp3", noLanguageInstruction},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -245,6 +250,38 @@ func TestTranscribeChatRequest(t *testing.T) {
 	}
 }
 
+func TestTranscribeChatMaxOutputTokens(t *testing.T) {
+	for _, bound := range []int{0, 1, 256} {
+		t.Run(fmt.Sprint(bound), func(t *testing.T) {
+			srv := serveChat(t, http.StatusOK, audioReply)
+			c := chatClient(t, srv.URL(), ai.Options{})
+			_, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{
+				Model: "m", Open: reopen(tone(t)), FileName: "tone.wav", MaxOutputTokens: bound,
+			})
+			if err != nil {
+				t.Fatalf("Transcribe: %v", err)
+			}
+			var body struct {
+				MaxCompletionTokens *int `json:"max_completion_tokens"`
+				MaxTokens           *int `json:"max_tokens"`
+			}
+			got := aitest.Only(t, srv)
+			if err := json.Unmarshal(got.Body, &body); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			if body.MaxTokens != nil {
+				t.Errorf("body = %s, want no max_tokens", got.Body)
+			}
+			switch {
+			case bound == 0 && body.MaxCompletionTokens != nil:
+				t.Errorf("body = %s, want no max_completion_tokens", got.Body)
+			case bound != 0 && (body.MaxCompletionTokens == nil || *body.MaxCompletionTokens != bound):
+				t.Errorf("body = %s, want max_completion_tokens %d", got.Body, bound)
+			}
+		})
+	}
+}
+
 func TestTranscribeChatReply(t *testing.T) {
 	srv := serveChat(t, http.StatusOK, audioReply)
 	c := chatClient(t, srv.URL(), ai.Options{})
@@ -271,8 +308,8 @@ func TestTranscribeChatIncomplete(t *testing.T) {
 		{"stop", protocol.StatusCompleted, "", ""},
 		{"length", protocol.StatusIncomplete, protocol.ReasonMaxOutputTokens,
 			"ai: transcribe: transcript incomplete (status incomplete, reason max_output_tokens): the reply " +
-				"stopped at the engine's output token bound before the transcript ended; send a shorter clip " +
-				"or raise the engine's default bound"},
+				"stopped at its output token bound before the transcript ended; send a shorter clip, or raise " +
+				"the request's MaxOutputTokens or, when it sets none, the engine's default bound"},
 		{"content_filter", protocol.StatusIncomplete, protocol.ReasonContentFilter,
 			"ai: transcribe: transcript incomplete (status incomplete, reason content_filter): the endpoint's " +
 				"content filter stopped the reply before the transcript ended; the clip can't be transcribed " +
@@ -359,6 +396,10 @@ func TestTranscribeChatRefusesRequest(t *testing.T) {
 			r.Native = url.Values{"temperature": {"0"}}
 			return r
 		}, "takes no native fields"},
+		{"negative MaxOutputTokens", false, func(r *ai.TranscriptionRequest) *ai.TranscriptionRequest {
+			r.MaxOutputTokens = -1
+			return r
+		}, "MaxOutputTokens -1 is negative"},
 		{"a format that refuses audio", true, func(r *ai.TranscriptionRequest) *ai.TranscriptionRequest { return r },
 			"messages: input 0: content 0: part protocol.InputAudio has no Messages form"},
 	}

@@ -271,6 +271,8 @@ func TestTranscribeRefusesRequest(t *testing.T) {
 		{"no model", &ai.TranscriptionRequest{Open: open(file), FileName: "clip.wav"}, "no model"},
 		{"no Open", &ai.TranscriptionRequest{Model: "m", FileName: "clip.wav"}, "no Open"},
 		{"no file name", &ai.TranscriptionRequest{Model: "m", Open: open(file)}, "no file name"},
+		{"MaxOutputTokens", &ai.TranscriptionRequest{Model: "m", Open: open(file), FileName: "clip.wav", MaxOutputTokens: 64},
+			"route mode has no typed field for MaxOutputTokens; send the route's max_tokens through Native"},
 		{"native field of no name", native(""), "native field has an empty name"},
 		{"native model", native("model"), "native field model clashes"},
 		{"native response_format", native("response_format"), "native field response_format clashes"},

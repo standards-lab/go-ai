@@ -37,6 +37,19 @@ only; `tools/infer` keeps its own.
 - `aitest.Routes.Tokenize`, answering `POST /tokenize` and `POST /v1/tokenize`, with
   `aitest.TokenizeRequest` (model, prompt as sent, `add_special_tokens`) and
   `aitest.TokenizeReply` (count as given, `max_model_len`, token ids).
+- `ai.TranscriptionRequest.MaxOutputTokens`, which bounds a chat-mode transcript's reply in the
+  format's own field, such as Chat Completions' `max_completion_tokens`; zero sends none. A reply
+  that reaches the bound returns an `ai.IncompleteTranscriptError` with reason
+  `max_output_tokens`. `Transcribe` refuses a negative bound, and in route mode any nonzero bound,
+  whose `max_tokens` goes through `Native`, before anything is sent.
+
+### Changed
+
+- `ai.TranscriptionInstruction` is Gemma 4's model card's transcription prompt: the request to
+  transcribe the clip, in the given language or else in its original language, then the card's
+  formatting instructions, no newlines and numbers as digits.
+- `ai.IncompleteTranscriptError`'s text for a reply stopped at its output token bound names the
+  request's `MaxOutputTokens` beside the engine's default bound.
 
 ## [v0.4.0] - 2026-11-19
 

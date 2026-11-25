@@ -78,24 +78,29 @@ func (m *TranscriptionMode) UnmarshalText(text []byte) error {
 }
 
 // TranscriptionInstruction returns the instruction a chat-mode Transcribe gives the model when
-// the request has no Prompt, modeled on Gemma 4's model card's transcription prompt. With a
-// language, it names it as given, as Language holds it, so "English" reads as the model card
-// has it:
+// the request has no Prompt: Gemma 4's model card's transcription prompt. With a language, it
+// names it as given, as Language holds it, so "English" reads as the model card has it:
 //
-//	Transcribe the following speech segment in English into English text. Only output the
-//	transcription, with no newlines.
+//	Transcribe the following speech segment in English into English text.
 //
-// With none, it names no language:
+//	Follow these specific instructions for formatting the answer:
+//	* Only output the transcription, with no newlines.
+//	* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three.
 //
-//	Transcribe the following speech segment into text. Only output the transcription, with no
-//	newlines.
+// With none, it asks for the clip's original language, before the same formatting instructions:
+//
+//	Transcribe the following speech segment in its original language into text.
 func TranscriptionInstruction(language string) string {
-	if language == "" {
-		return "Transcribe the following speech segment into text. Only output the transcription, with no newlines."
+	ask := "Transcribe the following speech segment in its original language into text."
+	if language != "" {
+		ask = "Transcribe the following speech segment in " + language + " into " + language + " text."
 	}
-	return "Transcribe the following speech segment in " + language + " into " + language +
-		" text. Only output the transcription, with no newlines."
+	return ask + transcriptionFormatting
 }
+
+const transcriptionFormatting = "\n\nFollow these specific instructions for formatting the answer:\n" +
+	"* Only output the transcription, with no newlines.\n" +
+	"* When transcribing numbers, write the digits, i.e. write 1.7 and not one point seven, and write 3 instead of three."
 
 // TranscriptionRequest asks an audio model for the text of a clip. Transcription sits outside
 // the protocol: in the Client's TranscriptionMode, it goes to the OpenAI-compatible
@@ -106,7 +111,8 @@ func TranscriptionInstruction(language string) string {
 // the one llama.cpp answers (it refuses text, srt, verbose_json, and vtt), so the reply
 // carries no timestamps, and timestamp_granularities, which only verbose_json honors, has
 // nothing to shape. temperature and max_tokens, which llama.cpp passes to its chat completion,
-// and stream, which changes the reply's shape, are left to Native.
+// and stream, which changes the reply's shape, are left to Native; in TranscribeChat,
+// MaxOutputTokens bounds the reply.
 type TranscriptionRequest struct {
 	// Model is the audio model's id. It is required.
 	Model string
@@ -143,6 +149,15 @@ type TranscriptionRequest struct {
 	// and Prompt are set. So is an empty key, which names no field. TranscribeChat sends no
 	// form, so it refuses a request with any.
 	Native url.Values
+	// MaxOutputTokens bounds the tokens of the model's reply in TranscribeChat; zero sends none,
+	// leaving the bound to the engine, and a negative bound is refused before anything is sent.
+	// It is the chat request's protocol.Request.MaxOutputTokens, so it goes out in the format's
+	// own field, such as Chat Completions' max_completion_tokens. A reply that reaches the bound
+	// before the transcript ends returns an *IncompleteTranscriptError with reason
+	// max_output_tokens and no Transcription, so none of its partial text. TranscribeRoute has no
+	// typed field for it, so a nonzero MaxOutputTokens is refused there before anything is sent;
+	// the route's max_tokens, which llama.cpp honors, goes through Native.
+	MaxOutputTokens int
 }
 
 // Transcription is an audio model's transcript of a clip.
@@ -166,37 +181,37 @@ type TranscriptionUsage struct {
 }
 
 // Transcribe returns the transcript of req's clip, in the Client's TranscriptionMode. It sends
-// through the one retry loop, as Generate does: each attempt calls the token source, then
-// req.Open, and closes the clip once done with it. A clip that won't open, or whose read fails,
-// is returned wrapped at once, not retried. A non-2xx reply is an *APIError; a transport failure
-// or a cancelled ctx is returned wrapped. With an Options.Retry policy, a reply or failure the
-// policy retries is sent again, with the clip opened again, and the last attempt's error is
-// returned as it would be without one.
+// through the one retry loop, as Generate does: each attempt calls the token source, then req.Open,
+// and closes the clip once done with it. A clip that won't open, or whose read fails, is returned
+// wrapped at once, not retried. A non-2xx reply is an *APIError; a transport failure or a cancelled
+// ctx is returned wrapped. With an Options.Retry policy, a reply or failure the policy retries is
+// sent again, with the clip opened again, and the last attempt's error is returned as it would be
+// without one.
 //
 // In TranscribeRoute, the default, it uploads the clip to the endpoint's OpenAI-compatible
-// transcription route, with the OpenAI-style error body's details on an *APIError. It refuses a
-// nil request, one with no model, Open, or file name, and a Native key that is empty or clashes
-// with a typed field, before the token source is called or anything is sent. Each attempt's
-// upload streams: a goroutine writes the multipart form (the model, response_format json, the
-// language and prompt when set, Native's fields, then the clip) into a pipe the request reads,
-// so the clip is read as it is sent, never held whole, and goes chunked, its length unknown.
-// Every attempt of one call sends the same form, its boundary included. An attempt ends only
-// once that goroutine has, so it has stopped reading the clip: when the request ends first (a
-// cancelled ctx, a transport failure, an early reply), the pipe is closed and the goroutine's
-// next write fails. A clip whose Read blocks holds Transcribe until the Read returns.
+// transcription route, with the OpenAI-style error body's details on an *APIError. It refuses a nil
+// request, one with no model, Open, or file name, a nonzero MaxOutputTokens, and a Native key that
+// is empty or clashes with a typed field, before the token source is called or anything is sent.
+// Each attempt's upload streams: a goroutine writes the multipart form (the model, response_format
+// json, the language and prompt when set, Native's fields, then the clip) into a pipe the request
+// reads, so the clip is read as it is sent, never held whole, and goes chunked, its length unknown.
+// Every attempt of one call sends the same form, its boundary included. An attempt ends only once
+// that goroutine has, so it has stopped reading the clip: when the request ends first (a cancelled
+// ctx, a transport failure, an early reply), the pipe is closed and the goroutine's next write
+// fails. A clip whose Read blocks holds Transcribe until the Read returns.
 //
-// In TranscribeChat, it sends one request in the Client's format, to its route: Model, and one
-// user message of the clip as a protocol.InputAudio part, in the format FileName's extension
-// gives, and the instruction as an InputText part, Prompt or else TranscriptionInstruction's.
-// It reads the clip whole, as the request's body holds it. It needs a format that carries
-// audio, which today is Chat Completions. It refuses a nil request, one with no model or Open,
-// a FileName whose extension isn't .wav or .mp3, any Native field, and a format that refuses
-// audio, such as Messages, before the clip is opened, the token source is called, or anything
-// is sent; an empty clip, which protocol.Request.Validate refuses, is refused once it is read,
-// before it is sent. Text is the reply's output text, and Usage is the reply's usage. As the
-// route returns a whole transcript or an error, so does chat mode: a reply whose status isn't
-// completed, such as one the model stopped at the engine's output token bound, returns an
-// *IncompleteTranscriptError and no Transcription, and is not sent again.
+// In TranscribeChat, it sends one request in the Client's format, to its route: Model, and one user
+// message of the clip as a protocol.InputAudio part, in the format FileName's extension gives, and
+// the instruction as an InputText part, Prompt or else TranscriptionInstruction's, bounded by
+// MaxOutputTokens when it is set. It reads the clip whole, as the request's body holds it. It needs
+// a format that carries audio, which today is Chat Completions. It refuses a nil request, one with
+// no model or Open, a FileName whose extension isn't .wav or .mp3, a negative MaxOutputTokens, any
+// Native field, and a format that refuses audio, such as Messages, before the clip is opened, the
+// token source is called, or anything is sent; an empty clip, which protocol.Request.Validate
+// refuses, is refused once it is read, before it is sent. Text is the reply's output text, and
+// Usage is the reply's usage. As the route returns a whole transcript or an error, so does chat
+// mode: a reply whose status isn't completed, such as one the model stopped at its output token
+// bound, returns an *IncompleteTranscriptError and no Transcription, and is not sent again.
 func (c *Client) Transcribe(ctx context.Context, req *TranscriptionRequest) (*Transcription, error) {
 	if req == nil {
 		return nil, errors.New("ai: transcribe: no request")
@@ -315,9 +330,9 @@ func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) 
 }
 
 // IncompleteTranscriptError is a chat-mode Transcribe's reply that isn't completed, so it holds
-// part of a transcript at most: most often one incomplete because the model stopped at the
-// engine's output token bound, which a chat-mode request can't raise, as it takes no Native
-// field. Transcribe returns it wrapped, with no Transcription, so callers reach it with
+// part of a transcript at most: most often one incomplete because the model stopped at its
+// output token bound, the request's MaxOutputTokens or, when it sets none, the engine's
+// default. Transcribe returns it wrapped, with no Transcription, so callers reach it with
 // errors.As. It is not retried: the same clip meets the same bound or filter again.
 type IncompleteTranscriptError struct {
 	// Status is the reply's status: protocol.StatusIncomplete, or any other but
@@ -332,8 +347,8 @@ type IncompleteTranscriptError struct {
 // the caller can do about it, such as:
 //
 //	transcript incomplete (status incomplete, reason max_output_tokens): the reply stopped at
-//	the engine's output token bound before the transcript ended; send a shorter clip or raise
-//	the engine's default bound
+//	its output token bound before the transcript ended; send a shorter clip, or raise the
+//	request's MaxOutputTokens or, when it sets none, the engine's default bound
 func (e *IncompleteTranscriptError) Error() string {
 	status := string(e.Status)
 	if status == "" {
@@ -349,8 +364,8 @@ func (e *IncompleteTranscriptError) Error() string {
 func (e *IncompleteTranscriptError) cause() string {
 	switch {
 	case e.Status == protocol.StatusIncomplete && e.Reason == protocol.ReasonMaxOutputTokens:
-		return "the reply stopped at the engine's output token bound before the transcript ended; " +
-			"send a shorter clip or raise the engine's default bound"
+		return "the reply stopped at its output token bound before the transcript ended; " +
+			"send a shorter clip, or raise the request's MaxOutputTokens or, when it sets none, the engine's default bound"
 	case e.Status == protocol.StatusIncomplete && e.Reason == protocol.ReasonContentFilter:
 		return "the endpoint's content filter stopped the reply before the transcript ended; " +
 			"the clip can't be transcribed whole through this endpoint's filter"
@@ -375,6 +390,8 @@ func chatTranscription(req *TranscriptionRequest) (protocol.AudioFormat, error) 
 		return "", errors.New("request has no Open")
 	case req.FileName == "":
 		return "", errors.New("request has no file name")
+	case req.MaxOutputTokens < 0:
+		return "", fmt.Errorf("request's MaxOutputTokens %d is negative", req.MaxOutputTokens)
 	case len(req.Native) > 0:
 		return "", errors.New("chat mode sends no form, so it takes no native fields")
 	}
@@ -392,7 +409,8 @@ func chatRequest(req *TranscriptionRequest, data []byte, audioFormat protocol.Au
 		instruction = TranscriptionInstruction(req.Language)
 	}
 	return &protocol.Request{
-		Model: req.Model,
+		Model:           req.Model,
+		MaxOutputTokens: req.MaxOutputTokens,
 		Input: []protocol.Item{protocol.Message{
 			Role: protocol.RoleUser,
 			Content: []protocol.ContentPart{
@@ -411,6 +429,8 @@ func transcriptionFields(req *TranscriptionRequest) ([][2]string, error) {
 		return nil, errors.New("request has no Open")
 	case req.FileName == "":
 		return nil, errors.New("request has no file name")
+	case req.MaxOutputTokens != 0:
+		return nil, errors.New("route mode has no typed field for MaxOutputTokens; send the route's max_tokens through Native")
 	}
 	fields := [][2]string{{"model", req.Model}, {"response_format", "json"}}
 	if req.Language != "" {
