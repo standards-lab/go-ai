@@ -152,7 +152,9 @@ and `AI_<ROLE>_HEADER`, one `Name: value` per line. No scenario prints either va
 
 A role's [profile](docs/concepts.md#profiles) goes in `AI_<ROLE>_PROFILE`, the JSON object keyed
 by format name that `infer`'s `--profile` takes. Unset, each format follows its spec. A scenario
-whose request the profile refuses before sending skips and names the gap.
+whose request the profile refuses before sending skips and names the gap. ai-hosting publishes the
+profile of each alias it hosts, `<alias>.json`, with the evidence for each gap, in its
+[`go-ai` directory](https://github.com/standards-lab/ai-hosting/tree/main/go-ai).
 
 ```sh
 AI_AGENT_BASE_URL=https://gateway.example/agent/v1 AI_AGENT_HEADER='api-key: …' mise run integration
