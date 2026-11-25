@@ -19,9 +19,8 @@
 //     file that names a format package;
 //   - domain.go: defineDomain and mountDomain, infer's commands over the
 //     client, models, embed, tokenize, chat, and transcribe, and
-//     resolveModel, the
-//     one-model fallback each command that sends to a model resolves its
-//     model with;
+//     resolveModel, the one-model fallback each command that sends to a
+//     model resolves its model with;
 //   - version.go: the version command, which declares no nodes.
 //
 // Each run talks to one endpoint. The root flags --base-url, --format, and

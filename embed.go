@@ -42,17 +42,21 @@ var inputTypeNames = [...]string{InputNone: "none", InputQuery: "query", InputDo
 // String returns the type's name, "none", "query", or "document", or, for an unknown type, its
 // number in the form InputType(7), as fmt prints a value it has no name for.
 func (t InputType) String() string {
-	if t < 0 || int(t) >= len(inputTypeNames) {
+	if !t.known() {
 		return fmt.Sprintf("InputType(%d)", int(t))
 	}
 	return inputTypeNames[t]
+}
+
+func (t InputType) known() bool {
+	return t >= 0 && int(t) < len(inputTypeNames)
 }
 
 // MarshalText encodes the type by name, "none", "query", or "document", so a type in a JSON or
 // other text configuration, such as an EmbeddingProfile's keys, reads as its name rather than its
 // number. An unknown type is an error, as Embed refuses it.
 func (t InputType) MarshalText() ([]byte, error) {
-	if t < 0 || int(t) >= len(inputTypeNames) {
+	if !t.known() {
 		return nil, fmt.Errorf("ai: unknown input type %d", int(t))
 	}
 	return []byte(inputTypeNames[t]), nil
@@ -111,7 +115,7 @@ func (p EmbeddingProfile) check() error {
 		switch {
 		case t == InputNone:
 			return errors.New("ai: Options.Embedding declares a convention for input type none, which sends the inputs as given")
-		case t < 0 || int(t) >= len(inputTypeNames):
+		case !t.known():
 			return fmt.Errorf("ai: Options.Embedding declares a convention for unknown input type %d", int(t))
 		case !native.Valid(conv.Native):
 			return fmt.Errorf("ai: Options.Embedding's %s convention: native field isn't a JSON object with unique member names", t)
@@ -121,6 +125,11 @@ func (p EmbeddingProfile) check() error {
 		}
 	}
 	return nil
+}
+
+func (p EmbeddingProfile) convention(t InputType) (InputConvention, bool) {
+	conv, ok := p.InputTypes[t]
+	return conv, ok && t != InputNone
 }
 
 func (p EmbeddingProfile) clone() EmbeddingProfile {
@@ -179,14 +188,15 @@ type EmbeddingUsage struct {
 // convention: the prefix before every input, and the native members merged into the body beside
 // the request's own Native. It refuses a nil request, one with no model or no input, an unknown
 // input type, a Native that isn't a JSON object with unique member names or that clashes with
-// the typed fields, and a Native with a member the convention's native also has, before the token
-// source is called or anything is sent. The vectors travel as base64 of little-endian float32 (encoding_format "base64"), and
-// each reply item's index places its vector; a reply whose items don't match the inputs one to
-// one, or whose vector isn't whole float32s, is an error. A non-2xx reply is an *APIError with
-// the OpenAI-style error body's details; a transport failure or a cancelled ctx is returned
-// wrapped. It sends through the Client's query, token source, and fixed headers, and none of
-// the format's. With an Options.Retry policy, a reply or failure the policy retries is sent again, and
-// the last attempt's error is returned as it would be without one.
+// the typed fields, and a Native with a member the convention's native also has, before the
+// token source is called or anything is sent. The vectors travel as base64 of little-endian
+// float32 (encoding_format "base64"), and each reply item's index places its vector; a reply
+// whose items don't match the inputs one to one, or whose vector isn't whole float32s, is an
+// error. A non-2xx reply is an *APIError with the OpenAI-style error body's details; a transport
+// failure or a cancelled ctx is returned wrapped. It sends through the Client's query, token
+// source, and fixed headers, and none of the format's. With an Options.Retry policy, a reply or
+// failure the policy retries is sent again, and the last attempt's error is returned as it would
+// be without one.
 func (c *Client) Embed(ctx context.Context, req *EmbeddingRequest) (*Embeddings, error) {
 	if req == nil {
 		return nil, errors.New("ai: embed: no request")
@@ -213,13 +223,13 @@ func encodeEmbeddingRequest(req *EmbeddingRequest, profile EmbeddingProfile) ([]
 		return nil, errors.New("request has no model")
 	case len(req.Input) == 0:
 		return nil, errors.New("request has no input")
-	case req.InputType < 0 || int(req.InputType) >= len(inputTypeNames):
+	case !req.InputType.known():
 		return nil, fmt.Errorf("request has unknown input type %d", int(req.InputType))
 	case !native.Valid(req.Native):
 		return nil, errors.New("request's native field isn't a JSON object with unique member names")
 	}
 	input, nat := req.Input, req.Native
-	if conv, ok := profile.InputTypes[req.InputType]; ok && req.InputType != InputNone {
+	if conv, ok := profile.convention(req.InputType); ok {
 		if conv.Prefix != "" {
 			input = make([]string, len(req.Input))
 			for i, s := range req.Input {

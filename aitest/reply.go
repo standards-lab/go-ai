@@ -14,8 +14,8 @@ import (
 
 // Reply is what a route function answers with. Only the package's own reply types are Replies:
 // [ChatReply], [EmbeddingsReply], [TokenizeReply], [TranscriptionReply], [ModelsReply],
-// [ErrorReply], and [RawReply]. A typed reply is the wire shape of its route, and is written as that shape whichever
-// route returns it.
+// [ErrorReply], and [RawReply]. A typed reply is the wire shape of its route, and is written as
+// that shape whichever route returns it.
 type Reply interface {
 	write(ctx context.Context, w http.ResponseWriter, a asked)
 }

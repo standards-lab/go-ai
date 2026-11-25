@@ -77,11 +77,11 @@ func encodeTokenizeRequest(req *TokenizeRequest, profile EmbeddingProfile) ([]by
 	switch {
 	case req.Model == "":
 		return nil, errors.New("request has no model")
-	case req.InputType < 0 || int(req.InputType) >= len(inputTypeNames):
+	case !req.InputType.known():
 		return nil, fmt.Errorf("request has unknown input type %d", int(req.InputType))
 	}
 	prompt := req.Text
-	if conv, ok := profile.InputTypes[req.InputType]; ok && req.InputType != InputNone {
+	if conv, ok := profile.convention(req.InputType); ok {
 		prompt = conv.Prefix + prompt
 	}
 	return json.Marshal(tokenizeRequest{Model: req.Model, Prompt: prompt, AddSpecialTokens: true})
