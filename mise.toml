@@ -69,7 +69,7 @@ run = '''
 set -eu
 export GOWORK=off
 if [ -n "${AI_GATEWAY_TOKEN-}" ]; then
-  for role in AGENT VISION AUDIO EMBEDDING TRANSCRIPTION; do
+  for role in AGENT VISION AUDIO EMBEDDING TRANSCRIPTION TOKENIZE; do
     eval "base=\${AI_${role}_BASE_URL-} token=\${AI_${role}_TOKEN-}"
     if [ -n "$base" ] && [ -z "$token" ]; then
       export "AI_${role}_TOKEN=$AI_GATEWAY_TOKEN"

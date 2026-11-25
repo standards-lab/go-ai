@@ -142,7 +142,8 @@ which an endpoint that lists more than one, such as a cloud account's whole cata
 | `AI_AGENT_BASE_URL` | reasoning, function calling, structured output | chat, stream, tools, structured, and reasoning, in every format |
 | `AI_VISION_BASE_URL` | reads images | image, in every format, and a streamed reply in Chat Completions and Open Responses |
 | `AI_AUDIO_BASE_URL` | reads audio in a chat request | chat-mode `Transcribe`, and the endpoint's refusal of audio sent as Open Responses |
-| `AI_EMBEDDING_BASE_URL` | embeddings | `Embed` |
+| `AI_EMBEDDING_BASE_URL` | embeddings | `Embed`, and `Embed` of a document under a fixed `passage: ` prefix |
+| `AI_TOKENIZE_BASE_URL` | the embedding endpoint's root, where vLLM serves `tokenize` | `Tokenize`'s count against `Embed`'s prompt tokens, bare and as a document |
 | `AI_TRANSCRIPTION_BASE_URL` | serves the transcription route | route-mode `Transcribe` |
 
 An endpoint that needs credentials takes them from `AI_<ROLE>_TOKEN`, sent as the bearer token,
