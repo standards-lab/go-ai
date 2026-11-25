@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"slices"
@@ -217,4 +218,116 @@ func TestEmbed_NoInput(t *testing.T) {
 		t.Errorf("stdout = %q, want empty", r.stdout)
 	}
 	wantNoRequest(t, e)
+}
+
+const passages = `{"input_types":{"document":{"prefix":"passage: "}}}`
+
+func TestEmbed_InputType(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		profile string
+		args    []string
+		want    []string
+	}{
+		{"document under the variable's profile", passages, []string{"embed", "--input-type", "document", "first", "second"}, []string{"passage: first", "passage: second"}},
+		{"document under the flag's profile", "", []string{"--embedding-profile", passages, "embed", "--input-type=document", "first"}, []string{"passage: first"}},
+		{"the flag's profile over the variable's", `{"input_types":{"document":{"prefix":"doc: "}}}`, []string{"embed", "--embedding-profile", passages, "--input-type", "document", "first"}, []string{"passage: first"}},
+		{"document with no profile", "", []string{"embed", "--input-type", "document", "first"}, []string{"first"}},
+		{"a type the profile declares nothing for", passages, []string{"embed", "--input-type", "query", "first"}, []string{"first"}},
+		{"no type under a profile", passages, []string{"embed", "first"}, []string{"first"}},
+		{"none under a profile", passages, []string{"embed", "--input-type", "none", "first"}, []string{"first"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := embedEndpoint(t, nil, [][]float32{vecA, vecB}[:len(tc.want)]...)
+
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_MODEL": "embedder", "INFER_EMBEDDING_PROFILE": tc.profile}, tc.args...)
+
+			wantCode(t, r, process.ExitOK)
+			sent, _ := embedRequests(t, e)
+			if len(sent) != 1 || !slices.Equal(sent[0].Input, tc.want) {
+				t.Errorf("embeddings requests = %+v, want one sending %q", sent, tc.want)
+			}
+		})
+	}
+}
+
+func TestEmbed_InputTypeNative(t *testing.T) {
+	var got []aitest.EmbeddingRequest
+	e := aitest.Serve(t, aitest.Routes{Embeddings: func(_ context.Context, req aitest.EmbeddingRequest) aitest.Reply {
+		got = append(got, req)
+		return aitest.EmbeddingsReply{Vectors: [][]float32{vecA}}
+	}})
+	env := map[string]string{
+		"INFER_BASE_URL":          e.URL(),
+		"INFER_MODEL":             "embedder",
+		"INFER_EMBEDDING_PROFILE": `{"input_types":{"query":{"native":{"input_type":"search_query"}}}}`,
+	}
+
+	r := runApp(t, env, "embed", "--input-type", "query", "first")
+
+	wantCode(t, r, process.ExitOK)
+	if len(got) != 1 || !slices.Equal(got[0].Input, []string{"first"}) || string(got[0].Native) != `{"input_type":"search_query"}` {
+		t.Errorf("embeddings requests = %+v, want one sending first bare with input_type search_query", got)
+	}
+}
+
+func TestEmbed_InputTypeRefused(t *testing.T) {
+	for _, value := range []string{"passage", "Document", ""} {
+		t.Run(value, func(t *testing.T) {
+			e := embedEndpoint(t, []string{"embedder"}, vecA)
+
+			r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_EMBEDDING_PROFILE": passages}, "embed", "--input-type="+value, "hello")
+
+			wantCode(t, r, process.ExitUsage)
+			if want := `infer embed: invalid value "` + value + `" for flag -input-type: `; !strings.HasPrefix(r.stderr, want) || !strings.Contains(r.stderr, "none, query, document") {
+				t.Errorf("stderr = %q, want it to start with %q and name the types", r.stderr, want)
+			}
+			if r.stdout != "" {
+				t.Errorf("stdout = %q, want empty", r.stdout)
+			}
+			wantNothingBuilt(t, r)
+			wantNoRequest(t, e)
+		})
+	}
+}
+
+func TestEmbeddingProfile_Refusals(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		profile string
+		want    string
+	}{
+		{"not JSON", `{"input_types":`, "embedding profile: --embedding-profile (INFER_EMBEDDING_PROFILE): "},
+		{"unknown member", `{"input_type":{}}`, "embedding profile: --embedding-profile (INFER_EMBEDDING_PROFILE): "},
+		{"Go field name", `{"InputTypes":{}}`, "embedding profile: --embedding-profile (INFER_EMBEDDING_PROFILE): "},
+		{"unknown input type", `{"input_types":{"passage":{"prefix":"passage: "}}}`, "embedding profile: --embedding-profile (INFER_EMBEDDING_PROFILE): "},
+		{"a convention for none", `{"input_types":{"none":{"prefix":"x: "}}}`, "embedder: --embedding-profile (INFER_EMBEDDING_PROFILE): "},
+		{"a native clashing with input", `{"input_types":{"query":{"native":{"input":"x"}}}}`, "embedder: --embedding-profile (INFER_EMBEDDING_PROFILE): "},
+	} {
+		for _, command := range []string{"embed", "tokenize"} {
+			t.Run(tc.name+" "+command, func(t *testing.T) {
+				e := embedEndpoint(t, []string{"embedder"}, vecA)
+
+				r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_EMBEDDING_PROFILE": tc.profile}, command, "hello")
+
+				wantCode(t, r, process.ExitUsage)
+				label := "infer " + command + ": "
+				if !strings.HasPrefix(r.stderr, label+tc.want) || strings.Count(r.stderr, label) != 1 {
+					t.Errorf("stderr = %q, want one error starting %q", r.stderr, label+tc.want)
+				}
+				wantNoRequest(t, e)
+			})
+		}
+	}
+}
+
+func TestEmbeddingProfile_IgnoredByOtherCommands(t *testing.T) {
+	e := serveModels(t, "agent")
+
+	r := runApp(t, map[string]string{"INFER_BASE_URL": e.URL(), "INFER_EMBEDDING_PROFILE": "{"}, "models")
+
+	wantCode(t, r, process.ExitOK)
+	if r.stdout != "agent\n" {
+		t.Errorf("stdout = %q, want %q", r.stdout, "agent\n")
+	}
 }

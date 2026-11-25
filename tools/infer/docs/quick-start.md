@@ -35,6 +35,7 @@ Commands:
   version      Print the infer version
   models       List the endpoint's model IDs, one per line, each with its root where listed
   embed        Embed each argument, or each line of stdin, writing one JSON vector per line
+  tokenize     Count the tokens of each argument, or each line of stdin, writing one count per line
   chat         Send a prompt, from the arguments or stdin, and write the model's reply
   transcribe   Transcribe an audio file, writing its transcript
 …
@@ -253,10 +254,12 @@ export INFER_BASE_URL=http://localhost:8003/v1
 ```
 
 Each argument is one input, and each vector is one line. The model expects `passage: ` before
-each stored passage and `query: ` before each query, so the inputs carry the prefix:
+each stored passage and `query: ` before each query. The embedding profile declares those
+prefixes, and `--input-type` names which one the inputs take:
 
 ```text
-$ infer embed "passage: first passage" "passage: second passage"
+$ export INFER_EMBEDDING_PROFILE='{"input_types":{"query":{"prefix":"query: "},"document":{"prefix":"passage: "}}}'
+$ infer embed --input-type document "first passage" "second passage"
 [0.046260916,0.023065569,0.0023157918,-0.043930296,0.056205258,…]
 [0.042841334,0.018850785,-0.008285137,-0.03904309,0.042606838,…]
 usage: 12 input tokens, 12 total tokens
@@ -266,10 +269,17 @@ With no arguments, each line of stdin is one input. The usage goes to stderr, so
 captures only the vectors:
 
 ```text
-$ infer embed < passages.txt > vectors.jsonl
+$ infer embed --input-type document < passages.txt > vectors.jsonl
 usage: 12 input tokens, 12 total tokens
 $ wc -l vectors.jsonl
 2 vectors.jsonl
+```
+
+`infer tokenize` counts each input the same way, prefix included, one count per line. vLLM serves
+its tokenize route at the server root, so give the base URL without `/v1`:
+
+```sh
+infer --base-url http://localhost:8003 tokenize --input-type document "first passage"
 ```
 
 ## 10. Retry and bound a stream

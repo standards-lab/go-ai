@@ -1,7 +1,7 @@
 # infer
 
-A command-line client for model endpoints. `infer` lists models, chats, embeds, and transcribes
-through go-ai, in Chat Completions, Anthropic Messages, or Open Responses, with no Go program of
+A command-line client for model endpoints. `infer` lists models, chats, embeds, counts tokens, and
+transcribes through go-ai, in Chat Completions, Anthropic Messages, or Open Responses, with no Go program of
 your own.
 
 ```sh
@@ -16,6 +16,7 @@ export INFER_BASE_URL=http://localhost:8000/v1
 infer models                                  # each model ID, one per line, a tab and its root where listed
 infer chat "Is 1009 prime?"                   # the reply, streamed; its summary on stderr
 infer embed "first passage" "second passage"  # one JSON vector per input, one per line
+infer tokenize "first passage"                # the input's token count
 infer transcribe --mode chat clip.wav         # the transcript
 ```
 
@@ -29,6 +30,7 @@ output, and ends with the common failures and their fixes. This README is the re
 | `models` | none | each model ID, in the endpoint's order, followed by a tab and the entry's `root` where the listing carries one | |
 | `chat` | the prompt: the arguments joined by spaces, or stdin | the reply's text | the reply's status, usage, and reasoning item count |
 | `embed` | each argument, or each line of stdin | one JSON array per input, in input order | the token usage |
+| `tokenize` | each argument, or each line of stdin | one token count per input, in input order | the model's most tokens, when the endpoint reports it |
 | `transcribe` | one audio file, `.wav` or `.mp3` in chat mode | the transcript | the token usage |
 | `version` | none | the installed module version | |
 
@@ -44,8 +46,9 @@ empty. Root flags work before or after the command.
 | --- | --- | --- | --- |
 | `--base-url` | `INFER_BASE_URL` | none; required | every command but `version` |
 | `--format` | `INFER_FORMAT` | `completions` | every command but `version` |
-| `--model` | `INFER_MODEL` | the one model the endpoint lists | chat, embed, transcribe |
+| `--model` | `INFER_MODEL` | the one model the endpoint lists | chat, embed, tokenize, transcribe |
 | `--profile` | `INFER_PROFILE` | none: each format's spec | chat, transcribe |
+| `--embedding-profile` | `INFER_EMBEDDING_PROFILE` | none: every input sent as given | embed, tokenize |
 | `--retries` | `INFER_RETRIES` | `3` attempts | every command but `version` |
 | `--retry-base-delay` | `INFER_RETRY_BASE_DELAY` | `500ms`, at most `--retry-max-delay` | every command but `version` |
 | `--retry-max-delay` | `INFER_RETRY_MAX_DELAY` | `30s` | every command but `version` |
@@ -55,8 +58,8 @@ empty. Root flags work before or after the command.
 | | `INFER_HEADER` | none | every command but `version` |
 
 - `--base-url` is the API root, `/v1` included.
-- `--format` is `completions`, `messages`, or `responses`. `models`, `embed`, and route-mode
-  `transcribe` use the OpenAI-compatible routes whatever the format.
+- `--format` is `completions`, `messages`, or `responses`. `models`, `embed`, `tokenize`, and
+  route-mode `transcribe` use the OpenAI-compatible routes whatever the format.
 - `INFER_SHUTDOWN_TIMEOUT` bounds shutdown, as go-core's lifecycle setting.
 
 A missing or invalid setting exits 2 before anything is sent. The message names the flag and its
@@ -79,6 +82,24 @@ infer chat: --reasoning: responses: reasoning effort none is refused by the depl
 A refusal ending in `declared by --profile (INFER_PROFILE)` is the profile's. Without that
 ending, it is the format's spec's own.
 
+### The embedding profile
+
+A retrieval model can embed a search query and a stored document differently, as e5 reads
+`query: ` before a query and `passage: ` before a document. `embed` and `tokenize` take
+`--input-type`, `none` (the default), `query`, or `document`, and send it in the convention the
+embedding profile declares for it. `--embedding-profile` takes a JSON object, go-ai's
+`EmbeddingProfile` under its JSON names: each declared type's `prefix`, put before every input,
+and `native`, members merged into the request body. infer ships no profile of its own.
+
+```sh
+export INFER_EMBEDDING_PROFILE='{"input_types":{"query":{"prefix":"query: "},"document":{"prefix":"passage: "}}}'
+infer embed --input-type document "first passage"   # sends "passage: first passage"
+infer embed --input-type query "where is it?"       # sends "query: where is it?"
+```
+
+With no profile, or for a type the profile declares nothing for, the inputs are sent as given.
+An unknown `--input-type`, or a profile with an unknown name or a bad value, exits 2.
+
 ### Credentials
 
 Credentials have no flag, so they never appear in a command line or a shell history.
@@ -95,7 +116,7 @@ export INFER_HEADER='api-key: …'
 
 ### The model
 
-With no `--model`, `chat`, `embed`, and `transcribe` list the endpoint's models and send to the
+With no `--model`, `chat`, `embed`, `tokenize`, and `transcribe` list the endpoint's models and send to the
 one listed. An endpoint that serves one model, such as one vLLM instance or a gateway's
 per-purpose `/<alias>/v1`, needs no `--model`. An endpoint that lists several, or none, exits 1
 and asks for `--model`.
@@ -146,6 +167,18 @@ Reasoning tokens are part of the output tokens. When the endpoint reports none b
 holds a reasoning item, as through `messages`, which doesn't count them, the usage line says
 `(reasoning not reported)`. With neither, it has no parenthesis. A reply that isn't completed
 keeps the text already written, prints its summary, and exits 1.
+
+## tokenize
+
+`tokenize` counts each input in the model's own tokenizer, special tokens included, so a count is
+what embedding the same input with the same `--input-type` takes. It sends one request per input
+to the endpoint's `tokenize` route, below `--base-url`. vLLM serves that route at its server root,
+not below `/v1`, so against vLLM itself give `--base-url` without `/v1`; a gateway that forwards
+the route serves it below its API root.
+
+```sh
+infer --base-url http://localhost:8003 tokenize --input-type document "first passage"
+```
 
 ## transcribe
 

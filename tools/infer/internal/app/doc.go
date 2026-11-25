@@ -12,12 +12,14 @@
 //     configuration, the retry policy, the format in its spec's form and
 //     under the deployment's profile, and the go-ai client of the one
 //     endpoint a run talks to; the commands' own flags over a variable,
-//     transcribe's --mode and chat's --idle-timeout; and the transcriber
-//     and the chat client, clients of the same endpoint in the
-//     transcription mode and bounded by the idle timeout; it is the one
+//     transcribe's --mode and chat's --idle-timeout; the embedding
+//     profile; and the transcriber, the chat client, and the embedder,
+//     clients of the same endpoint in the transcription mode, bounded by
+//     the idle timeout, and applying the embedding profile; it is the one
 //     file that names a format package;
 //   - domain.go: defineDomain and mountDomain, infer's commands over the
-//     client, models, embed, chat, and transcribe, and resolveModel, the
+//     client, models, embed, tokenize, chat, and transcribe, and
+//     resolveModel, the
 //     one-model fallback each command that sends to a model resolves its
 //     model with;
 //   - version.go: the version command, which declares no nodes.
@@ -70,7 +72,24 @@
 // its inputs, each argument or else each line of stdin, as one batch, and
 // writes one JSON array of numbers per input, one per line, in input
 // order, and the token usage to stderr, as in "usage: 22 input tokens, 22
-// total tokens".
+// total tokens". tokenize counts its inputs, taken as embed takes them,
+// one tokenize request each, through the endpoint's tokenize route below
+// the base URL, and writes one count per input, one per line, in input
+// order, and, when the endpoint reports it, the model's most tokens to
+// stderr, as in "max model length: 512 tokens".
+//
+// embed's and tokenize's --input-type is what the inputs are, none, the
+// default, query, or document; another value is a usage error, exit 2,
+// before anything is built. The type is sent in the convention the root
+// flag --embedding-profile, over INFER_EMBEDDING_PROFILE, declares for it:
+// a JSON object that is go-ai's EmbeddingProfile under its snake_case
+// names, as in {"input_types":{"document":{"prefix":"passage: "}}}, decoded
+// strictly. Unset or empty, it declares no type, and every input is sent as
+// given, as is an input of a type it declares nothing for. A profile that
+// doesn't decode, or that go-ai's New refuses, is a usage error, exit 2,
+// naming the flag and its variable, before any request. Only the embedder,
+// which embed and tokenize send through, reads it, so a malformed one fails
+// no other command.
 //
 // chat sends one prompt, the arguments joined by spaces or else stdin,
 // with --instructions, --image (repeatable: a file inlined as a data URL,
