@@ -222,14 +222,13 @@ client, err := ai.New("http://localhost:8000/v1", httpClient, completions.New(co
 A nil HTTP client or format is a wiring mistake, so `New` panics and names it. A base URL or
 option it can't use is an error.
 
-The client has six operations. `Generate` and `GenerateStream` go through the format.
-`Embed`, `Models`, and route-mode `Transcribe` go to the OpenAI-compatible routes
-(`embeddings`, `models`, and `audio/transcriptions`) whatever the format, because the engines
-serve those routes beside every format's own. `Tokenize` goes to vLLM's `tokenize` route
-whatever the format; vLLM serves it at the server's root, not below `/v1`, so its client's base
-URL is the server's root or a gateway's API root that forwards it. Each `Model` that `Models` returns carries its
-`ID` and, as `Native`, its list entry as the endpoint sent it, for the members go-ai has no
-field for.
+The client has six operations. `Generate` and `GenerateStream` go through the format. `Embed`,
+`Models`, and route-mode `Transcribe` go to the OpenAI-compatible routes (`embeddings`, `models`,
+and `audio/transcriptions`) whatever the format, because the engines serve those routes beside every
+format's own. `Tokenize` goes to vLLM's `tokenize` route whatever the format; vLLM serves it at the
+server's root, not below `/v1`, so its client's base URL is the server's root or a gateway's API
+root that forwards it. Each `Model` that `Models` returns carries its `ID` and, as `Native`, its
+list entry as the endpoint sent it, for the members go-ai has no field for.
 
 ## Streaming
 

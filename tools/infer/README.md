@@ -1,8 +1,8 @@
 # infer
 
 A command-line client for model endpoints. `infer` lists models, chats, embeds, counts tokens, and
-transcribes through go-ai, in Chat Completions, Anthropic Messages, or Open Responses, with no Go program of
-your own.
+transcribes through go-ai, in Chat Completions, Anthropic Messages, or Open Responses, with no Go
+program of your own.
 
 ```sh
 go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.3.1
@@ -116,10 +116,10 @@ export INFER_HEADER='api-key: …'
 
 ### The model
 
-With no `--model`, `chat`, `embed`, `tokenize`, and `transcribe` list the endpoint's models and send to the
-one listed. An endpoint that serves one model, such as one vLLM instance or a gateway's
-per-purpose `/<alias>/v1`, needs no `--model`. An endpoint that lists several, or none, exits 1
-and asks for `--model`.
+With no `--model`, `chat`, `embed`, `tokenize`, and `transcribe` list the endpoint's models and send
+to the one listed. An endpoint that serves one model, such as one vLLM instance or a gateway's
+per-purpose `/<alias>/v1`, needs no `--model`. An endpoint that lists several, or none, exits 1 and
+asks for `--model`.
 
 ### Retries
 

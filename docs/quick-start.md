@@ -502,21 +502,38 @@ binds the format to one deployment, so build one client per deployment and share
 `Embed` sends the whole batch as one request to the endpoint's embeddings route, whatever the
 client's format. Each vector is placed by its input's index.
 
+Many retrieval models mark a query and a stored document differently. intfloat/multilingual-e5-large
+expects `query: ` before each query and `passage: ` before each stored passage. The client's
+embedding profile declares those prefixes, and each request's `InputType` names which one its inputs
+take. The profile is an option of the client, so `embed.go` builds a client of its own:
+
 ```go
 package main
 
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"os"
 
 	"github.com/standards-lab/go-ai"
+	"github.com/standards-lab/go-ai/format/completions"
 )
 
-// embed embeds two passages in one request.
-func embed(ctx context.Context, client *ai.Client, model string) error {
+// embed embeds two passages in one request, under e5's document prefix.
+func embed(ctx context.Context, model string) error {
+	client, err := ai.New(os.Getenv("ASK_BASE_URL"), http.DefaultClient, completions.New(completions.Options{}),
+		ai.Options{Embedding: ai.EmbeddingProfile{InputTypes: map[ai.InputType]ai.InputConvention{
+			ai.InputQuery:    {Prefix: "query: "},
+			ai.InputDocument: {Prefix: "passage: "},
+		}}})
+	if err != nil {
+		return err
+	}
 	emb, err := client.Embed(ctx, &ai.EmbeddingRequest{
-		Model: model,
-		Input: []string{"passage: The Nile flows north.", "passage: The Amazon carries the most water."},
+		Model:     model,
+		Input:     []string{"The Nile flows north.", "The Amazon carries the most water."},
+		InputType: ai.InputDocument,
 	})
 	if err != nil {
 		return err
@@ -530,12 +547,11 @@ func embed(ctx context.Context, client *ai.Client, model string) error {
 ```
 
 ```go
-		"embed":      func() error { return embed(ctx, client, model) },
+		"embed":      func() error { return embed(ctx, model) },
 ```
 
 Point it at an embedding endpoint. This output is from intfloat/multilingual-e5-large, served
-under the name `embedding`. The model expects `passage: ` before each stored passage and
-`query: ` before each query, so the inputs carry the prefix:
+under the name `embedding`, with `passage: ` sent before each input:
 
 ```text
 $ ASK_BASE_URL=http://localhost:8003/v1 ASK_MODEL=embedding go run . embed
@@ -545,6 +561,8 @@ $ ASK_BASE_URL=http://localhost:8003/v1 ASK_MODEL=embedding go run . embed
 ```
 
 The batch size, and how many batches run at once, are yours to choose.
+[Concepts](concepts.md#embedding-profiles) explains the profile, and
+[features](features.md#tokenize) shows how `Tokenize` counts a text as `Embed` sends it.
 
 ## 11. Transcribe a clip
 

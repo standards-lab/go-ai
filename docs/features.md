@@ -307,13 +307,13 @@ function `Routes` gives: Chat Completions, embeddings, transcriptions, models, a
 other path below `/v1`, such as `messages` or `responses`, raw. A route without a function
 answers 404 with an OpenAI-style error body.
 
-A route function answers with a typed reply in its route's wire shape (`ChatReply`, streamed
-when the request asks, `EmbeddingsReply`, `TranscriptionReply`, `ModelsReply`,
-`TokenizeReply`), an `ErrorReply` of any status with an optional Retry-After, or a `RawReply` of
-a JSON body or server-sent event `Frame`s, written as given. A `Gate` parks requests inside route functions, and holds a
-streamed reply after a given piece, until the test releases them, to prove a caller's
-concurrency bound or cancellation. The package imports only the standard library, so any
-module's tests can use it.
+A route function answers with a typed reply in its route's wire shape (`ChatReply`, streamed when
+the request asks, `EmbeddingsReply`, `TranscriptionReply`, `ModelsReply`, `TokenizeReply`), an
+`ErrorReply` of any status with an optional Retry-After, or a `RawReply` of a JSON body or
+server-sent event `Frame`s, written as given. A `Gate` parks requests inside route functions, and
+holds a streamed reply after a given piece, until the test releases them, to prove a caller's
+concurrency bound or cancellation. The package imports only the standard library, so any module's
+tests can use it.
 
 ## integration: the live tier
 
