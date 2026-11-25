@@ -328,7 +328,7 @@ func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) 
 		return nil, err
 	}
 	if resp.Status != protocol.StatusCompleted {
-		e := &IncompleteTranscriptError{Status: resp.Status}
+		e := &IncompleteTranscriptError{Status: resp.Status, Text: resp.OutputText()}
 		if resp.IncompleteDetails != nil {
 			e.Reason = resp.IncompleteDetails.Reason
 		}
@@ -356,6 +356,10 @@ type IncompleteTranscriptError struct {
 	// Reason is why the reply is incomplete, from its IncompleteDetails, or empty when it gave
 	// none.
 	Reason protocol.IncompleteReason
+	// Text is the reply's text as far as it went, its output text, or empty when it carried
+	// none. It is unfinished: it may end mid-word or inside a repetition loop, and the caller
+	// decides what of it to keep. Error doesn't include it.
+	Text string
 }
 
 // Error reports the status and the reason, when the reply gave one, then what they mean and what

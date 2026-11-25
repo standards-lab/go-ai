@@ -47,6 +47,9 @@ only; `tools/infer` keeps its own.
   empty sends none. The format refuses it as it refuses any request's `Native`, and route mode
   refuses any, before anything is sent. `Native` stays the route's form fields, which chat mode
   refuses.
+- `ai.IncompleteTranscriptError.Text`, the incomplete chat reply's text as far as it went, or
+  empty when it carried none, so a caller can keep the part of a capped transcript before a
+  repetition loop. It may end mid-word; `Error` doesn't include it.
 
 ### Changed
 

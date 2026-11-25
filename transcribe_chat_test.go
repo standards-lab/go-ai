@@ -376,10 +376,32 @@ func TestTranscribeChatIncomplete(t *testing.T) {
 			if e.Status != tc.status || e.Reason != tc.reason {
 				t.Errorf("IncompleteTranscriptError = %+v, want status %s, reason %s", *e, tc.status, tc.reason)
 			}
+			if e.Text != "It sounds like a gentle, rhythmic tapping." {
+				t.Errorf("IncompleteTranscriptError.Text = %q, want the reply's content", e.Text)
+			}
 			if err.Error() != tc.want {
 				t.Errorf("Transcribe error = %q, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestTranscribeChatIncompleteNoContent(t *testing.T) {
+	reply := strings.Replace(audioReply, `"finish_reason":"stop"`, `"finish_reason":"length"`, 1)
+	reply = strings.Replace(reply, `"content":"It sounds like a gentle, rhythmic tapping."`, `"content":null`, 1)
+	srv := serveChat(t, http.StatusOK, reply)
+	c := chatClient(t, srv.URL(), ai.Options{})
+	got, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{Model: "m", Open: reopen(tone(t)), FileName: "tone.wav"})
+	if got != nil {
+		t.Errorf("Transcribe = %+v, want no Transcription", got)
+	}
+	e, ok := errors.AsType[*ai.IncompleteTranscriptError](err)
+	if !ok {
+		t.Fatalf("Transcribe error = %v, want an *IncompleteTranscriptError", err)
+	}
+	want := ai.IncompleteTranscriptError{Status: protocol.StatusIncomplete, Reason: protocol.ReasonMaxOutputTokens}
+	if *e != want {
+		t.Errorf("IncompleteTranscriptError = %+v, want %+v", *e, want)
 	}
 }
 
@@ -389,6 +411,8 @@ func TestIncompleteTranscriptErrorText(t *testing.T) {
 		want string
 	}{
 		{ai.IncompleteTranscriptError{Status: protocol.StatusIncomplete},
+			"transcript incomplete (status incomplete): the model stopped before the transcript ended"},
+		{ai.IncompleteTranscriptError{Status: protocol.StatusIncomplete, Text: "one two two two"},
 			"transcript incomplete (status incomplete): the model stopped before the transcript ended"},
 		{ai.IncompleteTranscriptError{Status: protocol.StatusIncomplete, Reason: "tool_budget"},
 			"transcript incomplete (status incomplete, reason tool_budget): the model stopped before the transcript ended"},
