@@ -144,11 +144,12 @@ func TestRun_RootHelp(t *testing.T) {
 			r := runApp(t, unreadable(e.URL()), args...)
 
 			wantCode(t, r, process.ExitUsage)
-			for _, want := range []string{"version", "models", "embed", "chat", "transcribe", "--base-url", "INFER_BASE_URL", "--format", "INFER_FORMAT", "--model", "INFER_MODEL",
+			for _, want := range []string{"version", "models", "embed", "tokenize", "chat", "transcribe", "--base-url", "INFER_BASE_URL", "--format", "INFER_FORMAT", "--model", "INFER_MODEL",
 				"--retries", "INFER_RETRIES", "counts the first", "--retry-base-delay", "INFER_RETRY_BASE_DELAY", "--retry-max-delay", "INFER_RETRY_MAX_DELAY",
 				"--retries int", "--retry-base-delay duration", "--retry-max-delay duration",
 				"(env INFER_RETRIES) (default 3)", "(env INFER_RETRY_BASE_DELAY) (default 500ms)", "(env INFER_RETRY_MAX_DELAY) (default 30s)",
 				"--profile JSON", "INFER_PROFILE", "keyed by format name",
+				"--embedding-profile JSON", "INFER_EMBEDDING_PROFILE",
 				"\nEnvironment:\n  INFER_TOKEN    the bearer token sent with each request",
 				"\n  INFER_HEADER   headers sent with each request, one \"Name: value\" per line"} {
 				if !strings.Contains(r.stdout, want) {

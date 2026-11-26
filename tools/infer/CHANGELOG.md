@@ -7,6 +7,24 @@ only; go-ai's base module keeps its own, in the repository's root `CHANGELOG.md`
 
 ## [Unreleased]
 
+### Added
+
+- `infer embed --input-type` names what the inputs are, `none` (the default), `query`, or
+  `document`, sent in the convention the embedding profile declares for it. An unknown type is a
+  usage error, exit 2.
+- The root flag `--embedding-profile`, over `INFER_EMBEDDING_PROFILE`: the embedding model's
+  profile, go-ai's `EmbeddingProfile` as strict JSON, such as
+  `{"input_types":{"document":{"prefix":"passage: "}}}`. Unset or empty, every input is sent as
+  given. A profile that doesn't decode, or that go-ai refuses, is a usage error, exit 2, naming
+  the flag and its variable. Only `embed` and `tokenize` read it.
+- `infer tokenize` counts each argument, or each line of stdin, through the endpoint's tokenize
+  route, with `--input-type` as `embed` takes it, and writes one count per line, and the model's
+  most tokens to stderr when the endpoint reports it.
+
+### Changed
+
+- Requires the go-ai release with embedding input types and `Tokenize`, in place of v0.4.0.
+
 ## [v0.3.1] - 2026-11-19
 
 This release moves `infer` to go-ai v0.4.0, with no user-visible change: every command's output

@@ -7,7 +7,7 @@ experimental = true
 task.run_auto_install = false
 
 [tools]
-"github:standards-lab/claude-plugins" = { version = "0.24.0", version_prefix = "marathon/v" }
+"github:standards-lab/claude-plugins" = { version = "0.24.1", version_prefix = "marathon/v" }
 "aqua:FiloSottile/age" = "1.3.2"
 fnox = "1.50.0"
 go = "1.27.4"
@@ -69,7 +69,7 @@ run = '''
 set -eu
 export GOWORK=off
 if [ -n "${AI_GATEWAY_TOKEN-}" ]; then
-  for role in AGENT VISION AUDIO EMBEDDING TRANSCRIPTION; do
+  for role in AGENT VISION AUDIO EMBEDDING TRANSCRIPTION TOKENIZE; do
     eval "base=\${AI_${role}_BASE_URL-} token=\${AI_${role}_TOKEN-}"
     if [ -n "$base" ] && [ -z "$token" ]; then
       export "AI_${role}_TOKEN=$AI_GATEWAY_TOKEN"

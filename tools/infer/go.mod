@@ -7,3 +7,5 @@ require (
 	github.com/standards-lab/go-cli-sdk v0.4.0
 	github.com/standards-lab/go-core v0.12.0
 )
+
+replace github.com/standards-lab/go-ai => ../..

@@ -63,8 +63,8 @@ To send the same request to an Open Responses endpoint, change the format:
 client, err := ai.New(baseURL, http.DefaultClient, responses.New(responses.Options{}), ai.Options{})
 ```
 
-The client also streams (`GenerateStream`), embeds (`Embed`), lists models (`Models`), and
-transcribes audio (`Transcribe`).
+The client also streams (`GenerateStream`), embeds (`Embed`), counts tokens (`Tokenize`), lists
+models (`Models`), and transcribes audio (`Transcribe`).
 
 Each format takes its `Options`, the format's **profile**, whose zero value is the spec. A
 deployment that departs from its format's spec, such as one that refuses some reasoning efforts,
@@ -102,7 +102,7 @@ expect:
 ## Packages
 
 - `ai` (the root) is the client: `New` and `Options`, `Generate`, `GenerateStream`, `Embed`,
-  `Models`, and `Transcribe`, the `RetryPolicy`, and `APIError`.
+  `Tokenize`, `Models`, and `Transcribe`, the `RetryPolicy`, and `APIError`.
 - `protocol` is the request and response model, the streaming events, and the `Accumulator`
   that folds a stream into a response.
 - `format` is the contract a wire format meets, with the event stream a format's replies arrive
@@ -142,7 +142,8 @@ which an endpoint that lists more than one, such as a cloud account's whole cata
 | `AI_AGENT_BASE_URL` | reasoning, function calling, structured output | chat, stream, tools, structured, and reasoning, in every format |
 | `AI_VISION_BASE_URL` | reads images | image, in every format, and a streamed reply in Chat Completions and Open Responses |
 | `AI_AUDIO_BASE_URL` | reads audio in a chat request | chat-mode `Transcribe`, and the endpoint's refusal of audio sent as Open Responses |
-| `AI_EMBEDDING_BASE_URL` | embeddings | `Embed` |
+| `AI_EMBEDDING_BASE_URL` | embeddings | `Embed`, and `Embed` of a document under a fixed `passage: ` prefix |
+| `AI_TOKENIZE_BASE_URL` | the embedding endpoint's root, where vLLM serves `tokenize` | `Tokenize`'s count against `Embed`'s prompt tokens, bare and as a document |
 | `AI_TRANSCRIPTION_BASE_URL` | serves the transcription route | route-mode `Transcribe` |
 
 An endpoint that needs credentials takes them from `AI_<ROLE>_TOKEN`, sent as the bearer token,

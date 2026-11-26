@@ -175,6 +175,38 @@ if err != nil {
 vision, err := ai.New(visionURL, httpClient, completions.New(completions.Options{}), ai.Options{})
 ```
 
+### Embedding profiles
+
+Many retrieval models embed a search query and a stored document differently, and each marks
+the two its own way. intfloat/multilingual-e5-large reads `query: ` before a query and
+`passage: ` before a document, and Nomic's models have prefixes of their own. Some hosted APIs
+take a parameter instead, and OpenAI's embeddings API has none.
+
+An `EmbeddingRequest` names what its inputs are in `InputType`: `InputQuery`, `InputDocument`,
+or `InputNone`, the zero value. The client's `ai.Options.Embedding`, an `ai.EmbeddingProfile`,
+maps each type to its model's convention: a `prefix` prepended to every input, a `native` JSON
+object merged into the body as the request's own `Native` is, or both. A caller names the type
+and stays independent of the model:
+
+```json
+{"input_types": {"document": {"prefix": "passage: "}, "query": {"prefix": "query: "}}}
+```
+
+The zero type sends the input as given. A type the profile declares nothing for is a hint the
+model has no form for, so `Embed` drops it and sends the input as given too. `New` refuses a
+convention it can't send: a `native` that isn't a JSON object, or that sets `model`, `input`, or
+`encoding_format`. `Embed` refuses a request whose `Native` has a member the convention's
+`native` also has, before anything is sent. `Client.EmbeddingProfile` returns a copy of the
+profile the client applies.
+
+`Tokenize` counts a text as `Embed` would send it: it prepends the prefix the profile declares
+for the request's `InputType`, so the count matches the embedding's prompt tokens. A
+convention's `native` has no form on the tokenize route and isn't sent.
+
+An `EmbeddingProfile` decodes from JSON as a format's profile does: under its snake_case names
+alone, strictly with `json.RejectUnknownMembers(true)`, and an unknown input type is always an
+error. go-ai ships no presets.
+
 ## The client
 
 `ai.New` joins an API root, the caller's `*http.Client`, and a format into a `*ai.Client`.
@@ -190,12 +222,13 @@ client, err := ai.New("http://localhost:8000/v1", httpClient, completions.New(co
 A nil HTTP client or format is a wiring mistake, so `New` panics and names it. A base URL or
 option it can't use is an error.
 
-The client has five operations. `Generate` and `GenerateStream` go through the format.
-`Embed`, `Models`, and route-mode `Transcribe` go to the OpenAI-compatible routes
-(`embeddings`, `models`, and `audio/transcriptions`) whatever the format, because the engines
-serve those routes beside every format's own. Each `Model` that `Models` returns carries its
-`ID` and, as `Native`, its list entry as the endpoint sent it, for the members go-ai has no
-field for.
+The client has six operations. `Generate` and `GenerateStream` go through the format. `Embed`,
+`Models`, and route-mode `Transcribe` go to the OpenAI-compatible routes (`embeddings`, `models`,
+and `audio/transcriptions`) whatever the format, because the engines serve those routes beside every
+format's own. `Tokenize` goes to vLLM's `tokenize` route whatever the format; vLLM serves it at the
+server's root, not below `/v1`, so its client's base URL is the server's root or a gateway's API
+root that forwards it. Each `Model` that `Models` returns carries its `ID` and, as `Native`, its
+list entry as the endpoint sent it, for the members go-ai has no field for.
 
 ## Streaming
 

@@ -59,6 +59,50 @@ func TestEmbed(t *testing.T) {
 	}
 }
 
+var passagePrefix = ai.EmbeddingProfile{InputTypes: map[ai.InputType]ai.InputConvention{
+	ai.InputDocument: {Prefix: "passage: "},
+}}
+
+const embeddingTolerance = 1e-3
+
+func TestEmbedInputType(t *testing.T) {
+	c, model := endpoint(t, embedding, completionsFormat, ai.Options{Embedding: passagePrefix})
+	const text = "The lighthouse keeper logged every passing ship in a leather-bound book."
+	embedOne := func(input string, typ ai.InputType) []float32 {
+		t.Helper()
+		batch, err := c.Embed(requestContext(t), &ai.EmbeddingRequest{Model: model, Input: []string{input}, InputType: typ})
+		if err != nil {
+			t.Fatalf("Embed(%q, %s): %v", input, typ, err)
+		}
+		if len(batch.Vectors) != 1 {
+			t.Fatalf("Embed(%q, %s) gave %d vectors, want 1", input, typ, len(batch.Vectors))
+		}
+		return batch.Vectors[0]
+	}
+	document := embedOne(text, ai.InputDocument)
+	prefixed := embedOne("passage: "+text, ai.InputNone)
+	bare := embedOne(text, ai.InputNone)
+	if len(document) != len(prefixed) || len(bare) != len(prefixed) {
+		t.Fatalf("the vectors have %d, %d, and %d dimensions, want them equal", len(document), len(prefixed), len(bare))
+	}
+	if d := maxDiff(document, prefixed); d > embeddingTolerance {
+		t.Errorf("the document embedding differs from the bare embedding of the prefixed text by up to %g, want at most %g",
+			d, embeddingTolerance)
+	}
+	if d := maxDiff(bare, prefixed); d <= embeddingTolerance {
+		t.Errorf("the bare text's embedding is within %g of the prefixed text's, at most %g: the model doesn't tell them apart",
+			d, embeddingTolerance)
+	}
+}
+
+func maxDiff(a, b []float32) float64 {
+	var d float64
+	for i := range a {
+		d = max(d, math.Abs(float64(a[i])-float64(b[i])))
+	}
+	return d
+}
+
 func norm(v []float32) float64 {
 	return math.Sqrt(dot(v, v))
 }

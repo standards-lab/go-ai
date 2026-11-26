@@ -17,9 +17,21 @@
 // Embed, Models, and, in its default mode, Transcribe go to the base URL's OpenAI-compatible
 // routes, embeddings, models, and audio/transcriptions, on a Client of any format: llama.cpp's
 // router serves all three beside every format's route, and an endpoint without the route
-// answers with an *APIError. Transcribe's chat mode instead sends the clip as a chat request in
-// the Client's format, which must carry audio, as Chat Completions does, for an endpoint whose
-// audio model has no transcription route.
+// answers with an *APIError. Embed sends a request's input type in the convention the Client's
+// EmbeddingProfile declares for it; a type the profile declares nothing for is a hint the model
+// has no form for, as OpenAI's embeddings API has none, and is dropped. Transcribe's chat mode
+// instead sends the clip as a chat request in the Client's format, which must carry audio, as
+// Chat Completions does, for an endpoint whose audio model has no transcription route. Each mode
+// has its own native tier, refused by the other before anything is sent: a TranscriptionRequest's
+// Native holds the route's form fields, and its ChatNative the chat request's JSON object, such as
+// sampling.
+//
+// Tokenize, like Embed, sits outside the protocol and the Format. It counts a text's tokens in
+// the model's own tokenizer through vLLM's tokenize route, which vLLM serves at the server's
+// root rather than below /v1, so its Client's base URL is the server's root, or a gateway's API
+// root that forwards the route. It sends the model, the text with the prefix the
+// EmbeddingProfile declares for its input type, and add_special_tokens true, so the count is what
+// Embed of the same text takes; a convention's native members aren't sent.
 //
 // go-ai's README (https://github.com/standards-lab/go-ai#readme) states the module's place in Go
 // Elemental, its dependency line, and its API by example.
@@ -29,7 +41,7 @@
 //   - [New] returns a Client of an endpoint's base URL, sending with an http.Client in a wire
 //     format, adjusted by Options.
 //   - [Options] are New's optional inputs: query, token source, fixed headers, retry policy,
-//     the stream idle bound, and the transcription mode.
+//     the stream idle bound, the transcription mode, and the embedding profile.
 //   - [TokenSource] returns the bearer token for one attempt.
 //   - [RetryPolicy] is the caller's opt-in policy for sending a request again: its most
 //     attempts and the backoff's base and most delays.
@@ -39,6 +51,17 @@
 //     events.
 //   - [Client.Embed] sends an [EmbeddingRequest]'s batch as one request and returns its
 //     [Embeddings], each vector placed by its reply index, counted by [EmbeddingUsage].
+//   - [InputType] is what an embedding request's inputs are: [InputQuery], [InputDocument], or
+//     [InputNone], the zero value, which sends them as given.
+//   - [InputType.String] returns a type's name, none, query, or document.
+//   - [InputType.MarshalText] encodes a type by name, refusing an unknown type.
+//   - [InputType.UnmarshalText] decodes a type by name, refusing any other name.
+//   - [EmbeddingProfile] maps each input type to its [InputConvention], a prefix before every
+//     input and native members merged into the body.
+//   - [Client.EmbeddingProfile] returns a copy of the profile the Client applies.
+//   - [Client.Tokenize] counts a [TokenizeRequest]'s text in its model's tokenizer, with the
+//     prefix of its input type, and returns its [Tokens]: the count, the model's most tokens,
+//     and the token ids.
 //   - [Client.Models] lists the endpoint's models, each a [Model]: its id, and its list entry
 //     as the endpoint sent it.
 //   - [Client.Transcribe] sends a [TranscriptionRequest]'s clip and returns its
@@ -52,8 +75,8 @@
 //   - [TranscriptionInstruction] is the instruction chat mode gives the model when the request
 //     has no Prompt.
 //   - [IncompleteTranscriptError] is a chat-mode Transcribe's reply that isn't completed, such
-//     as one stopped at the engine's output token bound, matched with errors.As, carrying the
-//     reply's status and reason.
+//     as one stopped at its output token bound, matched with errors.As, carrying the reply's
+//     status, its reason, its unfinished text, and the tokens it took.
 //   - [IncompleteTranscriptError.Error] reports the status and reason, what they mean, and
 //     what the caller can do.
 //   - [APIError] is a non-2xx reply, matched with errors.As, carrying the reply's Retry-After.

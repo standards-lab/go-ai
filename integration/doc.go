@@ -12,9 +12,26 @@
 //     format, and a streamed text reply through Chat Completions and Open Responses.
 //   - AI_AUDIO_BASE_URL: a model that reads audio in a chat request. Transcribe runs on it in
 //     chat mode, through Chat Completions, and Open Responses' refusal of audio is asserted.
-//   - AI_EMBEDDING_BASE_URL: an embedding model. The embed scenario runs on it.
+//   - AI_EMBEDDING_BASE_URL: an embedding model. The embed and input-type scenarios run on it,
+//     and the tokenize scenario embeds on it.
 //   - AI_TRANSCRIPTION_BASE_URL: an endpoint that serves the transcription route,
 //     audio/transcriptions. Transcribe runs on it in route mode, its default.
+//
+// The input-type and tokenize scenarios give the embedding client a fixed embedding profile, not
+// one read from the environment: document inputs take the prefix "passage: ", multilingual-e5's.
+// The input-type scenario wants a document embedding of a text within 1e-3, element-wise, of the
+// bare embedding of the prefixed text, and the bare embedding of the text itself outside it, so a
+// model that ignores the prefix fails it. The tokenize scenario wants Tokenize's count of a text
+// to equal the prompt tokens Embed reports for it, bare and as a document, and the document's
+// count to exceed the bare one.
+//
+// Tokenize goes to the route vLLM serves at the server's root, not below /v1, so the tokenize
+// scenario takes its own variable, AI_TOKENIZE_BASE_URL: the root the embedding endpoint serves
+// tokenize at, such as http://localhost:8000 beside AI_EMBEDDING_BASE_URL's
+// http://localhost:8000/v1, or a gateway's API root that forwards it. Unset, the scenario skips,
+// naming it. It sends to the embedding role's model, and takes its credentials from
+// AI_TOKENIZE_TOKEN and AI_TOKENIZE_HEADER as a role does. It is no role: the models scenario
+// doesn't list it, as a server's root serves no model list.
 //
 // Each role may also name its credentials, for an endpoint that requires them, such as a
 // gateway or a cloud endpoint: AI_<ROLE>_TOKEN, such as AI_AGENT_TOKEN, sent as the bearer token

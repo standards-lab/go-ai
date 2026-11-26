@@ -55,6 +55,10 @@ func defineInfrastructure(g *graph.Graph, n *Nodes, flags *rootFlags, cmd comman
 	n.Model = g.Define("model", newSetting(flags, "model", ""))
 	n.RetryPolicy = g.Define("retry policy", newRetryPolicy(flags))
 	n.Client = g.Define("client", newClient(n, n.Format, func(*graph.Scope) ai.Options { return ai.Options{} }))
+	n.EmbeddingProfile = g.Define("embedding profile", newEmbeddingProfile(flags))
+	n.Embedder = g.Define("embedder", newClient(n, n.Format, func(s *graph.Scope) ai.Options {
+		return ai.Options{Embedding: s.Use(n.EmbeddingProfile)}
+	}))
 	n.TranscriptionMode = g.Define("transcription mode", newTranscriptionMode(cmd.mode))
 	n.Transcriber = g.Define("transcriber", newClient(n, n.ProfiledFormat, func(s *graph.Scope) ai.Options {
 		return ai.Options{TranscriptionMode: s.Use(n.TranscriptionMode)}
@@ -122,6 +126,20 @@ func newProfiledFormat(n *Nodes, flags *rootFlags) func(*graph.Scope) (format.Fo
 			}
 		}
 		return build(opts), nil
+	}
+}
+
+func newEmbeddingProfile(flags *rootFlags) func(*graph.Scope) (ai.EmbeddingProfile, error) {
+	return func(s *graph.Scope) (ai.EmbeddingProfile, error) {
+		var p ai.EmbeddingProfile
+		v, err := newSetting(flags, "embedding-profile", "")(s)
+		if err != nil || v == "" {
+			return p, err
+		}
+		if err := json.Unmarshal([]byte(v), &p, json.RejectUnknownMembers(true)); err != nil {
+			return p, cli.Usagef("%s: %w", flagAndVar("embedding-profile"), err)
+		}
+		return p, nil
 	}
 }
 
@@ -210,6 +228,9 @@ func settingsRefusal(base string, wireFormat format.Format, opts ai.Options, err
 	var names []string
 	if refuses(base, ai.Options{Header: opts.Header}) {
 		names = append(names, headerVariable)
+	}
+	if refuses(base, ai.Options{Embedding: opts.Embedding}) {
+		names = append(names, flagAndVar("embedding-profile"))
 	}
 	if refuses(base, ai.Options{Retry: ai.RetryPolicy{MaxAttempts: p.MaxAttempts}}) {
 		names = append(names, flagAndVar("retries"))
@@ -333,6 +354,8 @@ func bindRootFlags(fs *flag.FlagSet) *rootFlags {
 	fs.String("model", "", "the model the request names"+env("model"))
 	fs.String("profile", "", "the deployment's profile, a `JSON` object keyed by format name, each member that format's options, "+
 		`such as {"responses":{"refused_efforts":["none"]}}; unset or empty is each format's spec`+env("profile"))
+	fs.String("embedding-profile", "", "the embedding model's profile, a `JSON` object giving each input type's convention, "+
+		`such as {"input_types":{"query":{"prefix":"query: "},"document":{"prefix":"passage: "}}}; unset or empty sends every input as given`+env("embedding-profile"))
 	fs.String("retries", strconv.Itoa(defaultRetries), "the most attempts of each request, an `int` that counts the first, so 3 retries twice, "+
 		"when the endpoint answers 408, 429, 502, 503, or 504 or the connection fails; 0 or 1 sends once"+env("retries"))
 	fs.String("retry-base-delay", defaultRetryBaseDelay.String(), "the longest wait before the first retry, a `duration`, doubling for each retry after it; "+

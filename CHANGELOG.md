@@ -7,6 +7,67 @@ only; `tools/infer` keeps its own.
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-11-25
+
+This release adds embedding input types and an embedding profile, a token count over the
+engine's tokenize route, and chat-mode transcription that bounds its reply, sends a native tier,
+and reports an incomplete reply's text and usage.
+
+### Added
+
+- `ai.InputType`, what an embedding request's inputs are: `InputQuery`, `InputDocument`, or
+  `InputNone`, the zero value, with `String`, `MarshalText`, and `UnmarshalText` naming them
+  `query`, `document`, and `none`. `UnmarshalText` refuses any other name, and `MarshalText` an
+  unknown type.
+- `ai.EmbeddingRequest.InputType`, sent in the convention the client's embedding profile
+  declares for it. The zero type, and a type the profile declares nothing for, send the input as
+  given; `Embed` refuses an unknown type.
+- `ai.Options.Embedding`, an `ai.EmbeddingProfile` mapping each input type to an
+  `ai.InputConvention`: a `Prefix` prepended to every input and a `Native` object merged into the
+  body. It decodes from JSON under snake_case names, such as
+  `{"input_types":{"document":{"prefix":"passage: "},"query":{"prefix":"query: "}}}`. `New`
+  refuses a convention for `InputNone` or an unknown type, and a `Native` that isn't a JSON
+  object with unique member names or that sets `model`, `input`, or `encoding_format`; `Embed`
+  refuses a request whose `Native` shares a member with the convention's, before anything is
+  sent.
+- `ai.Client.EmbeddingProfile`, a copy of the profile the Client applies.
+- `aitest.EmbeddingRequest.Native`, the body's members beside `model`, `input`, and
+  `encoding_format`, in the order they arrived.
+- `ai.Client.Tokenize`, which counts an `ai.TokenizeRequest`'s text in its model's tokenizer
+  through vLLM's `tokenize` route, served at the server's root, and returns `ai.Tokens`: `Count`,
+  `MaxModelLen`, and the token `IDs`. It sends `add_special_tokens: true` and the prefix the
+  embedding profile declares for the request's `InputType`, so the count is what `Embed` of the
+  same text takes; a convention's native members aren't sent. It refuses a nil request, no
+  model, or an unknown input type before anything is sent, and a reply without a count or whose
+  count disagrees with its token ids.
+- `aitest.Routes.Tokenize`, answering `POST /tokenize` and `POST /v1/tokenize`, with
+  `aitest.TokenizeRequest` (model, prompt as sent, `add_special_tokens`) and
+  `aitest.TokenizeReply` (count as given, `max_model_len`, token ids).
+- `ai.TranscriptionRequest.MaxOutputTokens`, which bounds a chat-mode transcript's reply in the
+  format's own field, such as Chat Completions' `max_completion_tokens`; zero sends none. A reply
+  that reaches the bound returns an `ai.IncompleteTranscriptError` with reason
+  `max_output_tokens`. `Transcribe` refuses a negative bound, and in route mode any nonzero bound,
+  whose `max_tokens` goes through `Native`, before anything is sent.
+- `ai.TranscriptionRequest.ChatNative`, chat mode's native tier: a JSON object sent as the chat
+  request's `protocol.Request.Native`, such as `{"temperature":0}` for a repeatable transcript;
+  empty sends none. The format refuses it as it refuses any request's `Native`, and route mode
+  refuses any, before anything is sent. `Native` stays the route's form fields, which chat mode
+  refuses.
+- `ai.IncompleteTranscriptError.Text`, the incomplete chat reply's text as far as it went, or
+  empty when it carried none, so a caller can keep the part of a capped transcript before a
+  repetition loop. It may end mid-word; `Error` doesn't include it.
+- `ai.IncompleteTranscriptError.Usage`, the tokens the incomplete chat reply took, as a completed
+  `ai.Transcription`'s `Usage` counts them, or zero when the reply gave none, so a caller counts
+  a capped transcript's tokens too.
+
+### Changed
+
+- `ai.TranscriptionInstruction` is Gemma 4's model card's transcription prompt: the request to
+  transcribe the clip, in the given language or else in its original language, then the card's
+  formatting instructions, no newlines and numbers as digits.
+- `ai.IncompleteTranscriptError`'s text for a reply stopped at its output token bound names the
+  request's `MaxOutputTokens` beside the engine's default bound.
+
 ## [v0.4.0] - 2026-11-19
 
 This release adds a public fake model endpoint for tests, `aitest`, which any module's tests can

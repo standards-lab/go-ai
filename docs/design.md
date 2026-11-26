@@ -94,12 +94,12 @@ Nine decisions, each with its reason:
    transcription route, as vLLM serving Gemma 4 has none: it sends one request in the Client's own
    format, to its route, with `Model` and one user message of the clip as a `protocol.InputAudio`
    part, its format from `FileName`'s extension (.wav or .mp3), then the instruction as an
-   `InputText` part: `Prompt`, or else `TranscriptionInstruction(Language)`, modeled on Gemma 4's
-   model card, naming the language when set. `Text` joins the reply's output text, and `Usage` is
-   the reply's usage. Chat mode returns a whole transcript or an error, as the route does: a reply
-   whose status isn't completed, most often one incomplete because the model stopped at the engine's
-   output token bound, which a chat-mode request can't raise, returns an
-   `*IncompleteTranscriptError` naming the status, the reason, its cause, and what to do, and no
+   `InputText` part: `Prompt`, or else `TranscriptionInstruction(Language)`, Gemma 4's model card's
+   transcription prompt, naming the language when set. `Text` joins the reply's output text, and
+   `Usage` is the reply's usage. Chat mode returns a whole transcript or an error, as the route
+   does: a reply whose status isn't completed, most often one incomplete because the model stopped
+   at its output token bound, the request's `MaxOutputTokens` or else the engine's default, returns
+   an `*IncompleteTranscriptError` naming the status, the reason, its cause, and what to do, and no
    `Transcription`. It is not retried, as the same clip meets the same bound again. Chat mode needs
    a format that carries audio, Chat Completions today. Before the clip is opened or anything is
    sent, it encodes a request of the same shape with a placeholder clip, so a format that refuses

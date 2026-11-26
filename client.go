@@ -22,8 +22,9 @@ import (
 type TokenSource func(ctx context.Context) (string, error)
 
 // Options are New's optional inputs. The zero value selects every default: no query, no token,
-// no header, no retry, no idle bound, and transcription through the endpoint's route. New
-// copies Query, Header, and Retry, so changing them after New doesn't change the Client.
+// no header, no retry, no idle bound, transcription through the endpoint's route, and no
+// embedding input-type convention. New copies Query, Header, Retry, and Embedding, so changing
+// them after New doesn't change the Client.
 type Options struct {
 	// Query is added to every request's URL.
 	Query url.Values
@@ -51,6 +52,10 @@ type Options struct {
 	// format, which needs a format that carries audio, today Chat Completions. New refuses any
 	// other value.
 	TranscriptionMode TranscriptionMode
+	// Embedding is the embedding profile: the convention Embed applies to each input type, such
+	// as e5's text prefixes, as EmbeddingProfile describes. The zero value declares none, and
+	// every input is sent as given. New refuses a convention it can't send.
+	Embedding EmbeddingProfile
 }
 
 // Client makes requests of one endpoint in one wire format. It is safe for concurrent use when
@@ -65,6 +70,7 @@ type Client struct {
 	retry         RetryPolicy
 	idle          time.Duration
 	transcription TranscriptionMode
+	embedding     EmbeddingProfile
 	jitter        func(time.Duration) time.Duration
 }
 
@@ -86,8 +92,10 @@ var clientHeaders = []string{"Content-Type", "Accept", "Authorization"}
 // A nil httpClient or wireFormat panics by name, as a wiring defect. A baseURL that isn't an
 // absolute http or https URL without query or fragment, a negative attempt count or delay, a
 // BaseDelay above MaxDelay, a Header name that isn't a header name or that names Content-Type,
-// Accept, or Authorization, a Header value with a control character, or an unknown
-// TranscriptionMode is an error.
+// Accept, or Authorization, a Header value with a control character, an unknown
+// TranscriptionMode, or an Embedding profile that declares a convention for InputNone or an
+// unknown input type, or whose native field isn't a JSON object with unique member names or
+// clashes with the embedding request's typed fields, is an error.
 func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts Options) (*Client, error) {
 	if httpClient == nil {
 		panic("ai: New: httpClient is nil; pass the *http.Client that sends the requests")
@@ -122,6 +130,9 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
 	if opts.TranscriptionMode != TranscribeRoute && opts.TranscriptionMode != TranscribeChat {
 		return nil, fmt.Errorf("ai: unknown transcription mode %d", opts.TranscriptionMode)
 	}
+	if err := opts.Embedding.check(); err != nil {
+		return nil, err
+	}
 	return &Client{
 		base:          *u,
 		query:         opts.Query.Encode(),
@@ -133,6 +144,7 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
 		idle:          opts.StreamIdleTimeout,
 		jitter:        fullJitter,
 		transcription: opts.TranscriptionMode,
+		embedding:     opts.Embedding.clone(),
 	}, nil
 }
 
@@ -141,6 +153,14 @@ func New(baseURL string, httpClient *http.Client, wireFormat format.Format, opts
 // mode the Client actually uses, rather than by the configuration it meant to build it with.
 func (c *Client) TranscriptionMode() TranscriptionMode {
 	return c.transcription
+}
+
+// EmbeddingProfile returns the embedding profile the Client applies, a copy of the one
+// Options.Embedding gave New, the zero profile by default. A caller that stores embeddings can key
+// them by the conventions the Client actually uses, and changing the copy doesn't change the
+// Client.
+func (c *Client) EmbeddingProfile() EmbeddingProfile {
+	return c.embedding.clone()
 }
 
 func fixedHeader(h http.Header) (http.Header, error) {

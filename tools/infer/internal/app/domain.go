@@ -27,7 +27,7 @@ import (
 func defineDomain(g *graph.Graph, n *Nodes) {}
 
 func mountDomain(root *cli.Command, n *Nodes, cmdFlags commandFlags) {
-	root.Add(modelsCommand(n), embedCommand(n), chatCommand(n, cmdFlags.idleTimeout), transcribeCommand(n, cmdFlags.mode))
+	root.Add(modelsCommand(n), embedCommand(n), tokenizeCommand(n), chatCommand(n, cmdFlags.idleTimeout), transcribeCommand(n, cmdFlags.mode))
 }
 
 func modelsCommand(n *Nodes) *cli.Command {
@@ -86,27 +86,22 @@ func resolveModel(ctx context.Context, client *ai.Client, model string) (string,
 }
 
 func embedCommand(n *Nodes) *cli.Command {
-	return (&cli.Command{
+	var inputType ai.InputType
+	cmd := &cli.Command{
 		Name:     "embed",
 		Summary:  "Embed each argument, or each line of stdin, writing one JSON vector per line",
 		Synopsis: "[<input> ...]",
 		Run: func(ctx context.Context, inv *cli.Invocation) error {
-			inputs := inv.Args
-			if len(inputs) == 0 {
-				var err error
-				if inputs, err = stdinLines(inv.Stdin); err != nil {
-					return err
-				}
+			inputs, err := commandInputs(inv)
+			if err != nil {
+				return err
 			}
-			if len(inputs) == 0 {
-				return cli.Usagef("no input: give each as an argument, or each as a line of stdin")
-			}
-			client := inv.Get(n.Client)
+			client := inv.Get(n.Embedder)
 			model, err := resolveModel(ctx, client, inv.Get(n.Model))
 			if err != nil {
 				return err
 			}
-			e, err := client.Embed(ctx, &ai.EmbeddingRequest{Model: model, Input: inputs})
+			e, err := client.Embed(ctx, &ai.EmbeddingRequest{Model: model, Input: inputs, InputType: inputType})
 			if err != nil {
 				return err
 			}
@@ -122,7 +117,66 @@ func embedCommand(n *Nodes) *cli.Command {
 			_, err = fmt.Fprintf(inv.Stderr, "usage: %d input tokens, %d total tokens\n", e.Usage.PromptTokens, e.Usage.TotalTokens)
 			return err
 		},
-	}).Use(n.Client, n.Model)
+	}
+	bindInputType(cmd, &inputType, "what the inputs are")
+	return cmd.Use(n.Embedder, n.Model)
+}
+
+func tokenizeCommand(n *Nodes) *cli.Command {
+	var inputType ai.InputType
+	cmd := &cli.Command{
+		Name:     "tokenize",
+		Summary:  "Count the tokens of each argument, or each line of stdin, writing one count per line",
+		Synopsis: "[<input> ...]",
+		Run: func(ctx context.Context, inv *cli.Invocation) error {
+			inputs, err := commandInputs(inv)
+			if err != nil {
+				return err
+			}
+			client := inv.Get(n.Embedder)
+			model, err := resolveModel(ctx, client, inv.Get(n.Model))
+			if err != nil {
+				return err
+			}
+			maxModelLen := 0
+			for _, text := range inputs {
+				t, err := client.Tokenize(ctx, &ai.TokenizeRequest{Model: model, Text: text, InputType: inputType})
+				if err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintln(inv.Stdout, t.Count); err != nil {
+					return err
+				}
+				maxModelLen = t.MaxModelLen
+			}
+			if maxModelLen == 0 {
+				return nil
+			}
+			_, err = fmt.Fprintf(inv.Stderr, "max model length: %d tokens\n", maxModelLen)
+			return err
+		},
+	}
+	bindInputType(cmd, &inputType, "what the inputs will be embedded as")
+	return cmd.Use(n.Embedder, n.Model)
+}
+
+func bindInputType(cmd *cli.Command, t *ai.InputType, what string) {
+	cmd.Flags().TextVar(t, "input-type", ai.InputNone,
+		what+", a `type`: none, query, or document, sent in the convention --embedding-profile declares for it; none, or a type it declares nothing for, sends the inputs as given")
+}
+
+func commandInputs(inv *cli.Invocation) ([]string, error) {
+	inputs := inv.Args
+	if len(inputs) == 0 {
+		var err error
+		if inputs, err = stdinLines(inv.Stdin); err != nil {
+			return nil, err
+		}
+	}
+	if len(inputs) == 0 {
+		return nil, cli.Usagef("no input: give each as an argument, or each as a line of stdin")
+	}
+	return inputs, nil
 }
 
 // See docs/design.md, "Implementation notes".

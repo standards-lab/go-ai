@@ -89,6 +89,14 @@ type Nodes struct {
 	// request again; its zero value retries nothing.
 	RetryPolicy *graph.Node[ai.RetryPolicy]
 	Client      *graph.Node[*ai.Client] // the client of the endpoint, in Format, with the token and the retry policy
+	// EmbeddingProfile is the embedding model's convention for each input
+	// type, as INFER_EMBEDDING_PROFILE and --embedding-profile give it; the
+	// zero profile, when neither is given, declares none.
+	EmbeddingProfile *graph.Node[ai.EmbeddingProfile]
+	// Embedder is the client embed and tokenize send through: Client's
+	// endpoint, token, and retry policy, applying EmbeddingProfile. Only
+	// they declare it, so no other command reads the embedding profile.
+	Embedder *graph.Node[*ai.Client]
 	// TranscriptionMode is how transcribe sends a clip: to the endpoint's
 	// transcription route, or as a chat request in the format.
 	TranscriptionMode *graph.Node[ai.TranscriptionMode]
