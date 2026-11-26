@@ -7,6 +7,12 @@ only; `tools/infer` keeps its own.
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-11-25
+
+This release adds embedding input types and an embedding profile, a token count over the
+engine's tokenize route, and chat-mode transcription that bounds its reply, sends a native tier,
+and reports an incomplete reply's text and usage.
+
 ### Added
 
 - `ai.InputType`, what an embedding request's inputs are: `InputQuery`, `InputDocument`, or
