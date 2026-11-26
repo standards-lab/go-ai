@@ -7,6 +7,11 @@ only; go-ai's base module keeps its own, in the repository's root `CHANGELOG.md`
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-11-25
+
+This release names an embedding's input type, embeds through a deployment's embedding profile,
+and counts a text's tokens with `infer tokenize`. It requires go-ai v0.5.0.
+
 ### Added
 
 - `infer embed --input-type` names what the inputs are, `none` (the default), `query`, or
