@@ -76,7 +76,7 @@
 //     has no Prompt.
 //   - [IncompleteTranscriptError] is a chat-mode Transcribe's reply that isn't completed, such
 //     as one stopped at its output token bound, matched with errors.As, carrying the reply's
-//     status, its reason, and its unfinished text.
+//     status, its reason, its unfinished text, and the tokens it took.
 //   - [IncompleteTranscriptError.Error] reports the status and reason, what they mean, and
 //     what the caller can do.
 //   - [APIError] is a non-2xx reply, matched with errors.As, carrying the reply's Retry-After.

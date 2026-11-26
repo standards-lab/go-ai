@@ -379,6 +379,9 @@ func TestTranscribeChatIncomplete(t *testing.T) {
 			if e.Text != "It sounds like a gentle, rhythmic tapping." {
 				t.Errorf("IncompleteTranscriptError.Text = %q, want the reply's content", e.Text)
 			}
+			if want := (ai.TranscriptionUsage{InputTokens: 44, OutputTokens: 10, TotalTokens: 54}); e.Usage != want {
+				t.Errorf("IncompleteTranscriptError.Usage = %+v, want the reply's usage %+v", e.Usage, want)
+			}
 			if err.Error() != tc.want {
 				t.Errorf("Transcribe error = %q, want %q", err, tc.want)
 			}
@@ -399,9 +402,29 @@ func TestTranscribeChatIncompleteNoContent(t *testing.T) {
 	if !ok {
 		t.Fatalf("Transcribe error = %v, want an *IncompleteTranscriptError", err)
 	}
-	want := ai.IncompleteTranscriptError{Status: protocol.StatusIncomplete, Reason: protocol.ReasonMaxOutputTokens}
+	want := ai.IncompleteTranscriptError{
+		Status: protocol.StatusIncomplete,
+		Reason: protocol.ReasonMaxOutputTokens,
+		Usage:  ai.TranscriptionUsage{InputTokens: 44, OutputTokens: 10, TotalTokens: 54},
+	}
 	if *e != want {
 		t.Errorf("IncompleteTranscriptError = %+v, want %+v", *e, want)
+	}
+}
+
+func TestTranscribeChatIncompleteNoUsage(t *testing.T) {
+	reply := strings.Replace(audioReply, `"finish_reason":"stop"`, `"finish_reason":"length"`, 1)
+	reply = strings.Replace(reply,
+		`"usage":{"prompt_tokens":44,"total_tokens":54,"completion_tokens":10,"prompt_tokens_details":null,"completion_tokens_details":{"reasoning_tokens":0}},`, ``, 1)
+	srv := serveChat(t, http.StatusOK, reply)
+	c := chatClient(t, srv.URL(), ai.Options{})
+	_, err := c.Transcribe(t.Context(), &ai.TranscriptionRequest{Model: "m", Open: reopen(tone(t)), FileName: "tone.wav"})
+	e, ok := errors.AsType[*ai.IncompleteTranscriptError](err)
+	if !ok {
+		t.Fatalf("Transcribe error = %v, want an *IncompleteTranscriptError", err)
+	}
+	if e.Usage != (ai.TranscriptionUsage{}) {
+		t.Errorf("IncompleteTranscriptError.Usage = %+v, want zero for a reply without usage", e.Usage)
 	}
 }
 

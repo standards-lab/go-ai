@@ -328,20 +328,17 @@ func (c *Client) transcribeChat(ctx context.Context, req *TranscriptionRequest) 
 		return nil, err
 	}
 	if resp.Status != protocol.StatusCompleted {
-		e := &IncompleteTranscriptError{Status: resp.Status, Text: resp.OutputText()}
+		e := &IncompleteTranscriptError{Status: resp.Status, Text: resp.OutputText(), Usage: transcriptionUsage(resp.Usage)}
 		if resp.IncompleteDetails != nil {
 			e.Reason = resp.IncompleteDetails.Reason
 		}
 		return nil, e
 	}
-	return &Transcription{
-		Text: resp.OutputText(),
-		Usage: TranscriptionUsage{
-			InputTokens:  resp.Usage.InputTokens,
-			OutputTokens: resp.Usage.OutputTokens,
-			TotalTokens:  resp.Usage.TotalTokens,
-		},
-	}, nil
+	return &Transcription{Text: resp.OutputText(), Usage: transcriptionUsage(resp.Usage)}, nil
+}
+
+func transcriptionUsage(u protocol.Usage) TranscriptionUsage {
+	return TranscriptionUsage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, TotalTokens: u.TotalTokens}
 }
 
 // IncompleteTranscriptError is a chat-mode Transcribe's reply that isn't completed, so it holds
@@ -360,6 +357,10 @@ type IncompleteTranscriptError struct {
 	// none. It is unfinished: it may end mid-word or inside a repetition loop, and the caller
 	// decides what of it to keep. Error doesn't include it.
 	Text string
+	// Usage counts the tokens the request took, as a completed Transcription's Usage does: the
+	// clip and the instruction as input, the unfinished transcript as output. It is zero when
+	// the reply gave none. Error doesn't include it.
+	Usage TranscriptionUsage
 }
 
 // Error reports the status and the reason, when the reply gave one, then what they mean and what

@@ -50,6 +50,9 @@ only; `tools/infer` keeps its own.
 - `ai.IncompleteTranscriptError.Text`, the incomplete chat reply's text as far as it went, or
   empty when it carried none, so a caller can keep the part of a capped transcript before a
   repetition loop. It may end mid-word; `Error` doesn't include it.
+- `ai.IncompleteTranscriptError.Usage`, the tokens the incomplete chat reply took, as a completed
+  `ai.Transcription`'s `Usage` counts them, or zero when the reply gave none, so a caller counts
+  a capped transcript's tokens too.
 
 ### Changed
 
