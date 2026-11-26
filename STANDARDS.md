@@ -29,6 +29,11 @@ review, `docs/design.md`.
   spec lacks with a `*format.UnsupportedError` before anything is sent.
 - `architecture/principles/service-tiers.md`, "Native": a native engine parameter goes through the
   request's raw-JSON `Native` field, documented as native tier, never as a typed field.
+- `architecture/principles/model-cards.md`: a prompt form go-ai sends, such as chat-mode
+  transcription's instruction, is the one the model's card gives.
+- `architecture/principles/tool-call-reliability.md`: a shape the caller needs every time is
+  constrained by `tool_choice`, a declared gap refuses it before sending, and reasoning goes back
+  on turns that called tools.
 - `architecture/standards/go-elemental/principles/construction-and-execution.md`: `ai.New`'s
   required inputs are positional and its optional ones `Options`, as `responses.New`'s are.
 - `architecture/standards/go-elemental/principles/lifecycle-and-context.md`: a nil HTTP client or
