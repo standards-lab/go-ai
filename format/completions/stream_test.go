@@ -14,7 +14,6 @@ import (
 	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/format/completions"
 	"github.com/standards-lab/go-ai/internal/aitest"
-	"github.com/standards-lab/go-ai/internal/sse"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -168,7 +167,7 @@ func asStreamed(t *testing.T, reply, body string) string {
 
 func streamID(t *testing.T, body string) string {
 	t.Helper()
-	events := sse.NewDecoder(strings.NewReader(body))
+	events := format.SSE.NewReader(strings.NewReader(body))
 	for {
 		e, err := events.Next()
 		if errors.Is(err, io.EOF) {
@@ -177,13 +176,13 @@ func streamID(t *testing.T, body string) string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if e.Data == "[DONE]" {
+		if string(e.Data) == "[DONE]" {
 			return ""
 		}
 		var c struct {
 			ID string `json:"id"`
 		}
-		if err := json.Unmarshal([]byte(e.Data), &c); err != nil {
+		if err := json.Unmarshal(e.Data, &c); err != nil {
 			t.Fatal(err)
 		}
 		if c.ID != "" {
@@ -201,7 +200,7 @@ func streamCallIDs(t *testing.T, body string) []string {
 		}
 		ids[index] = id
 	}
-	events := sse.NewDecoder(strings.NewReader(body))
+	events := format.SSE.NewReader(strings.NewReader(body))
 	for {
 		e, err := events.Next()
 		if errors.Is(err, io.EOF) {
@@ -210,7 +209,7 @@ func streamCallIDs(t *testing.T, body string) []string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if e.Data == "[DONE]" {
+		if string(e.Data) == "[DONE]" {
 			continue
 		}
 		var c struct {
@@ -223,7 +222,7 @@ func streamCallIDs(t *testing.T, body string) []string {
 				} `json:"delta"`
 			} `json:"choices"`
 		}
-		if err := json.Unmarshal([]byte(e.Data), &c); err != nil {
+		if err := json.Unmarshal(e.Data, &c); err != nil {
 			t.Fatal(err)
 		}
 		for _, choice := range c.Choices {

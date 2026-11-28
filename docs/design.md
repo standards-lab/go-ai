@@ -125,15 +125,15 @@ and the tags each module is released under.
 2. **Each `go.mod` says `go 1.27`**, the current minor, as go-core's, go-cli-sdk's, and
    go-storage's do; `mise.toml` pins the toolchain, Go 1.27.4, which CI and a developer's machine
    both read; `mise run upgrade` moves the minor.
-3. **The base module requires nothing, and the check holds it there in two steps.** A strict
-   depguard rule allows the standard library and the module's own packages in every Go file
-   outside `tools/infer`, tests and the integration tier included, so an import outside the line
-   fails at the line that makes it; `go mod tidy -diff` then holds `go.mod` to what the files
-   import. Beside them, the check asserts that the base `go.mod` has no `require`,
-   reading it through `go mod edit -json` and jq, which `mise.toml` already pins. depguard alone
-   can be widened by an edit to its allow list; the assertion states the line itself, so moving it
-   means changing the check, in a diff a reviewer reads as a change of line. The line is
-   mechanical, so it is the check's, not a judgement call in `STANDARDS.md`.
+3. **The base module requires go-core alone, and the check holds it there in two steps.** A
+   strict depguard rule allows the standard library, go-core, and the module's own packages in
+   every Go file outside `tools/infer`, tests and the integration tier included, so an import
+   outside the line fails at the line that makes it; `go mod tidy -diff` then holds `go.mod` to
+   what the files import. Beside them, the check asserts that the base `go.mod` requires go-core
+   and nothing else, reading it through `go mod edit -json` and jq, which `mise.toml` already
+   pins. depguard alone can be widened by an edit to its allow list; the assertion states the
+   line itself, so moving it means changing the check, in a diff a reviewer reads as a change of
+   line. The line is mechanical, so it is the check's, not a judgement call in `STANDARDS.md`.
 4. **One `.golangci.yml` at the root serves both modules, with a depguard rule per module.**
    golangci-lint reads the nearest configuration above the directory it runs in, so `infer`'s run
    reads the root's. The base rule's files exclude `tools/infer`; a second rule, over
@@ -167,8 +167,7 @@ and the tags each module is released under.
 
 The base module, `github.com/standards-lab/go-ai`, holds the packages of the surface section,
 their testdata, the integration tier, and `aitest`, the fake endpoint for tests, beside its
-internal packages: `internal/aitest`, go-ai's format-test kit, `internal/sse`, and
-`internal/native`.
+internal packages: `internal/aitest`, go-ai's format-test kit, and `internal/native`.
 
 Each format's testdata is recorded from llama.cpp b11669's router, from vLLM 0.33.0, and, for the
 profiles' gaps, from vLLM 0.34.0, and Chat Completions' and Open Responses' also from Azure AI
@@ -189,8 +188,8 @@ only when a command declares them; that file is the only one in the composition 
 a format, as it is the only one that names a provider.
 
 Its module requires go-ai, go-cli-sdk, and go-core, each at a pinned release, and nothing else:
-go-ai at `v0.4.0`, the release that adds `aitest`, `Response.OutputText`, and the transcription
-mode's text form, go-cli-sdk at `v0.4.0`, and go-core at `v0.12.0`. A further requirement enters
+go-ai at `v0.5.0`, the release that adds embedding input types, the embedding profile, and the
+token count, go-cli-sdk at `v0.4.0`, and go-core at `v0.14.0`. A further requirement enters
 only under `dependencies.md`, "Sourcing", and the README states it.
 
 **Each run talks to one endpoint.** The root flags `--base-url`, `--format`, and `--model`,
@@ -748,7 +747,7 @@ where one does: "decision" alone is the surface section's, and "modules" the mod
 - **A default HTTP client, timeout, retry, size limit, or concurrency bound.** A library ships no
   policy the application must own.
 - **A go-core configuration block or lifecycle part.** A client holds no resource to start, stop,
-  or report ready, and the base module stays on the standard library.
+  or report ready.
 - **A logger, meter, or tracer in the client.** Instrumentation is a `RoundTripper` on the
   caller's `*http.Client`.
 - **A caller's `RoundTripper` as the only way to send `x-api-key` or a consumer-key header.**
@@ -763,7 +762,7 @@ where one does: "decision" alone is the surface section's, and "modules" the mod
   it can't tell a stalled endpoint from one still pinging (decision 7).
 - **An idle bound on by default, as go-storage's `ReadIdleTimeout` is.** go-ai sets no policy, so
   the zero `StreamIdleTimeout` sets none (decision 7).
-- **`sse.Decoder.Retry`.** The client never reconnects, so nothing reads it.
+- **go-core's `sse.Decoder.Retry`.** The client never reconnects, so nothing reads it.
 - **SSE hard-coded in the client, or a framing chosen by the reply's Content-Type.** The framing
   is the format's to declare, and a reply's Content-Type doesn't bind the client; the client
   reads only through the format's `EventStream`.
@@ -807,8 +806,8 @@ where one does: "decision" alone is the surface section's, and "modules" the mod
 - **A `go` directive naming a patch release.** The directive names the current minor, and
   `mise.toml` pins the toolchain's patch (modules, decision 2).
 - **depguard alone as the base module's guard, or the line as a judgement call.** An edit to the
-  allow list widens depguard quietly; the no-`require` assertion states the line, and a mechanical
-  line is the check's (modules, decision 3).
+  allow list widens depguard quietly; the go-core-alone assertion states the line, and a
+  mechanical line is the check's (modules, decision 3).
 - **A committed `replace` of the root in `tools/infer`.** `infer` requires a released go-ai; a
   `replace` is a transient bridge, removed once the root is tagged (modules, decision 5).
 - **Continuing the spike's tag line, or carrying its changelog entries.** The spike's tags name

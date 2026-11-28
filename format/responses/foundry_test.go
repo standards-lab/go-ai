@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/internal/aitest"
-	"github.com/standards-lab/go-ai/internal/sse"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -135,7 +135,7 @@ func TestStreamFoundry(t *testing.T) {
 
 func foundryStreamEncrypted(t *testing.T, body string) (added, done string) {
 	t.Helper()
-	events := sse.NewDecoder(strings.NewReader(body))
+	events := format.SSE.NewReader(strings.NewReader(body))
 	for {
 		e, err := events.Next()
 		if errors.Is(err, io.EOF) {
@@ -151,7 +151,7 @@ func foundryStreamEncrypted(t *testing.T, body string) (added, done string) {
 				EncryptedContent string `json:"encrypted_content"`
 			} `json:"item"`
 		}
-		if err := json.Unmarshal([]byte(e.Data), &ev); err != nil {
+		if err := json.Unmarshal(e.Data, &ev); err != nil {
 			t.Fatal(err)
 		}
 		if ev.Item.Type != "reasoning" {

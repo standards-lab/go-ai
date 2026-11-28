@@ -7,6 +7,18 @@ only; `tools/infer` keeps its own.
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-11-28
+
+This release makes go-core the base module's first requirement, for its `sse` decoder.
+
+### Changed
+
+- `format.SSE` reads a reply's events through go-core's `sse` decoder in place of go-ai's own,
+  with no change to what it returns.
+- The base module requires go-core v0.14.0 and nothing else. The check holds it there: the base
+  depguard rule allows the standard library, go-core, and go-ai's own packages, and the check
+  fails on any other requirement in `go.mod`.
+
 ## [v0.5.0] - 2026-11-25
 
 This release adds embedding input types and an embedding profile, a token count over the
@@ -331,7 +343,9 @@ one.
 - The release workflow, which makes a GitHub release from `CHANGELOG.md` for a `v*` tag and from
   `tools/infer/CHANGELOG.md` for a `tools/infer/v*` tag.
 
-[Unreleased]: https://github.com/standards-lab/go-ai/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/standards-lab/go-ai/compare/v0.6.0...HEAD
+[v0.6.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.6.0
+[v0.5.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.5.0
 [v0.4.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.4.0
 [v0.3.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.3.0
 [v0.2.0]: https://github.com/standards-lab/go-ai/releases/tag/v0.2.0

@@ -3,7 +3,7 @@ package format
 import (
 	"io"
 
-	"github.com/standards-lab/go-ai/internal/sse"
+	"github.com/standards-lab/go-core/sse"
 )
 
 // WireEvent is one event of a streamed reply as its framing delivers it, before a
@@ -57,5 +57,5 @@ func (r sseReader) Next() (WireEvent, error) {
 	if err != nil {
 		return WireEvent{}, err
 	}
-	return WireEvent{Type: e.Type, Data: []byte(e.Data)}, nil
+	return WireEvent{Type: e.Type, Data: e.Data}, nil
 }

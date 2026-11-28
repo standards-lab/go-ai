@@ -1,7 +1,7 @@
 // Package format is the contract a wire format meets: [Format] encodes the protocol package's
 // request in one API's wire shape and decodes the reply into its response, whole or streamed as
-// the protocol's events. It imports only protocol, and the module's internal SSE decoder, which
-// [SSE] wraps; each implementation is a package below it, named for the endpoint it targets:
+// the protocol's events. It imports only protocol, and go-core's sse decoder, which [SSE]
+// wraps; each implementation is a package below it, named for the endpoint it targets:
 // completions for Chat Completions, messages for Anthropic Messages, and responses for Open
 // Responses. None imports the client.
 //

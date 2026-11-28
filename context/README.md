@@ -3,7 +3,8 @@
 go-ai is the model client of Go Elemental: one client over the standard wire formats the model
 engines serve natively (Chat Completions, Anthropic Messages, and Open Responses), so a caller
 generates, streams, embeds, and transcribes without a vendor SDK. Its base module uses the
-standard library only; its convenience CLI, `infer`, lives in the nested module `tools/infer`.
+standard library and go-core; its convenience CLI, `infer`, lives in the nested module
+`tools/infer`.
 
 Its goals live in the coordinator's roadmap (`standards-lab/roadmap/index.toml`). It is built
 from spike-ai-pipeline-client v0.4.0 to the design review in [`docs/design.md`](../docs/design.md).
