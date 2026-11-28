@@ -1,7 +1,7 @@
 # go-ai
 
 A Go client for model endpoints: one request model, sent as Chat Completions, Anthropic
-Messages, or Open Responses, on the standard library alone.
+Messages, or Open Responses, on the standard library and go-core.
 
 `github.com/standards-lab/go-ai` is the base module. Its command-line client, `infer`, is the
 nested module [`tools/infer`](tools/infer/README.md), released on its own tags.
@@ -80,11 +80,11 @@ go-ai is an infrastructure library of
 the minimal-dependency Go standard. Five of its conventions are stricter than a reader might
 expect:
 
-- **The standard library only.** The base module requires nothing. This line is tighter than
-  its tier's, which
+- **The standard library and go-core.** The base module requires go-core alone, for its SSE
+  decoder. This line is tighter than its tier's, which also admits an adjacent library, as
   [minimal footprint](https://github.com/standards-lab/architecture/blob/main/principles/minimal-footprint.md)
-  allows. The check holds it: a depguard rule allows only the standard library and go-ai's own
-  packages in every Go file, and `go.mod` may have no `require`.
+  allows. The check holds it: a depguard rule allows only the standard library, go-core, and
+  go-ai's own packages in every Go file, and `go.mod` may require go-core and nothing else.
 - **No policy of its own.** There is no default model, token budget, timeout, retry, size limit,
   or concurrency bound. Every option's zero value sets none. Timeouts live on the caller's
   `*http.Client` and context, and instrumentation is a `RoundTripper` on that client.
