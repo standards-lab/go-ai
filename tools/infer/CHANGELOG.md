@@ -7,9 +7,16 @@ only; go-ai's base module keeps its own, in the repository's root `CHANGELOG.md`
 
 ## [Unreleased]
 
+## [v0.4.1] - 2026-11-28
+
+This release moves `infer` to go-ai v0.6.0 and go-core v0.14.0, with no user-visible change:
+every command's output and exit status are as in v0.4.0. It requires go-ai v0.6.0, go-cli-sdk
+v0.4.0, and go-core v0.14.0, and nothing else.
+
 ### Changed
 
-- Requires go-core v0.14.0, up from v0.12.0, with no user-visible change.
+- Requires go-ai v0.6.0, in place of v0.5.0.
+- Requires go-core v0.14.0, in place of v0.12.0.
 
 ## [v0.4.0] - 2026-11-25
 
@@ -172,7 +179,9 @@ go-ai v0.1.0, go-cli-sdk v0.4.0, and go-core v0.12.0, and nothing else.
   `AI_<ROLE>_TOKEN` and `AI_<ROLE>_HEADER` map onto `INFER_TOKEN` and `INFER_HEADER`, and no
   scenario's log shows their values.
 
-[Unreleased]: https://github.com/standards-lab/go-ai/compare/tools/infer/v0.3.1...HEAD
+[Unreleased]: https://github.com/standards-lab/go-ai/compare/tools/infer/v0.4.1...HEAD
+[v0.4.1]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.4.1
+[v0.4.0]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.4.0
 [v0.3.1]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.3.1
 [v0.3.0]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.3.0
 [v0.2.0]: https://github.com/standards-lab/go-ai/releases/tag/tools/infer/v0.2.0
