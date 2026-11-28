@@ -7,6 +7,10 @@ only; go-ai's base module keeps its own, in the repository's root `CHANGELOG.md`
 
 ## [Unreleased]
 
+### Changed
+
+- Requires go-core v0.14.0, up from v0.12.0, with no user-visible change.
+
 ## [v0.4.0] - 2026-11-25
 
 This release names an embedding's input type, embeds through a deployment's embedding profile,
