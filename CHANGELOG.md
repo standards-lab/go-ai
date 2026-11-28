@@ -9,16 +9,15 @@ only; `tools/infer` keeps its own.
 
 ## [v0.6.0] - 2026-11-28
 
-This release reads server-sent events through go-core's `sse` decoder, the base module's first
-requirement, with no change to what the client returns.
+This release makes go-core the base module's first requirement, for its `sse` decoder.
 
 ### Changed
 
 - `format.SSE` reads a reply's events through go-core's `sse` decoder in place of go-ai's own,
   with no change to what it returns.
-- The base module requires go-core v0.14.0, its first requirement, and nothing else. The check
-  holds it there: the base depguard rule allows the standard library, go-core, and go-ai's own
-  packages, and `go.mod` may require go-core and nothing else.
+- The base module requires go-core v0.14.0 and nothing else. The check holds it there: the base
+  depguard rule allows the standard library, go-core, and go-ai's own packages, and the check
+  fails on any other requirement in `go.mod`.
 
 ## [v0.5.0] - 2026-11-25
 

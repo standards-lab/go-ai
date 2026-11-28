@@ -188,8 +188,8 @@ only when a command declares them; that file is the only one in the composition 
 a format, as it is the only one that names a provider.
 
 Its module requires go-ai, go-cli-sdk, and go-core, each at a pinned release, and nothing else:
-go-ai at `v0.4.0`, the release that adds `aitest`, `Response.OutputText`, and the transcription
-mode's text form, go-cli-sdk at `v0.4.0`, and go-core at `v0.12.0`. A further requirement enters
+go-ai at `v0.5.0`, the release that adds embedding input types, the embedding profile, and the
+token count, go-cli-sdk at `v0.4.0`, and go-core at `v0.14.0`. A further requirement enters
 only under `dependencies.md`, "Sourcing", and the README states it.
 
 **Each run talks to one endpoint.** The root flags `--base-url`, `--format`, and `--model`,
