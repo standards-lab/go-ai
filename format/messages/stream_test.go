@@ -14,7 +14,6 @@ import (
 	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/format/messages"
 	"github.com/standards-lab/go-ai/internal/aitest"
-	"github.com/standards-lab/go-ai/internal/sse"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -169,7 +168,7 @@ func asStreamed(t *testing.T, reply, body string) string {
 		t.Fatal(err)
 	}
 	var callIDs, signatures []string
-	events := sse.NewDecoder(strings.NewReader(body))
+	events := format.SSE.NewReader(strings.NewReader(body))
 	for {
 		e, err := events.Next()
 		if errors.Is(err, io.EOF) {
@@ -194,7 +193,7 @@ func asStreamed(t *testing.T, reply, body string) string {
 				Signature string `json:"signature"`
 			} `json:"delta"`
 		}
-		if err := json.Unmarshal([]byte(e.Data), &event); err != nil {
+		if err := json.Unmarshal(e.Data, &event); err != nil {
 			t.Fatal(err)
 		}
 		switch {

@@ -14,7 +14,6 @@ import (
 	"github.com/standards-lab/go-ai/format"
 	"github.com/standards-lab/go-ai/format/responses"
 	"github.com/standards-lab/go-ai/internal/aitest"
-	"github.com/standards-lab/go-ai/internal/sse"
 	"github.com/standards-lab/go-ai/protocol"
 )
 
@@ -67,7 +66,7 @@ func stream(events ...string) string {
 func terminalResponse(t *testing.T, body string) *protocol.Response {
 	t.Helper()
 	var response jsontext.Value
-	events := sse.NewDecoder(strings.NewReader(body))
+	events := format.SSE.NewReader(strings.NewReader(body))
 	for {
 		e, err := events.Next()
 		if errors.Is(err, io.EOF) {
@@ -80,7 +79,7 @@ func terminalResponse(t *testing.T, body string) *protocol.Response {
 			Type     string         `json:"type"`
 			Response jsontext.Value `json:"response"`
 		}
-		if err := json.Unmarshal([]byte(e.Data), &event); err != nil {
+		if err := json.Unmarshal(e.Data, &event); err != nil {
 			t.Fatal(err)
 		}
 		switch event.Type {

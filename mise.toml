@@ -21,14 +21,15 @@ GO_MODULES = ". tools/infer"
 [secrets.fnox]
 
 [tasks.check]
-description = "Hold the base module to no requirements, then build, vet, format, fix, tidy, test, and lint every module, then run lint-context, lint-references, and lint-secrets; writes nothing"
+description = "Hold the base module to requiring go-core alone, then build, vet, format, fix, tidy, test, and lint every module, then run lint-context, lint-references, and lint-secrets; writes nothing"
 run = '''
 set -eu
 export GOWORK=off
 cd "$MISE_PROJECT_ROOT"
-if ! go mod edit -json | jq -e '(.Require // []) | length == 0' >/dev/null; then
-  echo "go.mod: the base module requires nothing, but it has a require:"
-  go mod edit -json | jq -r '.Require[] | "  \(.Path) \(.Version)"'
+extra=$(go mod edit -json | jq -r '(.Require // [])[] | select(.Path != "github.com/standards-lab/go-core") | "  \(.Path) \(.Version)"')
+if [ -n "$extra" ]; then
+  echo "go.mod: the base module requires github.com/standards-lab/go-core alone, but it also requires:"
+  echo "$extra"
   exit 1
 fi
 for mod in $GO_MODULES; do

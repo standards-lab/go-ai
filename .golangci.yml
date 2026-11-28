@@ -33,6 +33,8 @@ linters:
             - $gostd
             - github.com/standards-lab/go-ai$
             - github.com/standards-lab/go-ai/
+            - github.com/standards-lab/go-core$
+            - github.com/standards-lab/go-core/
         infer:
           list-mode: strict
           files:
